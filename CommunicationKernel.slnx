@@ -1,0 +1,11 @@
+<Solution>
+  <Project Path="CommunicationKernel.Communication.Protocol/CommunicationKernel.Communication.Protocol.csproj" />
+  <Project Path="CommunicationKernel.Communication.Transport/CommunicationKernel.Communication.Transport.csproj" />
+  <Project Path="CommunicationKernel.Contracts/CommunicationKernel.Contracts.csproj" />
+  <Project Path="CommunicationKernel.Core.Abstractions/CommunicationKernel.Core.Abstractions.csproj" />
+  <Project Path="CommunicationKernel.Core.Runtime/CommunicationKernel.Core.Runtime.csproj" />
+  <Project Path="CommunicationKernel.Engine.Router/CommunicationKernel.Engine.Router.csproj" />
+  <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.EngineHost.csproj" />
+  <Project Path="CommunicationKernel.Plugin.Runtime/CommunicationKernel.Plugin.Runtime.csproj" />
+  <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />
+</Solution>

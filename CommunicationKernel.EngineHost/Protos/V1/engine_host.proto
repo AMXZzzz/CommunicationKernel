@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package communicationkernel.enginehost.v1;
+option csharp_namespace = "CommunicationKernel.EngineHost.Grpc.V1";
+
+// -----------------------------------------------------------------------------
+// 文件: engine_host.proto
+// 作用: EngineHost gRPC 对外契约。
+// 说明:
+// 1) Health/Diagnostics 提供可观测性。
+// 2) RegisterRoute/QueryRoutes 提供路由管理能力。
+// 3) Read/Write 提供统一通讯入口（由 Router 调度并执行）。
+// -----------------------------------------------------------------------------
+service EngineHostApi {
+  rpc Health (HealthRequest) returns (HealthResponse);
+  rpc GetDiagnostics (DiagnosticsRequest) returns (DiagnosticsResponse);
+
+  rpc RegisterRoute (RegisterRouteRequest) returns (RegisterRouteResponse);
+  rpc QueryRoutes (QueryRoutesRequest) returns (QueryRoutesResponse);
+
+  rpc Read (ReadRequest) returns (ReadResponse);
+  rpc Write (WriteRequest) returns (WriteResponse);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+  string host_version = 2;
+  int32 route_count = 3;
+}
+
+message DiagnosticsRequest {
+  bool include_routes = 1;
+  bool include_subscriptions = 2;
+  bool include_queues = 3;
+}
+
+message DiagnosticsResponse {
+  string request_id = 1;
+  int32 route_count = 2;
+  int32 subscription_count = 3;
+  int32 write_queue_count = 4;
+  string host_version = 5;
+}
+
+message RegisterRouteRequest {
+  string protocol_id = 1;
+  string transport_kind = 2;
+  string address = 3;
+  int32 port = 4;
+  string station = 5;
+}
+
+message RegisterRouteResponse {
+  bool success = 1;
+  string error_code = 2;
+  string error_message = 3;
+  string route_id = 4;
+}
+
+message QueryRoutesRequest {
+  string protocol_id = 1;
+  string transport_kind = 2;
+  string address = 3;
+}
+
+message RouteItem {
+  string route_id = 1;
+  string protocol_id = 2;
+  string transport_kind = 3;
+  string address = 4;
+  int32 port = 5;
+  string station = 6;
+}
+
+message QueryRoutesResponse {
+  repeated RouteItem routes = 1;
+}
+
+message ReadRequest {
+  string protocol_id = 1;
+  string transport_kind = 2;
+  string address = 3;
+  int32 port = 4;
+  string station = 5;
+  string data_address = 6;
+  int32 length = 7;
+}
+
+message ReadResponse {
+  bool success = 1;
+  string error_code = 2;
+  string error_message = 3;
+  bytes data = 4;
+}
+
+message WriteRequest {
+  string protocol_id = 1;
+  string transport_kind = 2;
+  string address = 3;
+  int32 port = 4;
+  string station = 5;
+  string data_address = 6;
+  bytes data = 7;
+}
+
+message WriteResponse {
+  bool success = 1;
+  string error_code = 2;
+  string error_message = 3;
+}
