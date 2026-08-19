@@ -138,12 +138,12 @@ internal static class MewtocolFrame
         {
             if (c is (>= '0' and <= '9') or (>= 'A' and <= 'F') or (>= 'a' and <= 'f'))
                 hex.Append(c);
-            if (hex.Length >= wordCount * 4 + 4) break; // BCC 是最后 2 字节（4 hex chars）
+            if (hex.Length >= wordCount * 4 + 4) break; // 多读 4 chars 作为余量（BCC 是 1 字节 = 2 hex chars）
         }
 
         string h = hex.ToString();
         int need = wordCount * 4;
-        // BCC 附在数据尾部前，去掉最后4个字符（BCC 2字节=4hex chars）
+        // 截取到 need 长度：丢弃末尾 BCC（2 hex chars）及其他尾部字符
         if (h.Length > need) h = h[..need];
 
         if (h.Length < need)
