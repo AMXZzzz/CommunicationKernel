@@ -1,65 +1,231 @@
+// -----------------------------------------------------------------------------
+// 文件: ModbusTcpPlugin.cs
+// 层级: Plugins / Modbus.Tcp
+// 作用: Modbus TCP 协议插件（Manifest + Factory + Driver）。
+// 协议说明:
+//   Modbus TCP = ISO TCP 封装 Modbus PDU，端口 502，MBAP Header 7 字节。
+//   支持功能码:
+//     FC01  读线圈（Coil）
+//     FC03  读保持寄存器（Holding Register）
+//     FC05  写单线圈
+//     FC06  写单寄存器
+//     FC10  写多寄存器
+// 设计约定:
+//   1) Transaction ID 由 Driver 实例维护（Interlocked 递增，线程安全）。
+//   2) Unit ID（从站 ID）嵌入地址字符串前缀（如 "1:40001"），默认 1。
+//   3) 读路径：length 参数以字节为单位；布尔量（1 byte）→ FC01，其余 → FC03。
+//   4) 写路径：payload 1 字节且为线圈地址 → FC05；2 字节 → FC06；>2 字节 → FC10。
+//   5) 协议帧细节完全封装在 Internal 命名空间，外层不可见。
+// -----------------------------------------------------------------------------
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Plugin.Runtime.Abstractions;
+using CommunicationKernel.Plugins.Modbus.Tcp.Internal;
 
 namespace CommunicationKernel.Plugins.Modbus.Tcp;
 
-public sealed class ModbusTcpPluginManifest : IPluginManifest {
-    public PluginDescriptor Descriptor { get; } = new() {
-        PluginId = "modbus-tcp",
-        DisplayName = "Modbus TCP Plugin",
-        Kind = PluginKind.Protocol,
-        ApiVersion = 1,
-        Version = "1.0.0",
-        EntryType = typeof(ModbusTcpProtocolDriverFactory).FullName
+// =============================================================================
+// Manifest
+// =============================================================================
+
+/// <summary>
+/// Modbus TCP 插件 Manifest，声明插件元数据与 API 版本。
+/// </summary>
+public sealed class ModbusTcpPluginManifest : IPluginManifest
+{
+    /// <inheritdoc />
+    public PluginDescriptor Descriptor { get; } = new()
+    {
+        PluginId    = "modbus-tcp",
+        DisplayName = "Modbus TCP Protocol Plugin",
+        Kind        = PluginKind.Protocol,
+        ApiVersion  = 1,
+        Version     = "1.0.0",
+        EntryType   = typeof(ModbusTcpPluginManifest).FullName
     };
 }
 
-public sealed class ModbusTcpProtocolDriverFactory : IProtocolDriverFactory {
-    public ProtocolMetadata Metadata { get; } = new() {
-        ProtocolId = "modbus-tcp",
-        DisplayName = "Modbus TCP",
+// =============================================================================
+// Factory
+// =============================================================================
+
+/// <summary>
+/// Modbus TCP 协议驱动工厂。
+/// </summary>
+public sealed class ModbusTcpProtocolDriverFactory : IProtocolDriverFactory
+{
+    /// <inheritdoc />
+    public ProtocolMetadata Metadata { get; } = new()
+    {
+        ProtocolId       = "modbus-tcp",
+        DisplayName      = "Modbus TCP (MBAP)",
         PluginApiVersion = 1
     };
 
-    public IProtocolDriver CreateDriver() => new ModbusTcpProtocolDriver();
+    /// <inheritdoc />
+    public IProtocolDriver CreateDriver() => new ModbusTcpProtocolDriver(Metadata);
 }
 
-public sealed class ModbusTcpProtocolDriver : IProtocolDriver {
-    public ProtocolMetadata Metadata => new() {
-        ProtocolId = "modbus-tcp",
-        DisplayName = "Modbus TCP",
-        PluginApiVersion = 1
-    };
+// =============================================================================
+// Driver
+// =============================================================================
 
-    public Task<OperationResult<byte[]>> BuildReadFrameAsync(string address, int length, CancellationToken cancellationToken) {
-        _ = address;
-        _ = length;
-        _ = cancellationToken;
-        return Task.FromResult(OperationResult<byte[]>.Fail("Modbus TCP driver skeleton only", CommunicationKernel.Core.Abstractions.Errors.KernelErrorCode.ProtocolError));
+/// <summary>
+/// Modbus TCP 协议驱动实现。
+/// </summary>
+internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
+{
+    // -------------------------------------------------------------------------
+    // 字段
+    // -------------------------------------------------------------------------
+
+    /// <summary>事务 ID 计数器（Interlocked，线程安全）。</summary>
+    private int _transactionIdCounter;
+
+    // -------------------------------------------------------------------------
+    // 构造
+    // -------------------------------------------------------------------------
+
+    internal ModbusTcpProtocolDriver(ProtocolMetadata metadata)
+    {
+        Metadata = metadata;
     }
 
-    public Task<OperationResult<byte[]>> BuildWriteFrameAsync(string address, byte[] payload, CancellationToken cancellationToken) {
-        _ = address;
-        _ = payload;
-        _ = cancellationToken;
-        return Task.FromResult(OperationResult<byte[]>.Fail("Modbus TCP driver skeleton only", CommunicationKernel.Core.Abstractions.Errors.KernelErrorCode.ProtocolError));
+    // -------------------------------------------------------------------------
+    // IProtocolDriver
+    // -------------------------------------------------------------------------
+
+    /// <inheritdoc />
+    public ProtocolMetadata Metadata { get; }
+
+    /// <inheritdoc />
+    public Task<OperationResult<byte[]>> BuildReadFrameAsync(
+        string address, int length, CancellationToken cancellationToken)
+    {
+        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address);
+        if (!addrResult.Success)
+            return Task.FromResult(OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode));
+
+        ModbusAddressInfo addr    = addrResult.Value;
+        ushort            tid     = NextTransactionId();
+
+        // 分支：布尔量（length=1）且地址为线圈 → FC01；否则 → FC03
+        bool   isCoil   = addr.IsCoil || length == 1;
+        ushort quantity = isCoil
+            ? (ushort)Math.Max(1, length * 8)   // 以位为单位
+            : (ushort)((length + 1) / 2);        // 向上取整为寄存器数
+
+        byte[] frame = ModbusFrame.BuildReadFrame(tid, addr.UnitId, isCoil, addr.RegisterAddress, quantity);
+        return Task.FromResult(OperationResult<byte[]>.Ok(frame));
     }
 
-    public Task<OperationResult<byte[]>> ReadAsync(ITransportClient client, string address, int length, CancellationToken cancellationToken) {
-        _ = client;
-        _ = address;
-        _ = length;
-        _ = cancellationToken;
-        return Task.FromResult(OperationResult<byte[]>.Fail("Modbus TCP driver skeleton only", CommunicationKernel.Core.Abstractions.Errors.KernelErrorCode.ProtocolError));
+    /// <inheritdoc />
+    public Task<OperationResult<byte[]>> BuildWriteFrameAsync(
+        string address, byte[] payload, CancellationToken cancellationToken)
+    {
+        if (payload is null || payload.Length == 0)
+            return Task.FromResult(OperationResult<byte[]>.Fail(
+                "write payload is empty", KernelErrorCode.InvalidArgument));
+
+        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address);
+        if (!addrResult.Success)
+            return Task.FromResult(OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode));
+
+        ModbusAddressInfo addr = addrResult.Value;
+        ushort            tid  = NextTransactionId();
+
+        byte[] frame = BuildWriteFrameInternal(tid, addr, payload);
+        return Task.FromResult(OperationResult<byte[]>.Ok(frame));
     }
 
-    public Task<OperationResult> WriteAsync(ITransportClient client, string address, byte[] payload, CancellationToken cancellationToken) {
-        _ = client;
-        _ = address;
-        _ = payload;
-        _ = cancellationToken;
-        return Task.FromResult(OperationResult.Fail("Modbus TCP driver skeleton only", CommunicationKernel.Core.Abstractions.Errors.KernelErrorCode.ProtocolError));
+    /// <inheritdoc />
+    public async Task<OperationResult<byte[]>> ReadAsync(
+        ITransportClient  client,
+        string            address,
+        int               length,
+        CancellationToken cancellationToken)
+    {
+        // 分支1：构建请求帧
+        OperationResult<byte[]> buildResult =
+            await BuildReadFrameAsync(address, length, cancellationToken).ConfigureAwait(false);
+        if (!buildResult.Success)
+            return buildResult;
+
+        // 分支2：发送并接收响应（Transport 层负责 TCP 收发）
+        OperationResult<byte[]> response =
+            await client.SendAndReceiveAsync(buildResult.Value!, cancellationToken).ConfigureAwait(false);
+        if (!response.Success)
+            return response;
+
+        // 分支3：解析响应
+        // 判断功能码以选择正确解析路径
+        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address);
+        bool isCoil = addrResult.Success && (addrResult.Value.IsCoil || length == 1);
+
+        return isCoil
+            ? ModbusFrame.ParseReadCoilsResponse(response.Value!)
+            : ModbusFrame.ParseReadRegistersResponse(response.Value!);
+    }
+
+    /// <inheritdoc />
+    public async Task<OperationResult> WriteAsync(
+        ITransportClient  client,
+        string            address,
+        byte[]            payload,
+        CancellationToken cancellationToken)
+    {
+        // 分支1：构建写帧
+        OperationResult<byte[]> buildResult =
+            await BuildWriteFrameAsync(address, payload, cancellationToken).ConfigureAwait(false);
+        if (!buildResult.Success)
+            return OperationResult.Fail(buildResult.ErrorMessage, buildResult.ErrorCode);
+
+        // 分支2：发送并接收确认响应
+        OperationResult<byte[]> response =
+            await client.SendAndReceiveAsync(buildResult.Value!, cancellationToken).ConfigureAwait(false);
+        if (!response.Success)
+            return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
+
+        // 分支3：校验写响应
+        return ModbusFrame.ParseWriteResponse(response.Value!);
+    }
+
+    // -------------------------------------------------------------------------
+    // 内部辅助
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// 根据 payload 长度与地址类型选择正确的写功能码帧。
+    /// </summary>
+    private static byte[] BuildWriteFrameInternal(ushort tid, ModbusAddressInfo addr, byte[] payload)
+    {
+        // 线圈写（FC05）：payload[0] != 0 → ON，= 0 → OFF
+        if (addr.IsCoil && payload.Length == 1)
+            return ModbusFrame.BuildWriteSingleCoil(tid, addr.UnitId, addr.RegisterAddress, payload[0] != 0);
+
+        // 单寄存器写（FC06）：2 字节 payload
+        if (payload.Length <= 2)
+        {
+            ushort value = payload.Length == 2
+                ? (ushort)((payload[0] << 8) | payload[1])
+                : (ushort)payload[0];
+            return ModbusFrame.BuildWriteSingleRegister(tid, addr.UnitId, addr.RegisterAddress, value);
+        }
+
+        // 多寄存器写（FC10）：> 2 字节 payload
+        return ModbusFrame.BuildWriteMultipleRegisters(tid, addr.UnitId, addr.RegisterAddress, payload);
+    }
+
+    /// <summary>线程安全地获取下一个事务 ID（循环 0-65535）。</summary>
+    private ushort NextTransactionId()
+    {
+        int next = Interlocked.Increment(ref _transactionIdCounter) & 0xFFFF;
+        return (ushort)next;
     }
 }
