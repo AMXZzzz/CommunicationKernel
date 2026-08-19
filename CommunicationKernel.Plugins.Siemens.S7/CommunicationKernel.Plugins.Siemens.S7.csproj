@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 仅依赖协议抽象与插件运行时；禁止引用 Host/Router。 -->
+    <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugin.Runtime\CommunicationKernel.Plugin.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

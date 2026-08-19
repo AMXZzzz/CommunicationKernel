@@ -11,7 +11,6 @@
   <Project Path="CommunicationKernel.Plugins.Modbus.Rtu/CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
   <Project Path="CommunicationKernel.Plugins.Modbus.Ascii/CommunicationKernel.Plugins.Modbus.Ascii.csproj" />
   <Project Path="CommunicationKernel.Plugins.Panasonic.MewtocolTcp/CommunicationKernel.Plugins.Panasonic.MewtocolTcp.csproj" />
-  <Project Path="CommunicationKernel.Plugins.Siemens.S7_1200/CommunicationKernel.Plugins.Siemens.S7_1200.csproj" />
-  <Project Path="CommunicationKernel.Plugins.Siemens.S7_200Smart/CommunicationKernel.Plugins.Siemens.S7_200Smart.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Siemens.S7/CommunicationKernel.Plugins.Siemens.S7.csproj" />
   <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />
 </Solution>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- 插件以独立 DLL 形式部署，不输出 exe。 -->
+    <EnableDefaultItems>true</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 仅依赖协议抽象与插件运行时，禁止引用 Host/Router。 -->
+    <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugin.Runtime\CommunicationKernel.Plugin.Runtime.csproj" />
+  </ItemGroup>
+</Project>
