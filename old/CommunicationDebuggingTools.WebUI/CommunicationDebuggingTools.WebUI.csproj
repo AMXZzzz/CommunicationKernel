@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CommunicationDebuggingTools.Client\CommunicationDebuggingTools.Client.csproj" />
+    <ProjectReference Include="..\CommunicationDebuggingTools.Core\CommunicationDebuggingTools.Core.csproj" />
+  </ItemGroup>
+
+</Project>

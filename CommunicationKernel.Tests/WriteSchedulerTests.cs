@@ -60,7 +60,7 @@ public sealed class WriteSchedulerTests {
 
         Assert.IsTrue(results[0].Success);
         Assert.IsTrue(results[1].Success);
-        Assert.IsLessThan(sw.ElapsedMilliseconds, 320L, $"elapsed={sw.ElapsedMilliseconds}ms");
+        Assert.IsLessThan(320L, sw.ElapsedMilliseconds, $"elapsed={sw.ElapsedMilliseconds}ms");
     }
 
     [TestMethod]

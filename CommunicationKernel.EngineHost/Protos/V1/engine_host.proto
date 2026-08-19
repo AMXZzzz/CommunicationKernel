@@ -5,11 +5,11 @@ option csharp_namespace = "CommunicationKernel.EngineHost.Grpc.V1";
 
 // -----------------------------------------------------------------------------
 // 文件: engine_host.proto
-// 作用: EngineHost gRPC 对外契约。
+// 作用: EngineHost gRPC 对外契约（协议无关模型）。
 // 说明:
-// 1) Health/Diagnostics 提供可观测性。
-// 2) RegisterRoute/QueryRoutes 提供路由管理能力。
-// 3) Read/Write 提供统一通讯入口（由 Router 调度并执行）。
+// 1) RegisterRoute 用于一次性注册路由并完成插件组装。
+// 2) Read/Write 只使用 route_id，避免 UI 端依赖协议细节字段。
+// 3) WatchRouteStatus 提供实时状态流，支持多 UI 监控 PLC 状态。
 // -----------------------------------------------------------------------------
 service EngineHostApi {
   rpc Health (HealthRequest) returns (HealthResponse);
@@ -20,6 +20,8 @@ service EngineHostApi {
 
   rpc Read (ReadRequest) returns (ReadResponse);
   rpc Write (WriteRequest) returns (WriteResponse);
+
+  rpc WatchRouteStatus (WatchRouteStatusRequest) returns (stream RouteStatusEvent);
 }
 
 message HealthRequest {}
@@ -45,11 +47,19 @@ message DiagnosticsResponse {
 }
 
 message RegisterRouteRequest {
-  string protocol_id = 1;
-  string transport_kind = 2;
-  string address = 3;
-  int32 port = 4;
-  string station = 5;
+  string route_id = 1;
+  string protocol_id = 2;
+  string transport_id = 3;
+  string transport_kind = 4;
+
+  string address = 5;
+  int32 port = 6;
+  string station = 7;
+
+  string serial_port = 8;
+  int32 baud_rate = 9;
+
+  int32 min_io_interval_ms = 10;
 }
 
 message RegisterRouteResponse {
@@ -60,18 +70,22 @@ message RegisterRouteResponse {
 }
 
 message QueryRoutesRequest {
-  string protocol_id = 1;
-  string transport_kind = 2;
-  string address = 3;
+  string route_id = 1;
+  string protocol_id = 2;
+  string transport_kind = 3;
+  string address = 4;
 }
 
 message RouteItem {
   string route_id = 1;
   string protocol_id = 2;
-  string transport_kind = 3;
-  string address = 4;
-  int32 port = 5;
-  string station = 6;
+  string transport_id = 3;
+  string transport_kind = 4;
+  string address = 5;
+  int32 port = 6;
+  string station = 7;
+  string serial_port = 8;
+  int32 baud_rate = 9;
 }
 
 message QueryRoutesResponse {
@@ -79,13 +93,9 @@ message QueryRoutesResponse {
 }
 
 message ReadRequest {
-  string protocol_id = 1;
-  string transport_kind = 2;
-  string address = 3;
-  int32 port = 4;
-  string station = 5;
-  string data_address = 6;
-  int32 length = 7;
+  string route_id = 1;
+  string data_address = 2;
+  int32 length = 3;
 }
 
 message ReadResponse {
@@ -96,17 +106,25 @@ message ReadResponse {
 }
 
 message WriteRequest {
-  string protocol_id = 1;
-  string transport_kind = 2;
-  string address = 3;
-  int32 port = 4;
-  string station = 5;
-  string data_address = 6;
-  bytes data = 7;
+  string route_id = 1;
+  string data_address = 2;
+  bytes data = 3;
 }
 
 message WriteResponse {
   bool success = 1;
   string error_code = 2;
   string error_message = 3;
+}
+
+message WatchRouteStatusRequest {
+  string route_id = 1;
+}
+
+message RouteStatusEvent {
+  string route_id = 1;
+  bool online = 2;
+  string error_code = 3;
+  string error_message = 4;
+  int64 timestamp_unix_ms = 5;
 }

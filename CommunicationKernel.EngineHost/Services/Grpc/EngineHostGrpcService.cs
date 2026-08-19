@@ -1,12 +1,9 @@
 using System;
 using System.Linq;
+using System.Threading.Channels;
 using System.Threading.Tasks;
-using CommunicationKernel.Communication.Transport.Abstractions;
-using CommunicationKernel.Contracts.Models;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
 using CommunicationKernel.EngineHost.Grpc.V1;
 using CommunicationKernel.EngineHost.Host;
 using Google.Protobuf;
@@ -17,12 +14,12 @@ namespace CommunicationKernel.EngineHost.Services;
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: EngineHostGrpcService.cs
-/// 层级: EngineHost / Services
-/// 作用: EngineHost 高性能 gRPC 服务实现。
+/// 层级: EngineHost / Services / Grpc
+/// 作用: EngineHost gRPC 对外服务实现（协议无关请求模型）。
 /// 说明:
-/// 1) 该服务只负责请求/响应适配，不实现底层并发调度细节。
-/// 2) 读写并发策略由 Router 层统一控制（同路由串行写、同键读合并）。
-/// 3) 本版提供 Health/Diagnostics/RouteQuery/Read/Write。
+/// 1) RegisterRoute 负责路由注册入口；底层组装由 HostRuntime 完成。
+/// 2) Read/Write 仅使用 route_id，避免 UI 端依赖协议细节字段。
+/// 3) WatchRouteStatus 提供实时状态流，支持多 UI 并发监控。
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
@@ -39,67 +36,70 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
 
         return Task.FromResult(new HealthResponse {
             Ok = true,
-            HostVersion = "1.0.0-grpc-v2",
+            HostVersion = "1.0.0-grpc-v3",
             RouteCount = _hostRuntime.Facade.Orchestrator.ConnectionRouter.Count
         });
     }
 
     public override Task<DiagnosticsResponse> GetDiagnostics(DiagnosticsRequest request, ServerCallContext context) {
         _ = context;
-
-        var diagnostics = new DiagnosticsDto {
-            RouteCount = _hostRuntime.Facade.Orchestrator.ConnectionRouter.Count,
-            SubscriptionCount = _hostRuntime.Facade.Orchestrator.SubscriptionHub.Count,
-            WriteQueueCount = 0,
-            HostVersion = "1.0.0-grpc-v2"
-        };
-
-        _ = request.IncludeQueues;
-        _ = request.IncludeRoutes;
-        _ = request.IncludeSubscriptions;
+        _ = request;
 
         return Task.FromResult(new DiagnosticsResponse {
             RequestId = Guid.NewGuid().ToString("N"),
-            RouteCount = diagnostics.RouteCount,
-            SubscriptionCount = diagnostics.SubscriptionCount,
-            WriteQueueCount = diagnostics.WriteQueueCount,
-            HostVersion = diagnostics.HostVersion ?? string.Empty
+            RouteCount = _hostRuntime.Facade.Orchestrator.ConnectionRouter.Count,
+            SubscriptionCount = _hostRuntime.Facade.Orchestrator.SubscriptionHub.Count,
+            WriteQueueCount = 0,
+            HostVersion = "1.0.0-grpc-v3"
         });
     }
 
-    public override Task<RegisterRouteResponse> RegisterRoute(RegisterRouteRequest request, ServerCallContext context) {
-        _ = context;
+    public override async Task<RegisterRouteResponse> RegisterRoute(RegisterRouteRequest request, ServerCallContext context) {
+        // 分支1：请求体为空字符串字段会在运行时层统一校验并返回规范错误。
+        var command = new HostRuntime.RegisterRouteCommand {
+            RouteId = request.RouteId,
+            ProtocolId = request.ProtocolId,
+            TransportId = request.TransportId,
+            TransportKind = request.TransportKind,
+            Address = request.Address,
+            Port = request.Port,
+            Station = request.Station,
+            SerialPort = request.SerialPort,
+            BaudRate = request.BaudRate,
+            MinIoIntervalMs = request.MinIoIntervalMs
+        };
 
-        // 分支1：本阶段不在 gRPC 层创建真实 RouteEntry（需要插件工厂参与组装）。
-        // 含义：严格避免“伪路由”进入系统，防止后续读写落空。
-        return Task.FromResult(new RegisterRouteResponse {
-            Success = false,
-            ErrorCode = KernelErrorCode.InvalidArgument.ToString(),
-            ErrorMessage = "RegisterRoute requires plugin-based route assembly and is not enabled in this phase.",
-            RouteId = string.Empty
-        });
+        OperationResult<string> register = await _hostRuntime.RegisterRouteAsync(command, context.CancellationToken).ConfigureAwait(false);
+        return new RegisterRouteResponse {
+            Success = register.Success,
+            ErrorCode = register.ErrorCode.ToString(),
+            ErrorMessage = register.Success ? string.Empty : register.ErrorMessage,
+            RouteId = register.Success ? register.Value ?? string.Empty : string.Empty
+        };
     }
 
     public override Task<QueryRoutesResponse> QueryRoutes(QueryRoutesRequest request, ServerCallContext context) {
         _ = context;
 
-        var allRoutes = _hostRuntime.Facade.Orchestrator.ConnectionRouter.Snapshot();
-
-        // 分支2：按可选条件过滤（空条件代表不过滤）。
-        var filtered = allRoutes.Where(route =>
-            (string.IsNullOrWhiteSpace(request.ProtocolId) || string.Equals(route.Key.ProtocolId, request.ProtocolId, StringComparison.OrdinalIgnoreCase))
-            && (string.IsNullOrWhiteSpace(request.TransportKind) || string.Equals(route.Key.TransportKind.ToString(), request.TransportKind, StringComparison.OrdinalIgnoreCase))
-            && (string.IsNullOrWhiteSpace(request.Address) || string.Equals(route.Key.Address, request.Address, StringComparison.OrdinalIgnoreCase)));
+        var routes = _hostRuntime.SnapshotRoutes();
+        var filtered = routes.Where(route =>
+            (string.IsNullOrWhiteSpace(request.RouteId) || string.Equals(route.RouteId, request.RouteId, StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(request.ProtocolId) || string.Equals(route.RouteKey.ProtocolId, request.ProtocolId, StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(request.TransportKind) || string.Equals(route.RouteKey.TransportKind.ToString(), request.TransportKind, StringComparison.OrdinalIgnoreCase))
+            && (string.IsNullOrWhiteSpace(request.Address) || string.Equals(route.RouteKey.Address, request.Address, StringComparison.OrdinalIgnoreCase)));
 
         var response = new QueryRoutesResponse();
-        foreach (RouteEntry route in filtered) {
+        foreach (HostRuntime.RouteRuntimeInfo route in filtered) {
             response.Routes.Add(new RouteItem {
-                RouteId = route.Key.ToString(),
-                ProtocolId = route.Key.ProtocolId,
-                TransportKind = route.Key.TransportKind.ToString(),
-                Address = route.Key.Address,
-                Port = route.Key.Port,
-                Station = route.Key.Station ?? string.Empty
+                RouteId = route.RouteId,
+                ProtocolId = route.RouteKey.ProtocolId,
+                TransportId = route.TransportId,
+                TransportKind = route.RouteKey.TransportKind.ToString(),
+                Address = route.RouteKey.Address,
+                Port = route.RouteKey.Port,
+                Station = route.RouteKey.Station ?? string.Empty,
+                SerialPort = route.Endpoint.SerialPort ?? string.Empty,
+                BaudRate = route.Endpoint.BaudRate ?? 0
             });
         }
 
@@ -107,40 +107,19 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
     }
 
     public override async Task<ReadResponse> Read(ReadRequest request, ServerCallContext context) {
-        // 分支3：构建路由键失败时，返回参数错误。
-        if (!TryCreateRouteKey(request.ProtocolId, request.TransportKind, request.Address, request.Port, request.Station, out RouteKey routeKey, out string validationError)) {
+        // 分支2：route_id 为空时直接拒绝，确保协议无关模型入口严谨。
+        if (string.IsNullOrWhiteSpace(request.RouteId)) {
             return new ReadResponse {
                 Success = false,
                 ErrorCode = KernelErrorCode.InvalidArgument.ToString(),
-                ErrorMessage = validationError,
+                ErrorMessage = "route_id is required",
                 Data = ByteString.Empty
             };
         }
 
-        // 分支4：读长度非法时直接拒绝。
-        if (request.Length <= 0) {
-            return new ReadResponse {
-                Success = false,
-                ErrorCode = KernelErrorCode.InvalidArgument.ToString(),
-                ErrorMessage = "length must be greater than 0",
-                Data = ByteString.Empty
-            };
-        }
-
-        // 分支5：路由不存在时返回明确错误。
-        if (!_hostRuntime.Facade.TryGet(routeKey, out RouteEntry? routeEntry) || routeEntry is null) {
-            return new ReadResponse {
-                Success = false,
-                ErrorCode = KernelErrorCode.RouteNotFound.ToString(),
-                ErrorMessage = "route not found",
-                Data = ByteString.Empty
-            };
-        }
-
-        OperationResult<byte[]> result = await _hostRuntime.Facade.ExecuteReadAsync(
-            new ReadRequestKey(routeKey, request.DataAddress, request.Length),
-            cancellationToken => routeEntry.ProtocolDriver.ReadAsync(routeEntry.TransportClient, request.DataAddress, request.Length, cancellationToken),
-            context.CancellationToken);
+        OperationResult<byte[]> result = await _hostRuntime
+            .ReadByRouteIdAsync(request.RouteId, request.DataAddress, request.Length, context.CancellationToken)
+            .ConfigureAwait(false);
 
         return new ReadResponse {
             Success = result.Success,
@@ -151,27 +130,18 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
     }
 
     public override async Task<WriteResponse> Write(WriteRequest request, ServerCallContext context) {
-        if (!TryCreateRouteKey(request.ProtocolId, request.TransportKind, request.Address, request.Port, request.Station, out RouteKey routeKey, out string validationError)) {
+        if (string.IsNullOrWhiteSpace(request.RouteId)) {
             return new WriteResponse {
                 Success = false,
                 ErrorCode = KernelErrorCode.InvalidArgument.ToString(),
-                ErrorMessage = validationError
-            };
-        }
-
-        if (!_hostRuntime.Facade.TryGet(routeKey, out RouteEntry? routeEntry) || routeEntry is null) {
-            return new WriteResponse {
-                Success = false,
-                ErrorCode = KernelErrorCode.RouteNotFound.ToString(),
-                ErrorMessage = "route not found"
+                ErrorMessage = "route_id is required"
             };
         }
 
         byte[] payload = request.Data?.ToByteArray() ?? Array.Empty<byte>();
-        OperationResult result = await _hostRuntime.Facade.ExecuteWriteAsync(
-            routeKey,
-            cancellationToken => routeEntry.ProtocolDriver.WriteAsync(routeEntry.TransportClient, request.DataAddress, payload, cancellationToken),
-            context.CancellationToken);
+        OperationResult result = await _hostRuntime
+            .WriteByRouteIdAsync(request.RouteId, request.DataAddress, payload, context.CancellationToken)
+            .ConfigureAwait(false);
 
         return new WriteResponse {
             Success = result.Success,
@@ -180,37 +150,49 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
         };
     }
 
-    private static bool TryCreateRouteKey(
-        string protocolId,
-        string transportKind,
-        string address,
-        int port,
-        string? station,
-        out RouteKey routeKey,
-        out string error) {
+    public override async Task WatchRouteStatus(
+        WatchRouteStatusRequest request,
+        IServerStreamWriter<RouteStatusEvent> responseStream,
+        ServerCallContext context) {
 
-        routeKey = default;
-        error = string.Empty;
-
-        // 分支6：协议标识为空，无法构建路由键。
-        if (string.IsNullOrWhiteSpace(protocolId)) {
-            error = "protocol_id is required";
-            return false;
+        // 先下发当前状态快照，避免客户端刚连上时无状态可用。
+        foreach (HostRuntime.RouteStatusSnapshot snapshot in _hostRuntime.SnapshotStatuses(request.RouteId)) {
+            await responseStream.WriteAsync(ToStatusEvent(snapshot)).ConfigureAwait(false);
         }
 
-        // 分支7：介质解析失败，返回参数错误。
-        if (!Enum.TryParse(transportKind, ignoreCase: true, out TransportKind parsedTransportKind)) {
-            error = "transport_kind is invalid";
-            return false;
+        var channel = Channel.CreateUnbounded<HostRuntime.RouteStatusSnapshot>();
+
+        void OnStatus(HostRuntime.RouteStatusSnapshot snapshot) {
+            // 分支3：请求指定 route_id 时，只透传目标路由事件。
+            if (!string.IsNullOrWhiteSpace(request.RouteId)
+                && !string.Equals(request.RouteId, snapshot.RouteId, StringComparison.OrdinalIgnoreCase)) {
+                return;
+            }
+
+            channel.Writer.TryWrite(snapshot);
         }
 
-        // 分支8：地址为空会降低路由唯一性，严格模式下拒绝。
-        if (string.IsNullOrWhiteSpace(address)) {
-            error = "address is required";
-            return false;
+        _hostRuntime.RouteStatusChanged += OnStatus;
+        try {
+            while (!context.CancellationToken.IsCancellationRequested) {
+                HostRuntime.RouteStatusSnapshot snapshot = await channel.Reader.ReadAsync(context.CancellationToken).ConfigureAwait(false);
+                await responseStream.WriteAsync(ToStatusEvent(snapshot)).ConfigureAwait(false);
+            }
+        } catch (OperationCanceledException) {
+            // 客户端取消订阅属于正常退出路径。
+        } finally {
+            _hostRuntime.RouteStatusChanged -= OnStatus;
+            channel.Writer.TryComplete();
         }
+    }
 
-        routeKey = new RouteKey(protocolId.Trim(), parsedTransportKind, address.Trim(), port, string.IsNullOrWhiteSpace(station) ? null : station.Trim());
-        return true;
+    private static RouteStatusEvent ToStatusEvent(HostRuntime.RouteStatusSnapshot snapshot) {
+        return new RouteStatusEvent {
+            RouteId = snapshot.RouteId,
+            Online = snapshot.Online,
+            ErrorCode = snapshot.ErrorCode.ToString(),
+            ErrorMessage = snapshot.ErrorMessage,
+            TimestampUnixMs = snapshot.TimestampUtc.ToUnixTimeMilliseconds()
+        };
     }
 }

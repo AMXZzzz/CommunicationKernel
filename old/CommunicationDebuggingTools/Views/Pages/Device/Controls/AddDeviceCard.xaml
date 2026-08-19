@@ -1,0 +1,55 @@
+﻿<UserControl x:Class="CommunicationDebuggingTools.Views.Pages.Device.AddDeviceCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="{StaticResource SF.ControlsSize.PLCBarWidth}"
+             Height="{StaticResource SF.ControlsSize.PLCBarHeight}"
+             Margin="0,0,16,16"
+             Cursor="Hand">
+
+    <Grid Background="Transparent"
+          MouseLeftButtonUp="AddDeviceCard_MouseLeftButtonUp">
+
+        <!-- ==================== 虚线边框 ==================== -->
+        <!-- StrokeDashArray: 实线长度 4 + 间隔 2 -->
+        <!-- IsHitTestVisible=False：点击落到 Grid，保证事件稳定触发 -->
+        <Rectangle RadiusX="6"
+                   RadiusY="6"
+                   StrokeThickness="1.5"
+                   StrokeDashArray="4 2"
+                   Fill="Transparent"
+                   IsHitTestVisible="False">
+            <Rectangle.Style>
+                <Style TargetType="Rectangle">
+                    <!-- 默认边框 -->
+                    <Setter Property="Stroke" Value="{StaticResource SF.Brush.Border.Default}"/>
+                    <Style.Triggers>
+                        <!-- 悬停：强调色边框 -->
+                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                            <Setter Property="Stroke" Value="{StaticResource SF.Brush.Accent.Default}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Rectangle.Style>
+        </Rectangle>
+
+        <!-- ==================== 中间内容 ==================== -->
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False">
+
+            <!-- 加号 -->
+            <TextBlock Text="+"
+                       FontSize="36"
+                       FontWeight="Light"
+                       Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                       HorizontalAlignment="Center"/>
+
+            <!-- 提示文字 -->
+            <TextBlock Text="添加新 PLC"
+                       FontSize="14"
+                       Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                       Margin="0,8,0,0"
+                       HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

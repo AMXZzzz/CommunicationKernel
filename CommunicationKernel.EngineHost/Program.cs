@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using CommunicationKernel.EngineHost.Host;
 using CommunicationKernel.EngineHost.Services;
 
@@ -18,7 +20,25 @@ builder.Services.AddGrpc(options => {
     // 预留服务级拦截器/限流等策略扩展点；当前保持默认最小配置。
 });
 
-// 组合根：注册 HostRuntime，内部持有 Facade 与 Router 编排能力。
+// 组合根：注册路由装配服务，隔离 HostRuntime 与具体协议/传输装配实现。
+builder.Services.AddSingleton<IRouteAssemblyService>(_ => {
+    // 读取运行时配置。
+    string pluginDirectorySetting = builder.Configuration["HostRuntime:PluginDirectory"] ?? "plugins";
+    int defaultSerialIntervalMs = int.TryParse(builder.Configuration["HostRuntime:DefaultSerialMinIoIntervalMs"], out int value)
+        ? value
+        : 15;
+
+    // 分支1：相对路径按宿主基目录解析，避免不同启动目录导致插件目录漂移。
+    string resolvedPluginDirectory = Path.IsPathRooted(pluginDirectorySetting)
+        ? pluginDirectorySetting
+        : Path.Combine(AppContext.BaseDirectory, pluginDirectorySetting);
+
+    return new PluginRouteAssemblyService(
+        pluginDirectory: resolvedPluginDirectory,
+        defaultSerialMinIoIntervalMs: defaultSerialIntervalMs);
+});
+
+// 组合根：注册 HostRuntime，仅依赖抽象服务与编排器。
 builder.Services.AddSingleton<HostRuntime>();
 
 var app = builder.Build();
