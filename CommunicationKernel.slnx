@@ -1,1 +1,17 @@
-<Solution>`n  <Project Path="CommunicationKernel.Communication.Protocol/CommunicationKernel.Communication.Protocol.csproj" />`n  <Project Path="CommunicationKernel.Communication.Transport/CommunicationKernel.Communication.Transport.csproj" />`n  <Project Path="CommunicationKernel.Contracts/CommunicationKernel.Contracts.csproj" />`n  <Project Path="CommunicationKernel.Core.Abstractions/CommunicationKernel.Core.Abstractions.csproj" />`n  <Project Path="CommunicationKernel.Core.Runtime/CommunicationKernel.Core.Runtime.csproj" />`n  <Project Path="CommunicationKernel.Engine.Router/CommunicationKernel.Engine.Router.csproj" />`n  <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.EngineHost.csproj" />`n  <Project Path="CommunicationKernel.Plugin.Runtime/CommunicationKernel.Plugin.Runtime.csproj" />`n  <Project Path="CommunicationKernel.Plugins.Modbus.Tcp/CommunicationKernel.Plugins.Modbus.Tcp.csproj" />`n  <Project Path="CommunicationKernel.Plugins.Modbus.Rtu/CommunicationKernel.Plugins.Modbus.Rtu.csproj" />`n  <Project Path="CommunicationKernel.Plugins.Modbus.Ascii/CommunicationKernel.Plugins.Modbus.Ascii.csproj" />`n  <Project Path="CommunicationKernel.Plugins.Panasonic.MewtocolTcp/CommunicationKernel.Plugins.Panasonic.MewtocolTcp.csproj" />`n  <Project Path="CommunicationKernel.Plugins.Siemens.S7_1200/CommunicationKernel.Plugins.Siemens.S7_1200.csproj" />`n  <Project Path="CommunicationKernel.Plugins.Siemens.S7_200Smart/CommunicationKernel.Plugins.Siemens.S7_200Smart.csproj" />`n  <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />`n</Solution>`n
+<Solution>
+  <Project Path="CommunicationKernel.Communication.Protocol/CommunicationKernel.Communication.Protocol.csproj" />
+  <Project Path="CommunicationKernel.Communication.Transport/CommunicationKernel.Communication.Transport.csproj" />
+  <Project Path="CommunicationKernel.Contracts/CommunicationKernel.Contracts.csproj" />
+  <Project Path="CommunicationKernel.Core.Abstractions/CommunicationKernel.Core.Abstractions.csproj" />
+  <Project Path="CommunicationKernel.Core.Runtime/CommunicationKernel.Core.Runtime.csproj" />
+  <Project Path="CommunicationKernel.Engine.Router/CommunicationKernel.Engine.Router.csproj" />
+  <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.EngineHost.csproj" />
+  <Project Path="CommunicationKernel.Plugin.Runtime/CommunicationKernel.Plugin.Runtime.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Modbus.Tcp/CommunicationKernel.Plugins.Modbus.Tcp.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Modbus.Rtu/CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Modbus.Ascii/CommunicationKernel.Plugins.Modbus.Ascii.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Panasonic.MewtocolTcp/CommunicationKernel.Plugins.Panasonic.MewtocolTcp.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Siemens.S7_1200/CommunicationKernel.Plugins.Siemens.S7_1200.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Siemens.S7_200Smart/CommunicationKernel.Plugins.Siemens.S7_200Smart.csproj" />
+  <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />
+</Solution>
