@@ -26,3 +26,11 @@ obj/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test output
+TestResults/
+
+# Local-only leftover folders (removed from git but may exist on disk)
+CommunicationKernel.Plugin.Modbus.Tcp/
+CommunicationKernel.Plugins.Siemens.S7_1200/
+CommunicationKernel.Plugins.Siemens.S7_200Smart/
