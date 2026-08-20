@@ -18,9 +18,9 @@ namespace CommunicationKernel.Plugins.Modbus.Tcp.Internal;
 
 /// <summary>Modbus 地址解析结果。</summary>
 internal readonly record struct ModbusAddressInfo(
-    byte   UnitId,
+    byte UnitId,
     ushort RegisterAddress,
-    bool   IsCoil);
+    bool IsCoil);
 
 /// <summary>
 /// Modbus 地址解析器，将字符串地址转换为 (UnitId, RegisterAddress, IsCoil)。
@@ -61,7 +61,7 @@ internal static class ModbusAddress
             if (byte.TryParse(unitPart, out byte parsedUnit))
             {
                 unitId = parsedUnit;
-                addr   = addr[(colonIdx + 1)..];
+                addr = addr[(colonIdx + 1)..];
             }
         }
 
