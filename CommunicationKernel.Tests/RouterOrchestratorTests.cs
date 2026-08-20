@@ -15,7 +15,7 @@ namespace CommunicationKernel.Tests;
 public sealed class RouterOrchestratorTests {
 
     [TestMethod]
-    public void Register_Get_Remove_ShouldRouteThroughConnectionRouter() {
+    public async Task Register_Get_Remove_ShouldRouteThroughConnectionRouter() {
         IRouterOrchestrator orchestrator = new RouterOrchestrator();
         var key = new RouteKey("modbus", TransportKind.Tcp, "127.0.0.1", 502, "1");
         var entry = new RouteEntry {
@@ -27,8 +27,7 @@ public sealed class RouterOrchestratorTests {
         Assert.IsTrue(orchestrator.TryRegister(entry));
         Assert.IsTrue(orchestrator.TryGet(key, out RouteEntry? found));
         Assert.IsNotNull(found);
-        Assert.IsTrue(orchestrator.TryRemove(key, out RouteEntry? removed));
-        Assert.IsNotNull(removed);
+        Assert.IsTrue(await orchestrator.TryRemoveAndDisposeAsync(key, CancellationToken.None));
     }
 
     [TestMethod]
@@ -119,8 +118,8 @@ public sealed class RouterOrchestratorTests {
         }
 
         public ProtocolMetadata Metadata { get; }
-        public Task<OperationResult<byte[]>> BuildReadFrameAsync(string address, int length, CancellationToken cancellationToken) => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
-        public Task<OperationResult<byte[]>> BuildWriteFrameAsync(string address, byte[] payload, CancellationToken cancellationToken) => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
+        public OperationResult<byte[]> BuildReadFrame(string address, int length) => OperationResult<byte[]>.Ok(Array.Empty<byte>());
+        public OperationResult<byte[]> BuildWriteFrame(string address, byte[] payload) => OperationResult<byte[]>.Ok(Array.Empty<byte>());
         public Task<OperationResult<byte[]>> ReadAsync(ITransportClient client, string address, int length, CancellationToken cancellationToken) => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
         public Task<OperationResult> WriteAsync(ITransportClient client, string address, byte[] payload, CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok);
     }

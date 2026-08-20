@@ -77,8 +77,8 @@ public sealed class EngineHostFacadeTests {
         }
 
         public CommunicationKernel.Communication.Protocol.Abstractions.ProtocolMetadata Metadata { get; }
-        public Task<OperationResult<byte[]>> BuildReadFrameAsync(string address, int length, CancellationToken cancellationToken) => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
-        public Task<OperationResult<byte[]>> BuildWriteFrameAsync(string address, byte[] payload, CancellationToken cancellationToken) => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
+        public OperationResult<byte[]> BuildReadFrame(string address, int length) => OperationResult<byte[]>.Ok(Array.Empty<byte>());
+        public OperationResult<byte[]> BuildWriteFrame(string address, byte[] payload) => OperationResult<byte[]>.Ok(Array.Empty<byte>());
         public Task<OperationResult<byte[]>> ReadAsync(ITransportClient client, string address, int length, CancellationToken cancellationToken) => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
         public Task<OperationResult> WriteAsync(ITransportClient client, string address, byte[] payload, CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok);
     }

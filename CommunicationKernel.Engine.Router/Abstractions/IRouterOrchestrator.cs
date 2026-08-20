@@ -12,9 +12,17 @@ public interface IRouterOrchestrator {
     IReadCoordinator ReadCoordinator { get; }
     ISubscriptionHub SubscriptionHub { get; }
 
+    int RouteCount { get; }
+    int SubscriptionCount { get; }
+
     bool TryRegister(RouteEntry entry);
     bool TryGet(RouteKey key, out RouteEntry? entry);
-    bool TryRemove(RouteKey key, out RouteEntry? removed);
+
+    /// <summary>
+    /// 移除路由并释放所有关联资源（WriteScheduler 信号量 + TransportClient）。
+    /// 应当替代直接调用 ConnectionRouter.TryRemove。
+    /// </summary>
+    Task<bool> TryRemoveAndDisposeAsync(RouteKey key, CancellationToken cancellationToken);
 
     Task<OperationResult> ExecuteWriteAsync(
         RouteKey routeKey,

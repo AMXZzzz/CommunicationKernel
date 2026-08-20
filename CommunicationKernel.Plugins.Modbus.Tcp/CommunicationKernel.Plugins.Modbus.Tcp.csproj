@@ -8,6 +8,12 @@
     <RootNamespace>CommunicationKernel.Plugins.Modbus.Tcp</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>CommunicationKernel.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />

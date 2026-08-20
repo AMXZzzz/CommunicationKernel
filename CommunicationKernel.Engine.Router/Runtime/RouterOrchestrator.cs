@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Engine.Router.Abstractions;
 using CommunicationKernel.Engine.Router.Models;
+using Microsoft.Extensions.Logging;
 
 namespace CommunicationKernel.Engine.Router;
 
@@ -15,42 +16,57 @@ namespace CommunicationKernel.Engine.Router;
 /// 说明:
 /// - Host 层仅依赖此门面，降低对底层组件组合细节的耦合。
 /// - 面向多 UI 并发访问同一设备场景，统一在此层进行调度分流。
+/// - 提供 TryRemoveAndDisposeAsync 统一路由注销路径，确保 WriteScheduler
+///   信号量与 TransportClient 均被正确清理，不留泄漏。
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class RouterOrchestrator : IRouterOrchestrator {
-    public RouterOrchestrator() {
-        // 组合初始化：分别构建路由表、写调度、读协调与订阅中心。
-        ConnectionRouter = new ConnectionRouter();
-        WriteScheduler = new WriteScheduler();
-        ReadCoordinator = new ReadCoordinator();
-        SubscriptionHub = new SubscriptionHub();
+    public RouterOrchestrator(ILoggerFactory? loggerFactory = null) {
+        ConnectionRouter = new ConnectionRouter(loggerFactory?.CreateLogger<ConnectionRouter>());
+        WriteScheduler   = new WriteScheduler(loggerFactory?.CreateLogger<WriteScheduler>());
+        ReadCoordinator  = new ReadCoordinator();
+        SubscriptionHub  = new SubscriptionHub(loggerFactory?.CreateLogger<SubscriptionHub>());
     }
 
     public IConnectionRouter ConnectionRouter { get; }
-    public IWriteScheduler WriteScheduler { get; }
-    public IReadCoordinator ReadCoordinator { get; }
-    public ISubscriptionHub SubscriptionHub { get; }
+    public IWriteScheduler   WriteScheduler   { get; }
+    public IReadCoordinator  ReadCoordinator  { get; }
+    public ISubscriptionHub  SubscriptionHub  { get; }
 
-    // 路由表转发：注册/查询/删除。
+    public int RouteCount        => ConnectionRouter.Count;
+    public int SubscriptionCount => SubscriptionHub.Count;
+
     public bool TryRegister(RouteEntry entry) => ConnectionRouter.TryRegister(entry);
     public bool TryGet(RouteKey key, out RouteEntry? entry) => ConnectionRouter.TryGet(key, out entry);
-    public bool TryRemove(RouteKey key, out RouteEntry? removed) => ConnectionRouter.TryRemove(key, out removed);
 
-    // 写路径：按路由串行调度。
+    /// <summary>
+    /// 注销路由并释放所有关联资源：
+    /// 1) 从路由表移除。
+    /// 2) 释放 WriteScheduler 信号量（防止内存泄漏）。
+    /// 3) Dispose TransportClient（关闭 socket / 串口句柄）。
+    /// </summary>
+    public async Task<bool> TryRemoveAndDisposeAsync(RouteKey key, CancellationToken cancellationToken) {
+        if (!ConnectionRouter.TryRemove(key, out RouteEntry? entry) || entry is null)
+            return false;
+
+        WriteScheduler.Release(key);
+
+        await entry.DisposeAsync().ConfigureAwait(false);
+        return true;
+    }
+
     public Task<OperationResult> ExecuteWriteAsync(
         RouteKey routeKey,
         Func<CancellationToken, Task<OperationResult>> writeAction,
         CancellationToken cancellationToken)
         => WriteScheduler.ScheduleAsync(routeKey, writeAction, cancellationToken);
 
-    // 读路径：同键读请求合并。
     public Task<OperationResult<byte[]>> ExecuteReadAsync(
         ReadRequestKey requestKey,
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
         CancellationToken cancellationToken)
         => ReadCoordinator.ExecuteAsync(requestKey, readAction, cancellationToken);
 
-    // 订阅路径：注册/注销/广播。
     public Guid Subscribe(SubscriptionTopic topic, Func<object, CancellationToken, Task> handler)
         => SubscriptionHub.Subscribe(topic, handler);
 
