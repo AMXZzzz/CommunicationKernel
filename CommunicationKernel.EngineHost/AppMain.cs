@@ -56,4 +56,5 @@ app.MapGrpcService<EngineHostGrpcService>();
 // 辅助根路由：便于浏览器直连时看到引导信息。
 app.MapGet("/", () => "CommunicationKernel.EngineHost is running. Use a gRPC client to call endpoints./ [引导文]: CommunicationKernel.EngineHost 服务端初始化Done ");
 
+//! 消息循环
 app.Run();
