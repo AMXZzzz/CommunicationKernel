@@ -159,7 +159,7 @@ internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
 
         // 分支2：发送并接收响应（Transport 层负责 TCP 收发）
         OperationResult<byte[]> response =
-            await client.SendAndReceiveAsync(buildResult.Value!, cancellationToken).ConfigureAwait(false);
+            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success)
             return response;
 
@@ -169,8 +169,8 @@ internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
         bool isCoil = addrResult.Success && (addrResult.Value.IsCoil || length == 1);
 
         return isCoil
-            ? ModbusFrame.ParseReadCoilsResponse(response.Value!)
-            : ModbusFrame.ParseReadRegistersResponse(response.Value!);
+            ? ModbusFrame.ParseReadCoilsResponse(response.Value)
+            : ModbusFrame.ParseReadRegistersResponse(response.Value);
     }
 
     /// <inheritdoc />
@@ -188,12 +188,12 @@ internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
 
         // 分支2：发送并接收确认响应
         OperationResult<byte[]> response =
-            await client.SendAndReceiveAsync(buildResult.Value!, cancellationToken).ConfigureAwait(false);
+            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success)
             return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
 
         // 分支3：校验写响应
-        return ModbusFrame.ParseWriteResponse(response.Value!);
+        return ModbusFrame.ParseWriteResponse(response.Value);
     }
 
     // -------------------------------------------------------------------------

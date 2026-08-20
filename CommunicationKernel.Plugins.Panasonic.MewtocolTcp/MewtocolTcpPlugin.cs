@@ -147,7 +147,7 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
 
         // 分支2：发送并接收 ASCII 响应（Transport 层负责 CR 定界读取）
         OperationResult<byte[]> response =
-            await client.SendAndReceiveAsync(buildResult.Value!, cancellationToken).ConfigureAwait(false);
+            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success)
             return response;
 
@@ -156,8 +156,8 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
         bool isBit = !parsed.Success || parsed.Value.IsBit || length == 1;
 
         return isBit
-            ? MewtocolFrame.ParseReadContactResponse(response.Value!)
-            : MewtocolFrame.ParseReadDataResponse(response.Value!, (length + 1) / 2);
+            ? MewtocolFrame.ParseReadContactResponse(response.Value)
+            : MewtocolFrame.ParseReadDataResponse(response.Value, (length + 1) / 2);
     }
 
     /// <inheritdoc />
@@ -175,12 +175,12 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
 
         // 分支2：发送并接收确认响应
         OperationResult<byte[]> response =
-            await client.SendAndReceiveAsync(buildResult.Value!, cancellationToken).ConfigureAwait(false);
+            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success)
             return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
 
         // 分支3：解析写响应
-        return MewtocolFrame.ParseWriteResponse(response.Value!);
+        return MewtocolFrame.ParseWriteResponse(response.Value);
     }
 
     // -------------------------------------------------------------------------

@@ -211,7 +211,7 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
         }
 
         // Step-1 校验：COTP CC（Connection Confirm）PDU-Type = 0xD0
-        if (cotpResp.Value.Length < 5 || cotpResp.Value[5] != 0xD0) {
+        if (cotpResp.Value.Length < 6 || cotpResp.Value[5] != 0xD0) {
             Interlocked.Exchange(ref _handshakeDone, 0);
             return OperationResult.Fail("COTP connect response is not CC (0xD0)", KernelErrorCode.ProtocolError);
         }
@@ -225,9 +225,18 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
         }
 
         // Step-2 校验：S7 响应消息类型 = 0x03（Ack Data），Function = 0xF0
-        if (setupResp.Value.Length < 20 || setupResp.Value[8] != 0x03 || setupResp.Value[17] != 0xF0) {
+        // 校验：[8]=0x03(ACK响应类型)，[17-18]=0x00(无错误)，[19]=0xF0(Setup Communication功能码)
+        if (setupResp.Value.Length < 21
+            || setupResp.Value[8]  != 0x03
+            || setupResp.Value[17] != 0x00   // error class must be 0
+            || setupResp.Value[18] != 0x00   // error code must be 0
+            || setupResp.Value[19] != 0xF0)  // function: Setup Communication
+        {
             Interlocked.Exchange(ref _handshakeDone, 0);
-            return OperationResult.Fail("S7 setup communication response invalid", KernelErrorCode.ProtocolError);
+            string detail = setupResp.Value.Length >= 19
+                ? $"type=0x{setupResp.Value[8]:X2} errClass=0x{setupResp.Value[17]:X2} errCode=0x{setupResp.Value[18]:X2}"
+                : "response too short";
+            return OperationResult.Fail($"S7 setup communication response invalid: {detail}", KernelErrorCode.ProtocolError);
         }
 
         return OperationResult.Ok;
