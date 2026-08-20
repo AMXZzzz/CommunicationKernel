@@ -269,10 +269,13 @@ internal static class S7Frame {
                 }
                 ushort dbNum = ushort.Parse(addr.Substring(2, dotIdx - 2));
                 string sub = addr.Substring(dotIdx + 1);
-                int offset = ParseOffset(sub.StartsWith("DBB", StringComparison.Ordinal) ? sub.Substring(3) :
-                                         sub.StartsWith("DBW", StringComparison.Ordinal) ? sub.Substring(3) :
-                                         sub.StartsWith("DBD", StringComparison.Ordinal) ? sub.Substring(3) :
-                                         sub.Substring(3));
+                // 分支：剥离已知前缀（DBB/DBW/DBD=3字符），或直接以裸数字作为字节偏移
+                string offsetStr = sub.StartsWith("DBB", StringComparison.Ordinal)
+                                || sub.StartsWith("DBW", StringComparison.Ordinal)
+                                || sub.StartsWith("DBD", StringComparison.Ordinal)
+                    ? sub.Substring(3)
+                    : sub;   // 无前缀：直接当数字解析（如 "DB10.0"）
+                int offset = ParseOffset(offsetStr);
                 return OperationResult<(S7Area, ushort, int)>.Ok((S7Area.DataBlock, dbNum, offset));
             }
 
