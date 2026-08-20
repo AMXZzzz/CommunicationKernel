@@ -105,7 +105,7 @@ public sealed class HostRuntime {
             .AssembleAsync(command, cancellationToken)
             .ConfigureAwait(false);
 
-        if (!assemble.Success || assemble.Value is null) {
+        if (!assemble.Success) {
             return OperationResult<string>.Fail(assemble.ErrorMessage, assemble.ErrorCode);
         }
 
