@@ -15,8 +15,10 @@ namespace CommunicationKernel.Engine.Router;
 /// 层级: Engine.Router
 /// 作用: 协调同一读请求键的并发读取，避免重复打点设备。
 /// 说明:
-/// - 针对几十到上百台 PLC 场景，读请求会高度并发。
-/// - 对“同路由+同地址+同长度”请求进行合并，可显著降低瞬时压力。
+/// - 读合并键为 (RouteKey, DataAddress, Length)。
+///   设计决策：不同 Length 的同地址请求视为独立请求，不做跨长度合并——
+///   合并需要剪切响应字节，引入额外复杂度，与当前场景不符。
+/// - 对"同路由+同地址+同长度"请求合并为单次 IO，所有并发调用共享结果。
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class ReadCoordinator : IReadCoordinator {
@@ -27,26 +29,20 @@ public sealed class ReadCoordinator : IReadCoordinator {
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
         CancellationToken cancellationToken) {
 
-        // 分支1：调用方未提供读取动作，直接返回参数错误。
         if (readAction is null)
             return OperationResult<byte[]>.Fail("readAction is null", KernelErrorCode.InvalidArgument);
 
-        // 分支2：尝试加入 in-flight 字典。
-        // - 若键不存在：创建新的 Lazy<Task>，当前请求成为“发起者”。
-        // - 若键已存在：复用已有 Lazy<Task>，当前请求成为“跟随者”。
         Lazy<Task<OperationResult<byte[]>>> created = _inflight.GetOrAdd(
             requestKey,
-            _ => new Lazy<Task<OperationResult<byte[]>>>(() => InvokeAndCleanupAsync(requestKey, readAction, cancellationToken),
+            _ => new Lazy<Task<OperationResult<byte[]>>>(
+                () => InvokeAndCleanupAsync(requestKey, readAction, cancellationToken),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
         try {
-            // 所有并发请求共同 await 同一任务结果，实现读合并。
             return await created.Value.ConfigureAwait(false);
         } catch (OperationCanceledException) {
-            // 分支3：取消请求，返回统一取消错误。
             return OperationResult<byte[]>.Fail("Cancelled", KernelErrorCode.Cancelled);
         } catch (Exception ex) {
-            // 分支4：未知异常统一映射，避免异常冒泡破坏调用方流程。
             return OperationResult<byte[]>.Fail(ex.Message, KernelErrorCode.Unknown);
         }
     }
@@ -56,13 +52,9 @@ public sealed class ReadCoordinator : IReadCoordinator {
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
         CancellationToken cancellationToken) {
         try {
-            // 执行实际读动作。
             OperationResult<byte[]> result = await readAction(cancellationToken).ConfigureAwait(false);
-
-            // 分支5：防御 readAction 返回 null，统一转换为失败结果。
             return result ?? OperationResult<byte[]>.Fail("readAction returned null", KernelErrorCode.Unknown);
         } finally {
-            // 无论成功/失败/取消，都清理 in-flight 键，避免后续请求被过期任务卡住。
             _inflight.TryRemove(requestKey, out _);
         }
     }

@@ -96,91 +96,59 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
     public ProtocolMetadata Metadata { get; }
 
     /// <inheritdoc />
-    public Task<OperationResult<byte[]>> BuildReadFrameAsync(
-        string address, int length, CancellationToken cancellationToken) {
-
-        // 解析地址 → 构建 S7 Read Var 请求帧
-        OperationResult<(S7Area area, ushort dbNumber, int byteOffset)> addrResult =
-            S7Frame.ParseAddress(address);
-
-        if (!addrResult.Success) {
-            return Task.FromResult(OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode));
-        }
+    public OperationResult<byte[]> BuildReadFrame(string address, int length) {
+        OperationResult<(S7Area area, ushort dbNumber, int byteOffset)> addrResult = S7Frame.ParseAddress(address);
+        if (!addrResult.Success)
+            return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
 
         (S7Area area, ushort dbNumber, int byteOffset) = addrResult.Value;
-        byte[] frame = S7Frame.BuildReadVar(area, dbNumber, byteOffset, length);
-        return Task.FromResult(OperationResult<byte[]>.Ok(frame));
+        return OperationResult<byte[]>.Ok(S7Frame.BuildReadVar(area, dbNumber, byteOffset, length));
     }
 
     /// <inheritdoc />
-    public Task<OperationResult<byte[]>> BuildWriteFrameAsync(
-        string address, byte[] payload, CancellationToken cancellationToken) {
-
-        OperationResult<(S7Area area, ushort dbNumber, int byteOffset)> addrResult =
-            S7Frame.ParseAddress(address);
-
-        if (!addrResult.Success) {
-            return Task.FromResult(OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode));
-        }
+    public OperationResult<byte[]> BuildWriteFrame(string address, byte[] payload) {
+        OperationResult<(S7Area area, ushort dbNumber, int byteOffset)> addrResult = S7Frame.ParseAddress(address);
+        if (!addrResult.Success)
+            return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
 
         (S7Area area, ushort dbNumber, int byteOffset) = addrResult.Value;
-        byte[] frame = S7Frame.BuildWriteVar(area, dbNumber, byteOffset, payload);
-        return Task.FromResult(OperationResult<byte[]>.Ok(frame));
+        return OperationResult<byte[]>.Ok(S7Frame.BuildWriteVar(area, dbNumber, byteOffset, payload));
     }
 
     /// <inheritdoc />
     public async Task<OperationResult<byte[]>> ReadAsync(
-        ITransportClient client,
-        string address,
-        int length,
-        CancellationToken cancellationToken) {
+        ITransportClient client, string address, int length, CancellationToken cancellationToken) {
 
-        // 分支1：确保握手完成
         OperationResult handshake = await EnsureHandshakeAsync(client, cancellationToken).ConfigureAwait(false);
-        if (!handshake.Success) {
+        if (!handshake.Success)
             return OperationResult<byte[]>.Fail(handshake.ErrorMessage, handshake.ErrorCode);
-        }
 
-        // 分支2：构建请求帧
-        OperationResult<byte[]> buildResult = await BuildReadFrameAsync(address, length, cancellationToken).ConfigureAwait(false);
-        if (!buildResult.Success) {
-            return buildResult;
-        }
+        OperationResult<byte[]> buildResult = BuildReadFrame(address, length);
+        if (!buildResult.Success) return buildResult;
 
-        // 分支3：发送并接收响应
-        OperationResult<byte[]> response = await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
-        if (!response.Success) {
-            return response;
-        }
+        OperationResult<byte[]> response =
+            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
+        if (!response.Success) return response;
 
-        // 分支4：解析响应
         return S7Frame.ParseReadResponse(response.Value, length);
     }
 
     /// <inheritdoc />
     public async Task<OperationResult> WriteAsync(
-        ITransportClient client,
-        string address,
-        byte[] payload,
-        CancellationToken cancellationToken) {
+        ITransportClient client, string address, byte[] payload, CancellationToken cancellationToken) {
 
-        // 分支1：确保握手完成
         OperationResult handshake = await EnsureHandshakeAsync(client, cancellationToken).ConfigureAwait(false);
         if (!handshake.Success) return handshake;
 
-        // 分支2：构建写入帧
-        OperationResult<byte[]> buildResult = await BuildWriteFrameAsync(address, payload, cancellationToken).ConfigureAwait(false);
-        if (!buildResult.Success) {
+        OperationResult<byte[]> buildResult = BuildWriteFrame(address, payload);
+        if (!buildResult.Success)
             return OperationResult.Fail(buildResult.ErrorMessage, buildResult.ErrorCode);
-        }
 
-        // 分支3：发送并接收响应
-        OperationResult<byte[]> response = await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
-        if (!response.Success) {
+        OperationResult<byte[]> response =
+            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
+        if (!response.Success)
             return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
-        }
 
-        // 分支4：解析写响应
         return S7Frame.ParseWriteResponse(response.Value);
     }
 

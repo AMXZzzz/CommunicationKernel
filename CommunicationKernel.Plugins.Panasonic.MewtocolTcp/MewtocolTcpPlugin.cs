@@ -98,63 +98,43 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
     public ProtocolMetadata Metadata { get; }
 
     /// <inheritdoc />
-    public Task<OperationResult<byte[]>> BuildReadFrameAsync(
-        string address, int length, CancellationToken cancellationToken)
-    {
+    public OperationResult<byte[]> BuildReadFrame(string address, int length) {
         OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address);
         if (!parsed.Success)
-            return Task.FromResult(OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode));
+            return OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode);
 
         MewtocolAddressInfo addr = parsed.Value;
-
-        // 分支：length=1 且地址为触点 → 读触点（RCS）；否则读数据字（RD）
         byte[] frame = (addr.IsBit || length == 1)
             ? MewtocolFrame.BuildReadContact(addr)
             : MewtocolFrame.BuildReadData(addr, (length + 1) / 2);
-
-        return Task.FromResult(OperationResult<byte[]>.Ok(frame));
+        return OperationResult<byte[]>.Ok(frame);
     }
 
     /// <inheritdoc />
-    public Task<OperationResult<byte[]>> BuildWriteFrameAsync(
-        string address, byte[] payload, CancellationToken cancellationToken)
-    {
+    public OperationResult<byte[]> BuildWriteFrame(string address, byte[] payload) {
         if (payload is null || payload.Length == 0)
-            return Task.FromResult(OperationResult<byte[]>.Fail(
-                "write payload is empty", KernelErrorCode.InvalidArgument));
+            return OperationResult<byte[]>.Fail("write payload is empty", KernelErrorCode.InvalidArgument);
 
         OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address);
         if (!parsed.Success)
-            return Task.FromResult(OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode));
+            return OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode);
 
-        MewtocolAddressInfo addr  = parsed.Value;
-        byte[]              frame = BuildWriteFrameInternal(addr, payload);
-        return Task.FromResult(OperationResult<byte[]>.Ok(frame));
+        return OperationResult<byte[]>.Ok(BuildWriteFrameInternal(parsed.Value, payload));
     }
 
     /// <inheritdoc />
     public async Task<OperationResult<byte[]>> ReadAsync(
-        ITransportClient  client,
-        string            address,
-        int               length,
-        CancellationToken cancellationToken)
-    {
-        // 分支1：构建请求帧
-        OperationResult<byte[]> buildResult =
-            await BuildReadFrameAsync(address, length, cancellationToken).ConfigureAwait(false);
-        if (!buildResult.Success)
-            return buildResult;
+        ITransportClient client, string address, int length, CancellationToken cancellationToken) {
 
-        // 分支2：发送并接收 ASCII 响应（Transport 层负责 CR 定界读取）
+        OperationResult<byte[]> buildResult = BuildReadFrame(address, length);
+        if (!buildResult.Success) return buildResult;
+
         OperationResult<byte[]> response =
             await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
-        if (!response.Success)
-            return response;
+        if (!response.Success) return response;
 
-        // 分支3：按地址类型选择解析路径
         OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address);
         bool isBit = !parsed.Success || parsed.Value.IsBit || length == 1;
-
         return isBit
             ? MewtocolFrame.ParseReadContactResponse(response.Value)
             : MewtocolFrame.ParseReadDataResponse(response.Value, (length + 1) / 2);
@@ -162,24 +142,17 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
 
     /// <inheritdoc />
     public async Task<OperationResult> WriteAsync(
-        ITransportClient  client,
-        string            address,
-        byte[]            payload,
-        CancellationToken cancellationToken)
-    {
-        // 分支1：构建写帧
-        OperationResult<byte[]> buildResult =
-            await BuildWriteFrameAsync(address, payload, cancellationToken).ConfigureAwait(false);
+        ITransportClient client, string address, byte[] payload, CancellationToken cancellationToken) {
+
+        OperationResult<byte[]> buildResult = BuildWriteFrame(address, payload);
         if (!buildResult.Success)
             return OperationResult.Fail(buildResult.ErrorMessage, buildResult.ErrorCode);
 
-        // 分支2：发送并接收确认响应
         OperationResult<byte[]> response =
             await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success)
             return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
 
-        // 分支3：解析写响应
         return MewtocolFrame.ParseWriteResponse(response.Value);
     }
 

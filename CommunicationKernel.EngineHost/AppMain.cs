@@ -24,7 +24,7 @@ builder.Services.AddGrpc(options =>
 });
 
 // 组合根：注册路由装配服务，隔离 HostRuntime 与具体协议/传输装配实现。
-builder.Services.AddSingleton<IRouteAssemblyService>(_ =>
+builder.Services.AddSingleton<IRouteAssemblyService>(sp =>
 {
     // 读取Runtime配置
     string pluginDirectorySetting = builder.Configuration["HostRuntime:PluginDirectory"] ?? "plugins";
@@ -39,9 +39,11 @@ builder.Services.AddSingleton<IRouteAssemblyService>(_ =>
         : Path.Combine(AppContext.BaseDirectory, pluginDirectorySetting);
 
     //! 返回插件管理复位
+    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
     return new PluginRouteAssemblyService(
         pluginDirectory: resolvedPluginDirectory,
-        defaultSerialMinIoIntervalMs: defaultSerialIntervalMs);
+        defaultSerialMinIoIntervalMs: defaultSerialIntervalMs,
+        loggerFactory: loggerFactory);
 });
 
 // 组合根：注册 HostRuntime，仅依赖抽象服务与编排器。

@@ -23,6 +23,11 @@
     <ProjectReference Include="..\CommunicationKernel.Plugin.Runtime\CommunicationKernel.Plugin.Runtime.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Engine.Router\CommunicationKernel.Engine.Router.csproj" />
     <ProjectReference Include="..\CommunicationKernel.EngineHost\CommunicationKernel.EngineHost.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus.Tcp\CommunicationKernel.Plugins.Modbus.Tcp.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus.Rtu\CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus.Ascii\CommunicationKernel.Plugins.Modbus.Ascii.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Panasonic.MewtocolTcp\CommunicationKernel.Plugins.Panasonic.MewtocolTcp.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Siemens.S7\CommunicationKernel.Plugins.Siemens.S7.csproj" />
   </ItemGroup>
 
 </Project>

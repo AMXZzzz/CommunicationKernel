@@ -28,6 +28,10 @@
   <!-- 协议插件：西门子 -->
   <Project Path="CommunicationKernel.Plugins.Siemens.S7/CommunicationKernel.Plugins.Siemens.S7.csproj" />
 
+  <!-- 传输介质插件 -->
+  <Project Path="CommunicationKernel.Plugins.Transport.Tcp/CommunicationKernel.Plugins.Transport.Tcp.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
+
   <!-- 测试 -->
   <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />
 </Solution>
