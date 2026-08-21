@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/DataMonitorViewModel.cs
 // 层级: UI 层 — MES 监控页 ViewModel

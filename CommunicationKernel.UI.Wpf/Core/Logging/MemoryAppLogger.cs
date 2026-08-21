@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Logging/MemoryAppLogger.cs
 // 层级: UI层 — 核心日志实现
 // 作用: IAppLogger 的内存循环缓冲区实现。

@@ -1,4 +1,6 @@
-﻿using CommunicationKernel.UI.Wpf.Views.Tools;
+#nullable disable
+
+using CommunicationKernel.UI.Wpf.Views.Tools;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;

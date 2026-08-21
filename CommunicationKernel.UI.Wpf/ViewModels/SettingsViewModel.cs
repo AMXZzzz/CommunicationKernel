@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/SettingsViewModel.cs
 // 层级: UI 层 — 系统设置页 ViewModel

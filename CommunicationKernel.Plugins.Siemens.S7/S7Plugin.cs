@@ -35,7 +35,8 @@ public sealed class SiemensS7_1200ProtocolDriverFactory : IProtocolDriverFactory
     public ProtocolMetadata Metadata { get; } = new() {
         ProtocolId       = "siemens-s7-1200",
         DisplayName      = "Siemens S7-1200 (ISO on TCP)",
-        TransportKind    = TransportKind.Tcp,
+        // ISO on TCP：S7 的 TPKT/COTP 封装依赖 TCP，无串口对应形式
+        SupportedTransports = new[] { TransportKind.Tcp },
         // S7 的 Rack/Slot 已固化在 TSAP 中，无需操作员填写站号
         RequiresStation  = false,
         PluginApiVersion = 1
@@ -58,7 +59,8 @@ public sealed class SiemensS7_200SmartProtocolDriverFactory : IProtocolDriverFac
     public ProtocolMetadata Metadata { get; } = new() {
         ProtocolId       = "siemens-s7-200smart",
         DisplayName      = "Siemens S7-200Smart (ISO on TCP)",
-        TransportKind    = TransportKind.Tcp,
+        // ISO on TCP：S7 的 TPKT/COTP 封装依赖 TCP，无串口对应形式
+        SupportedTransports = new[] { TransportKind.Tcp },
         // S7 的 Rack/Slot 已固化在 TSAP 中，无需操作员填写站号
         RequiresStation  = false,
         PluginApiVersion = 1
@@ -133,7 +135,8 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
         if (!buildResult.Success) return buildResult;
 
         OperationResult<byte[]> response =
-            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
+            await client.SendAndReceiveAsync(buildResult.Value, TryGetFrameLength, cancellationToken)
+                .ConfigureAwait(false);
         if (!response.Success) return response;
 
         return S7Frame.ParseReadResponse(response.Value, length);
@@ -151,11 +154,41 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
             return OperationResult.Fail(buildResult.ErrorMessage, buildResult.ErrorCode);
 
         OperationResult<byte[]> response =
-            await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
+            await client.SendAndReceiveAsync(buildResult.Value, TryGetFrameLength, cancellationToken)
+                .ConfigureAwait(false);
         if (!response.Success)
             return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
 
         return S7Frame.ParseWriteResponse(response.Value);
+    }
+
+    /// <summary>
+    /// 帧完整性判定：ISO on TCP 的 TPKT 头自带总长字段。
+    /// </summary>
+    /// <remarks>
+    /// TPKT 头 4 字节：<c>[0]=0x03 [1]=0x00 [2-3]=总长（大端，含头本身）</c>。
+    /// 读满 4 字节即可精确得知整帧长度，无需任何时序猜测。
+    /// </remarks>
+    internal static bool TryGetFrameLength(ReadOnlySpan<byte> received, out int totalLength) {
+        totalLength = 0;
+
+        if (received.Length < 4)
+            return false;
+
+        // TPKT 版本号固定 0x03，不匹配说明流已错位
+        if (received[0] != 0x03) {
+            totalLength = -1;
+            return true;
+        }
+
+        int declared = (received[2] << 8) | received[3];
+        if (declared < 4) {
+            totalLength = -1;
+            return true;
+        }
+
+        totalLength = declared;
+        return true;
     }
 
     // -------------------------------------------------------------------------
@@ -177,7 +210,7 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
 
         // Step-1: 发送 COTP Connection Request（ISO on TCP）
         byte[] cotpCr = S7Frame.BuildCotpConnectRequest(_remoteTsap);
-        OperationResult<byte[]> cotpResp = await client.SendAndReceiveAsync(cotpCr, cancellationToken).ConfigureAwait(false);
+        OperationResult<byte[]> cotpResp = await client.SendAndReceiveAsync(cotpCr, TryGetFrameLength, cancellationToken).ConfigureAwait(false);
         if (!cotpResp.Success) {
             // 握手失败，重置标志允许下次重试
             Interlocked.Exchange(ref _handshakeDone, 0);
@@ -192,7 +225,7 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
 
         // Step-2: 发送 S7 Setup Communication
         byte[] setupReq = S7Frame.BuildSetupCommunication();
-        OperationResult<byte[]> setupResp = await client.SendAndReceiveAsync(setupReq, cancellationToken).ConfigureAwait(false);
+        OperationResult<byte[]> setupResp = await client.SendAndReceiveAsync(setupReq, TryGetFrameLength, cancellationToken).ConfigureAwait(false);
         if (!setupResp.Success) {
             Interlocked.Exchange(ref _handshakeDone, 0);
             return OperationResult.Fail($"S7 setup communication failed: {setupResp.ErrorMessage}", KernelErrorCode.TransportIoError);

@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Logging/IAppLogger.cs
 // 层级: UI层 — 核心日志接口
 // 作用: 定义应用日志记录器的抽象接口，供 ViewModel 和服务层依赖注入使用。

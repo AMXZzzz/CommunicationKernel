@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/DevicePageViewModel.cs
 // 层级: UI 层 — 设备管理页 ViewModel

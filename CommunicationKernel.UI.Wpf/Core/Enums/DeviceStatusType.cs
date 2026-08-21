@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Enums/DeviceStatusType.cs
 // 层级: UI层 — 核心枚举
 // 作用: 定义设备连接状态的枚举值，供 DeviceInfo 及状态显示控件使用。

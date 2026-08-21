@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Modbus 协议语义内核
+
+    承载与传输介质无关的 Modbus 语义：地址模型、PDU 构建与解析、
+    异常码映射、协议上限校验、三种外层封装（MBAP / CRC16 / ASCII-LRC）。
+
+    TCP / RTU / ASCII 三个插件只保留各自的驱动装配，语义全部共用，
+    从根本上消除「同一缺陷要在三处分别修」的问题。
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -117,6 +117,29 @@
                     <ComboBox x:Name="cmbProtocol"
                               Style="{StaticResource SF.Style.ComboBox}"
                               SelectionChanged="CmbProtocol_SelectionChanged"/>
+                    <!-- 说明所选协议决定了下方出现哪些连接参数，
+                         避免"切换协议后字段变了"显得突兀 -->
+                    <TextBlock x:Name="txtTransportHint"
+                               FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Text=""/>
+
+                    <!-- 连接方式：仅当所选协议支持多种介质时出现。
+                         典型场景是 Modbus RTU —— 既可直连 RS-485，
+                         也可经 TCP 转串口透传装置走以太网。 -->
+                    <StackPanel x:Name="panelTransport" Visibility="Collapsed">
+                        <TextBlock Margin="0,12,0,4">
+                            <Run Text="连接方式"
+                                 Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                 FontSize="12"/>
+                            <Run Text=" *"
+                                 Foreground="{StaticResource SF.Brush.Status.Error}"
+                                 FontSize="12"/>
+                        </TextBlock>
+                        <ComboBox x:Name="cmbTransport"
+                                  Style="{StaticResource SF.Style.ComboBox}"
+                                  SelectionChanged="CmbTransport_SelectionChanged"/>
+                    </StackPanel>
 
                     <!-- TCP 连接参数：IP + 端口。由所选协议的 TransportKind 决定是否显示 -->
                     <StackPanel x:Name="panelTcp">
@@ -198,10 +221,18 @@
                         <TextBox x:Name="txtStationNo"
                                  Style="{StaticResource SF.Style.DialogTextBox}"
                                  FontFamily="Consolas"/>
-                        <TextBlock Text="变量地址直接填写本机地址即可（如 DT100），无需再加站号前缀"
+                        <TextBlock Text="作为本设备所有变量的默认站号"
                                    FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
                                    Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
                     </StackPanel>
+
+                    <!-- 该协议不需要站号时的说明。
+                         字段无声消失会被误解为功能缺失，因此用一行说明替代空白。 -->
+                    <TextBlock x:Name="txtStationNotApplicable"
+                               Visibility="Collapsed"
+                               FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Text="该协议无需站号：机架/槽位已固定在协议内部，变量地址直接填写即可。"/>
 
                     <!-- 轨道类型 -->
                     <TextBlock Text="轨道类型"

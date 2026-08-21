@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/ViewModelBase.cs
 // 层级: UI 层 — ViewModel 基类

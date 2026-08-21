@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Views/Pages/Variable/Controls/VariableImportPanel.xaml.cs
 // 层级: UI 层 — 变量配置页 导入子面板 code-behind

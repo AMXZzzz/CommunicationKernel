@@ -29,13 +29,15 @@ namespace CommunicationKernel.EngineHost.Host;
 /// 4) 统一处理串口节流、单次重连、状态发布等企业级运行策略。
 /// -----------------------------------------------------------------------------
 /// </summary>
-public sealed class HostRuntime {
-    private readonly ConcurrentDictionary<string, RouteRuntimeRegistration> _registrationsByRouteId =
-        new(StringComparer.OrdinalIgnoreCase);
+public sealed class HostRuntime : IAsyncDisposable {
+    //! 用于存储路由注册信息，键为 RouteId，值为 RouteRuntimeRegistration 对象。
+    private readonly ConcurrentDictionary<string, RouteRuntimeRegistration> _registrationsByRouteId = new(StringComparer.OrdinalIgnoreCase);
 
+    //! 用于存储路由状态快照，键为 RouteKey，值为 RouteId。
     private readonly ConcurrentDictionary<RouteKey, string> _routeIdByKey = new();
-    private readonly ConcurrentDictionary<string, RouteStatusSnapshot> _routeStatuses =
-        new(StringComparer.OrdinalIgnoreCase);
+
+    //! 用于存储路由状态快照，键为 RouteId，值为 RouteStatusSnapshot。
+    private readonly ConcurrentDictionary<string, RouteStatusSnapshot> _routeStatuses = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// RouteId 占位表：值无意义，仅用键表示「已注册或正在注册中」。
@@ -46,10 +48,12 @@ public sealed class HostRuntime {
     /// 后者覆盖前者的登记项，导致前者的 TransportClient 成为无人释放的孤儿。
     /// 因此改为在装配开始前用 TryAdd 原子占位，失败路径在 finally 中释放。
     /// </remarks>
-    private readonly ConcurrentDictionary<string, byte> _routeIdReservations =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, byte> _routeIdReservations = new(StringComparer.OrdinalIgnoreCase);
 
+    //! 依赖注入的路由装配服务：负责根据注册命令组装 RouteEntry 与连接资源。
     private readonly IRouteAssemblyService _routeAssemblyService;
+
+    //! 日志记录器：用于记录 HostRuntime 的运行信息和错误。
     private readonly ILogger<HostRuntime> _logger;
 
     /// <summary>保护「状态比较 + 写入」的原子性，见 <see cref="PublishStatus"/>。</summary>
@@ -58,31 +62,42 @@ public sealed class HostRuntime {
     /// <summary>当路由状态变化时触发，用于 gRPC 实时推流。</summary>
     public event Action<RouteStatusSnapshot>? RouteStatusChanged;
 
+    //! 路由编排器：管理路由表与读合并
+    private readonly IRouterOrchestrator _orchestrator;
+
+    /// <summary>
+    /// 构造 HostRuntime。
+    /// </summary>
+    /// <param name="routeAssemblyService">路由装配服务，负责组装 RouteEntry 与连接资源。</param>
+    /// <param name="orchestrator">路由编排器。</param>
+    /// <param name="logger">日志记录器；为 null 时不记录。</param>
+    /// <remarks>
+    /// 两个依赖均为必填且面向接口——不再在内部 new 具体实现，
+    /// 组合根成为唯一知晓具体类型的位置。
+    /// </remarks>
     public HostRuntime(
         IRouteAssemblyService routeAssemblyService,
-        IRouterOrchestrator? orchestrator = null,
-        ILogger<HostRuntime>? logger = null,
-        ILoggerFactory? loggerFactory = null) {
+        IRouterOrchestrator orchestrator,
+        ILogger<HostRuntime>? logger = null) {
 
         ArgumentNullException.ThrowIfNull(routeAssemblyService);
-
-        _logger = logger ?? loggerFactory?.CreateLogger<HostRuntime>() ?? NullLogger<HostRuntime>.Instance;
-
-        IRouterOrchestrator resolvedOrchestrator = orchestrator ?? new RouterOrchestrator(loggerFactory);
-        Facade = new EngineHostFacade(resolvedOrchestrator);
+        ArgumentNullException.ThrowIfNull(orchestrator);
 
         _routeAssemblyService = routeAssemblyService;
+        _orchestrator         = orchestrator;
+        _logger               = logger ?? NullLogger<HostRuntime>.Instance;
+
         _logger.LogInformation("HostRuntime initialized.");
     }
 
-    // internal: gRPC 服务禁止穿透 Facade 访问内部路由器，只能通过 HostRuntime 公开方法。
-    internal EngineHostFacade Facade { get; }
-
     /// <summary>当前注册路由数量（供 gRPC Health / Diagnostics 端点使用）。</summary>
-    public int RouteCount => Facade.Orchestrator.RouteCount;
+    public int RouteCount => _orchestrator.RouteCount;
 
-    /// <summary>当前有效订阅数量（供 gRPC Diagnostics 端点使用）。</summary>
-    public int SubscriptionCount => Facade.Orchestrator.SubscriptionCount;
+    /// <summary>
+    /// 已占位但尚未完成装配的路由数量。
+    /// 持续大于 0 通常意味着某条路由的 ConnectAsync 卡住了。
+    /// </summary>
+    public int PendingRouteCount => _routeIdReservations.Count - _registrationsByRouteId.Count;
 
     /// <summary>获取路由快照（用于查询接口）。</summary>
     public IReadOnlyList<RouteRuntimeInfo> SnapshotRoutes() {
@@ -155,7 +170,7 @@ public sealed class HostRuntime {
             }
 
             // 分支4：注册到 Router；失败时先归还 RouteKey 占位，再回滚连接资源。
-            if (!Facade.TryRegister(assembled.RouteEntry)) {
+            if (!_orchestrator.TryRegister(assembled.RouteEntry)) {
                 _routeIdByKey.TryRemove(assembled.RouteKey, out _);
                 await assembled.RollbackAsync(cancellationToken).ConfigureAwait(false);
                 _logger.LogWarning("RegisterRoute: router rejected registration for '{RouteId}'.", resolvedRouteId);
@@ -200,7 +215,7 @@ public sealed class HostRuntime {
         // 释放 RouteId 占位，使同名路由可被重新注册（更新设备参数即依赖此路径）。
         _routeIdReservations.TryRemove(routeId, out _);
 
-        bool disposed = await Facade.Orchestrator.TryRemoveAndDisposeAsync(reg.RouteKey, cancellationToken)
+        bool disposed = await _orchestrator.TryRemoveAndDisposeAsync(reg.RouteKey, cancellationToken)
             .ConfigureAwait(false);
 
         if (disposed)
@@ -217,6 +232,29 @@ public sealed class HostRuntime {
         PublishFinalOffline(routeId);
 
         return OperationResult.Ok;
+    }
+
+    /// <summary>
+    /// 注销全部路由并关闭所有 PLC 连接。
+    /// </summary>
+    /// <remarks>
+    /// 进程退出时若不执行，TCP 连接只能等对端超时才断开，串口句柄则保持占用，
+    /// 重启宿主会因串口被占用而连不上。DI 容器在关闭时会调用本方法。
+    /// </remarks>
+    public async ValueTask DisposeAsync() {
+        string[] routeIds = _registrationsByRouteId.Keys.ToArray();
+        if (routeIds.Length == 0) return;
+
+        _logger.LogInformation("HostRuntime disposing: closing {Count} route(s).", routeIds.Length);
+
+        foreach (string routeId in routeIds) {
+            try {
+                await UnregisterRouteAsync(routeId, CancellationToken.None).ConfigureAwait(false);
+            } catch (Exception ex) {
+                // 退出阶段最大努力释放：单条路由失败不应阻断其余路由的关闭
+                _logger.LogError(ex, "HostRuntime dispose: failed to unregister route '{RouteId}'.", routeId);
+            }
+        }
     }
 
     /// <summary>
@@ -241,7 +279,29 @@ public sealed class HostRuntime {
             _routeStatuses.TryRemove(routeId, out _);
         }
 
-        RouteStatusChanged?.Invoke(snapshot);
+        RaiseStatusChanged(snapshot);
+    }
+
+    /// <summary>
+    /// 向订阅方扇出状态事件，逐个隔离异常。
+    /// </summary>
+    /// <remarks>
+    /// 事件在 I/O 线程上同步触发。若不隔离，任意一个订阅方（例如某个断开中的
+    /// gRPC 流）抛出异常，都会沿调用栈冒泡回 <see cref="PublishStatus"/> 的调用点，
+    /// 把一次<b>成功的读取</b>变成失败——一个观察者的问题不该影响被观察的操作。
+    /// </remarks>
+    private void RaiseStatusChanged(RouteStatusSnapshot snapshot) {
+        Action<RouteStatusSnapshot>? handlers = RouteStatusChanged;
+        if (handlers is null) return;
+
+        foreach (Delegate d in handlers.GetInvocationList()) {
+            try {
+                ((Action<RouteStatusSnapshot>)d)(snapshot);
+            } catch (Exception ex) {
+                _logger.LogError(ex,
+                    "RouteStatusChanged 订阅方抛出异常，已隔离（route={RouteId}）。", snapshot.RouteId);
+            }
+        }
     }
 
     /// <summary>通过 route_id 执行读取。</summary>
@@ -254,7 +314,8 @@ public sealed class HostRuntime {
         if (length <= 0)
             return OperationResult<byte[]>.Fail("length must be greater than 0", KernelErrorCode.InvalidArgument);
 
-        return await Facade.ExecuteReadAsync(
+        // 先经读合并（同键并发共享一次 I/O），再由路由门控串行化物理访问
+        return await _orchestrator.ExecuteReadAsync(
             new ReadRequestKey(registration.RouteKey, dataAddress, length),
             token => ExecuteWithRoutePolicyAsync(
                 registration,
@@ -273,31 +334,37 @@ public sealed class HostRuntime {
 
         byte[] effectivePayload = payload ?? Array.Empty<byte>();
 
-        return await Facade.ExecuteWriteAsync(
-            registration.RouteKey,
-            token => ExecuteWithRoutePolicyAsync(
-                registration,
-                ct => registration.RouteEntry.ProtocolDriver.WriteAsync(
-                    registration.RouteEntry.TransportClient, dataAddress, effectivePayload, ct),
-                token),
+        // 写入不做合并，直接进入路由门控——与读共用同一把锁，
+        // 保证同一物理连接上读写不会交织
+        return await ExecuteWithRoutePolicyAsync(
+            registration,
+            ct => registration.RouteEntry.ProtocolDriver.WriteAsync(
+                registration.RouteEntry.TransportClient, dataAddress, effectivePayload, ct),
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<OperationResult<byte[]>> ExecuteWithRoutePolicyAsync(
+    /// <summary>
+    /// 在路由独占门控下执行一次读取，并附加重连与状态发布策略。
+    /// </summary>
+    /// <remarks>
+    /// 门控由 <see cref="RouteEntry.ExecuteExclusiveAsync{TResult}"/> 承担，覆盖读写两条路径：
+    /// 一条路由对应一个物理连接，而 NetworkStream / SerialPort 都不支持并发读。
+    /// 最小 I/O 间隔（串口帧间静默）也一并由门控内部补足。
+    /// </remarks>
+    private Task<OperationResult<byte[]>> ExecuteWithRoutePolicyAsync(
+        RouteRuntimeRegistration registration,
+        Func<CancellationToken, Task<OperationResult<byte[]>>> ioAction,
+        CancellationToken cancellationToken)
+        => registration.RouteEntry.ExecuteExclusiveAsync(
+            ct => RunReadWithPolicyAsync(registration, ioAction, ct),
+            cancellationToken);
+
+    private async Task<OperationResult<byte[]>> RunReadWithPolicyAsync(
         RouteRuntimeRegistration registration,
         Func<CancellationToken, Task<OperationResult<byte[]>>> ioAction,
         CancellationToken cancellationToken) {
 
-        // 仅当 WaitSerialWindowAsync 正常返回才算持有信号量；
-        // 取消路径下它已自行归还，此处不得重复 Release。
-        bool gateAcquired = false;
-
         try {
-            if (registration.IsSerialRoute) {
-                await WaitSerialWindowAsync(registration, cancellationToken).ConfigureAwait(false);
-                gateAcquired = true;
-            }
-
             OperationResult<byte[]> result = await ioAction(cancellationToken).ConfigureAwait(false);
             if (result.Success) {
                 PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
@@ -323,32 +390,24 @@ public sealed class HostRuntime {
             _logger.LogError(ex, "Route '{RouteId}': unhandled exception in IO action.", registration.RouteId);
             PublishStatus(registration.RouteId, online: false, KernelErrorCode.TransportIoError, ex.Message);
             return OperationResult<byte[]>.Fail(ex.Message, KernelErrorCode.TransportIoError);
-        } finally {
-            if (gateAcquired) {
-                registration.MarkSerialIoCompleted();
-                try {
-                    registration.SerialIoGate.Release();
-                } catch (ObjectDisposedException) {
-                    // 路由在本次 I/O 期间被并发注销，信号量已释放：无需归还。
-                }
-            }
         }
     }
 
-    private async Task<OperationResult> ExecuteWithRoutePolicyAsync(
+    /// <summary>在路由独占门控下执行一次写入，并附加重连与状态发布策略。</summary>
+    private Task<OperationResult> ExecuteWithRoutePolicyAsync(
+        RouteRuntimeRegistration registration,
+        Func<CancellationToken, Task<OperationResult>> ioAction,
+        CancellationToken cancellationToken)
+        => registration.RouteEntry.ExecuteExclusiveAsync(
+            ct => RunWriteWithPolicyAsync(registration, ioAction, ct),
+            cancellationToken);
+
+    private async Task<OperationResult> RunWriteWithPolicyAsync(
         RouteRuntimeRegistration registration,
         Func<CancellationToken, Task<OperationResult>> ioAction,
         CancellationToken cancellationToken) {
 
-        // 同读路径：仅在确实持有信号量时才在 finally 中释放。
-        bool gateAcquired = false;
-
         try {
-            if (registration.IsSerialRoute) {
-                await WaitSerialWindowAsync(registration, cancellationToken).ConfigureAwait(false);
-                gateAcquired = true;
-            }
-
             OperationResult result = await ioAction(cancellationToken).ConfigureAwait(false);
             if (result.Success) {
                 PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
@@ -374,47 +433,14 @@ public sealed class HostRuntime {
             _logger.LogError(ex, "Route '{RouteId}': unhandled exception in write IO action.", registration.RouteId);
             PublishStatus(registration.RouteId, online: false, KernelErrorCode.TransportIoError, ex.Message);
             return OperationResult.Fail(ex.Message, KernelErrorCode.TransportIoError);
-        } finally {
-            if (gateAcquired) {
-                registration.MarkSerialIoCompleted();
-                try {
-                    registration.SerialIoGate.Release();
-                } catch (ObjectDisposedException) {
-                    // 路由在本次 I/O 期间被并发注销，信号量已释放：无需归还。
-                }
-            }
         }
     }
 
-    /// <summary>
-    /// 获取串口 I/O 窗口：先取信号量，再补足最小 I/O 间隔。
-    /// 正常返回即表示调用方持有信号量，必须由调用方在 finally 中释放。
-    /// </summary>
     /// <remarks>
-    /// 节流等待期间若被取消，本方法负责归还已获取的信号量再抛出——
-    /// 否则该串口路由的信号量将永久耗尽，后续所有读写无限期挂起。
+    /// <see cref="KernelErrorCode.Cancelled"/> 刻意<b>不在</b>重连之列：
+    /// 用户主动取消（关页面、停轮询、退出应用）不是链路故障，
+    /// 误判会在批量停止轮询时引发几十条路由同时重连。
     /// </remarks>
-    private static async Task WaitSerialWindowAsync(
-        RouteRuntimeRegistration registration, CancellationToken cancellationToken) {
-
-        await registration.SerialIoGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        try {
-            int elapsedMs = registration.GetElapsedSinceLastIoMs();
-            int delayMs = registration.MinIoIntervalMs - elapsedMs;
-            if (delayMs > 0)
-                await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
-        } catch {
-            // 已持有信号量但未能进入 I/O：必须归还，否则路由死锁。
-            try {
-                registration.SerialIoGate.Release();
-            } catch (ObjectDisposedException) {
-                // 路由已被并发注销，信号量随之释放：无需归还。
-            }
-            throw;
-        }
-    }
-
     private static bool ShouldAttemptReconnect(KernelErrorCode errorCode) =>
         errorCode is KernelErrorCode.TransportIoError
             or KernelErrorCode.TransportUnavailable
@@ -476,8 +502,7 @@ public sealed class HostRuntime {
             _routeStatuses[routeId] = published;
         }
 
-        // 在锁外触发，避免订阅方回调阻塞其他路由的状态发布。
-        RouteStatusChanged?.Invoke(published);
+        RaiseStatusChanged(published);
     }
 
     // ── Inner types ───────────────────────────────────────────────────────────
@@ -493,6 +518,15 @@ public sealed class HostRuntime {
         public string? SerialPort { get; init; }
         public int BaudRate { get; init; }
         public int MinIoIntervalMs { get; init; }
+
+        /// <summary>串口校验位（None / Even / Odd / Mark / Space）；空表示取插件默认。</summary>
+        public string? Parity { get; init; }
+
+        /// <summary>串口数据位（5-8）；0 表示取插件默认。</summary>
+        public int DataBits { get; init; }
+
+        /// <summary>串口停止位（One / OnePointFive / Two）；空表示取插件默认。</summary>
+        public string? StopBits { get; init; }
     }
 
     public sealed class RouteRuntimeInfo {

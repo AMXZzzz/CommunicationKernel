@@ -88,14 +88,27 @@ public sealed class SerialPortTransportClient : ITransportClient
     // 常量
     // -------------------------------------------------------------------------
     private const int FirstByteTimeoutMs = 3_000;
-    private const int InterByteTimeoutMs = 20;
-    private const int MaxResponseBytes   = 512;
+
+    /// <summary>
+    /// 帧已开始接收后，等待后续字节的超时（毫秒）。
+    /// 这是"帧不完整"的兜底阈值，不是"帧已结束"的判定——帧边界由协议决定。
+    /// 低波特率下单字节传输就需约 1 ms，取值须留足余量。
+    /// </summary>
+    private const int SubsequentByteTimeoutMs = 500;
+
+    private const int MaxResponseBytes = 1024;
 
     // -------------------------------------------------------------------------
     // 状态
     // -------------------------------------------------------------------------
     private System.IO.Ports.SerialPort? _port;
     private bool _disposed;
+
+    /// <summary>上一次读取中超出该帧的字节，下次读取优先消费。</summary>
+    private byte[]? _residual;
+
+    /// <summary><see cref="_residual"/> 中的有效字节数。</summary>
+    private int _residualLength;
 
     // -------------------------------------------------------------------------
     // ITransportClient
@@ -159,9 +172,13 @@ public sealed class SerialPortTransportClient : ITransportClient
 
     /// <inheritdoc />
     public async Task<OperationResult<byte[]>> SendAndReceiveAsync(
-        byte[] request, CancellationToken cancellationToken)
+        byte[] request, TryGetFrameLength tryGetFrameLength, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+
+        if (tryGetFrameLength is null)
+            return OperationResult<byte[]>.Fail(
+                "tryGetFrameLength is required", KernelErrorCode.InvalidArgument);
 
         if (_port is null || !_port.IsOpen)
             return OperationResult<byte[]>.Fail(
@@ -169,19 +186,21 @@ public sealed class SerialPortTransportClient : ITransportClient
 
         try
         {
-            // 分支1：清空接收缓冲，写入请求
+            // 分支1：清空接收缓冲与上一帧残留，写入请求
             _port.DiscardInBuffer();
+            _residualLength = 0;
             await _port.BaseStream.WriteAsync(request, 0, request.Length, cancellationToken)
                 .ConfigureAwait(false);
             await _port.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
-            // 分支2：读取响应
-            return await ReadResponseAsync(cancellationToken).ConfigureAwait(false);
+            // 分支2：按协议帧长读取恰好一帧
+            return await ReadFrameAsync(tryGetFrameLength, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // 外部取消映射为 Cancelled，避免被上层判定为链路故障而触发重连
             return OperationResult<byte[]>.Fail(
-                "SerialPort SendAndReceive cancelled", KernelErrorCode.TransportIoError);
+                "SerialPort SendAndReceive cancelled", KernelErrorCode.Cancelled);
         }
         catch (Exception ex)
         {
@@ -209,70 +228,109 @@ public sealed class SerialPortTransportClient : ITransportClient
     // 响应读取
     // -------------------------------------------------------------------------
 
-    private async Task<OperationResult<byte[]>> ReadResponseAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// 读取恰好一个完整帧，帧边界由协议提供的 <paramref name="tryGetFrameLength"/> 判定。
+    /// </summary>
+    /// <remarks>
+    /// 串口原本可用 3.5 字符帧间静默分帧，但该策略在低波特率下会误判
+    /// （9600 bps 下单字节传输就要约 1 ms，固定 20 ms 阈值容易把帧切断），
+    /// 且经 TCP 转串口透传装置时静默根本不被保留。统一改为按协议帧长读取。
+    /// </remarks>
+    private async Task<OperationResult<byte[]>> ReadFrameAsync(
+        TryGetFrameLength tryGetFrameLength, CancellationToken cancellationToken)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxResponseBytes);
         int    total  = 0;
 
         try
         {
-            // 分支1：等待首字节（带首帧超时）
-            using CancellationTokenSource firstByteCts =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            firstByteCts.CancelAfter(FirstByteTimeoutMs);
-
-            int read = await _port!.BaseStream
-                .ReadAsync(buffer, total, MaxResponseBytes - total, firstByteCts.Token)
-                .ConfigureAwait(false);
-
-            if (read == 0)
-                return OperationResult<byte[]>.Fail(
-                    "SerialPort: no data received (stream closed)", KernelErrorCode.TransportIoError);
-
-            total += read;
-
-            // 分支2：继续读取后续字节（RTU/ASCII 帧间静默判断）
-            while (total < MaxResponseBytes)
+            // 先消费上一次多读到的残留字节
+            if (_residualLength > 0)
             {
-                using CancellationTokenSource interByteCts =
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                interByteCts.CancelAfter(InterByteTimeoutMs);
+                Buffer.BlockCopy(_residual!, 0, buffer, 0, _residualLength);
+                total = _residualLength;
+                _residualLength = 0;
+            }
 
+            while (true)
+            {
+                if (total > 0 && tryGetFrameLength(buffer.AsSpan(0, total), out int frameLength))
+                {
+                    if (frameLength <= 0)
+                        return OperationResult<byte[]>.Fail(
+                            "协议判定响应帧非法（无法识别的帧头）", KernelErrorCode.ProtocolError);
+
+                    if (frameLength > MaxResponseBytes)
+                        return OperationResult<byte[]>.Fail(
+                            $"响应帧声明 {frameLength} 字节，超出单帧上限 {MaxResponseBytes}",
+                            KernelErrorCode.ProtocolError);
+
+                    if (total >= frameLength)
+                    {
+                        byte[] frame = new byte[frameLength];
+                        Buffer.BlockCopy(buffer, 0, frame, 0, frameLength);
+                        SaveResidual(buffer, frameLength, total - frameLength);
+                        return OperationResult<byte[]>.Ok(frame);
+                    }
+                }
+
+                if (total >= MaxResponseBytes)
+                    return OperationResult<byte[]>.Fail(
+                        $"响应超过单帧上限 {MaxResponseBytes} 字节仍未成帧",
+                        KernelErrorCode.ProtocolError);
+
+                int timeoutMs = total == 0 ? FirstByteTimeoutMs : SubsequentByteTimeoutMs;
+                using CancellationTokenSource readCts =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                readCts.CancelAfter(timeoutMs);
+
+                int read;
                 try
                 {
                     read = await _port!.BaseStream
-                        .ReadAsync(buffer, total, MaxResponseBytes - total, interByteCts.Token)
+                        .ReadAsync(buffer, total, MaxResponseBytes - total, readCts.Token)
                         .ConfigureAwait(false);
-
-                    if (read == 0) break;
-                    total += read;
                 }
                 catch (OperationCanceledException)
                 {
                     if (cancellationToken.IsCancellationRequested)
                         return OperationResult<byte[]>.Fail(
-                            "SerialPort read cancelled", KernelErrorCode.TransportIoError);
-                    break; // InterByteTimeout → 帧结束
+                            "串口读取被取消", KernelErrorCode.Cancelled);
+
+                    return OperationResult<byte[]>.Fail(
+                        total == 0
+                            ? $"等待响应首字节超时（{FirstByteTimeoutMs} ms）"
+                            : $"响应帧不完整：已收 {total} 字节，后续字节等待超时（{SubsequentByteTimeoutMs} ms）",
+                        KernelErrorCode.Timeout);
                 }
+
+                if (read == 0)
+                    return OperationResult<byte[]>.Fail(
+                        "串口流已关闭", KernelErrorCode.TransportIoError);
+
+                total += read;
             }
-
-            if (total == 0)
-                return OperationResult<byte[]>.Fail(
-                    "SerialPort response empty", KernelErrorCode.ProtocolError);
-
-            byte[] result = new byte[total];
-            Buffer.BlockCopy(buffer, 0, result, 0, total);
-            return OperationResult<byte[]>.Ok(result);
-        }
-        catch (OperationCanceledException)
-        {
-            return OperationResult<byte[]>.Fail(
-                "SerialPort first-byte timeout", KernelErrorCode.TransportIoError);
         }
         finally
         {
+            // 归还前清零，避免残留报文经共享池泄漏给其他消费方
+            Array.Clear(buffer, 0, Math.Min(total, buffer.Length));
             ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+
+    /// <summary>保存超出本帧的字节，供下次读取优先消费。</summary>
+    private void SaveResidual(byte[] source, int offset, int length)
+    {
+        if (length <= 0)
+        {
+            _residualLength = 0;
+            return;
+        }
+
+        _residual ??= new byte[MaxResponseBytes];
+        Buffer.BlockCopy(source, offset, _residual, 0, length);
+        _residualLength = length;
     }
 
     // -------------------------------------------------------------------------

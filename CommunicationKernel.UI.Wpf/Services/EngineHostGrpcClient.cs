@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Services/EngineHostGrpcClient.cs
 // 层级: UI 层 — WPF 客户端服务
@@ -41,15 +43,32 @@ public sealed record RouteStatusDto(
 /// 协议描述符 DTO。
 /// UI 依据此对象渲染协议下拉框与设备表单，不内置任何协议知识：
 /// 下拉框显示 <see cref="DisplayName"/>，注册时回传 <see cref="ProtocolId"/>；
-/// <see cref="TransportKind"/> 决定展示「IP+端口」还是「串口+波特率」；
-/// <see cref="RequiresStation"/> 决定是否展示站号输入框。
+/// <see cref="SupportedTransports"/> 决定可选的连接方式，并据此展示
+/// 「IP+端口」还是「串口+波特率」；<see cref="RequiresStation"/> 决定是否展示站号输入框。
 /// </summary>
 public sealed record ProtocolDescriptorDto(
     string ProtocolId,
     string DisplayName,
-    string TransportKind,
+    IReadOnlyList<string> SupportedTransports,
     bool   RequiresStation,
-    string StationHint);
+    string StationHint) {
+
+    /// <summary>该协议是否支持指定介质（不区分大小写）。</summary>
+    public bool Supports(string transportKind) {
+        if (SupportedTransports is null || string.IsNullOrWhiteSpace(transportKind))
+            return false;
+
+        foreach (string t in SupportedTransports) {
+            if (string.Equals(t, transportKind, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>默认介质：取列表首项；列表为空时回落到 Tcp。</summary>
+    public string DefaultTransport =>
+        SupportedTransports is { Count: > 0 } ? SupportedTransports[0] : "Tcp";
+}
 
 /// <summary>读取结果 DTO。</summary>
 public sealed record ReadResultDto(bool Success, string ErrorCode, string ErrorMessage, byte[] Data);
@@ -80,6 +99,15 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
 
     /// <summary>健康检查 RPC 的截止时间（秒）。</summary>
     private const int HealthDeadlineSeconds = 5;
+
+    /// <summary>
+    /// 涉及建立/断开 PLC 连接的 RPC 截止时间（秒）。
+    /// 比普通读写宽松，因为服务端要完成 TCP 握手或打开串口。
+    /// </summary>
+    private const int ConnectDeadlineSeconds = 30;
+
+    /// <summary>查询类 RPC 的截止时间（秒）。</summary>
+    private const int QueryDeadlineSeconds = 10;
 
     // -------------------------------------------------------------------------
     // 私有字段
@@ -179,7 +207,10 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
                 MinIoIntervalMs = minIoIntervalMs,
             };
 
+            // 注册路由要在服务端建立真实 PLC 连接，是最容易长时间挂起的调用之一，
+            // 必须设置截止时间，否则 UI 的"保存"按钮会无限期无响应
             RegisterRouteResponse resp = await _stub.RegisterRouteAsync(req,
+                deadline: DateTime.UtcNow.AddSeconds(ConnectDeadlineSeconds),
                 cancellationToken: ct).ConfigureAwait(false);
 
             if (!resp.Success)
@@ -215,6 +246,7 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
                     TransportKind = transportKind,
                     Address       = address,
                 },
+                deadline: DateTime.UtcNow.AddSeconds(QueryDeadlineSeconds),
                 cancellationToken: ct).ConfigureAwait(false);
 
             // 将 Protobuf RouteItem 投影为本地 DTO，避免 ViewModel 依赖 Protobuf 类型
@@ -244,6 +276,7 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
         try {
             RemoveRouteResponse resp = await _stub.RemoveRouteAsync(
                 new RemoveRouteRequest { RouteId = routeId },
+                deadline: DateTime.UtcNow.AddSeconds(ConnectDeadlineSeconds),
                 cancellationToken: ct).ConfigureAwait(false);
 
             if (!resp.Success)
@@ -254,9 +287,12 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
             return (resp.Success, resp.ErrorCode, resp.ErrorMessage);
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented) {
-            // 服务端暂未实现该接口：视为成功，调用方继续本地删除
-            _logger.LogDebug("RemoveRoute 服务端未实现，仅本地删除: {RouteId}", routeId);
-            return (true, string.Empty, string.Empty);
+            // 服务端不认识该接口 ≠ 删除成功。
+            // 此前把它当成功，会让 UI 移除条目而服务端仍持有该路由与 PLC 连接，
+            // 界面与实际状态从此不一致，且该 RouteId 再也无法重新注册。
+            _logger.LogError("RemoveRoute 未被服务端实现: {RouteId}", routeId);
+            return (false, "UNIMPLEMENTED",
+                "服务端不支持删除路由，请升级 EngineHost 后重试");
         }
         catch (RpcException ex) {
             _logger.LogError(ex, "RemoveRoute RPC 异常: {RouteId}", routeId);
@@ -283,7 +319,7 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
 
             return resp.Protocols
                 .Select(p => new ProtocolDescriptorDto(
-                    p.ProtocolId, p.DisplayName, p.TransportKind,
+                    p.ProtocolId, p.DisplayName, p.SupportedTransports.ToList(),
                     p.RequiresStation, p.StationHint))
                 .ToList();
         }
@@ -425,8 +461,15 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
                     RouteStatusDto dto = new(evt.RouteId, evt.Online,
                                              evt.ErrorCode, evt.ErrorMessage, ts);
 
-                    // 交给调用方处理（通常是更新 ViewModel 属性）
-                    await onStatus(dto).ConfigureAwait(false);
+                    // 交给调用方处理（通常是更新 ViewModel 属性）。
+                    // 回调异常必须隔离：它若冒泡出去会被下方的 catch 当成流故障，
+                    // 严重时（非 RpcException）直接终结整个重连循环，
+                    // 此后该设备的状态永不更新，且界面停留在最后已知状态。
+                    try {
+                        await onStatus(dto).ConfigureAwait(false);
+                    } catch (Exception ex) {
+                        _logger.LogError(ex, "WatchRouteStatus 状态回调抛出异常，已隔离: {RouteId}", routeId);
+                    }
                 }
 
                 // 流正常结束（服务端主动关闭），仍需重连
@@ -449,6 +492,10 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
             catch (RpcException ex) {
                 _logger.LogWarning("WatchRouteStatus 流中断（{Status}），{Delay}ms 后重连: {RouteId}",
                     ex.Status.StatusCode, backoffMs, routeId);
+            }
+            catch (Exception ex) {
+                // 兜底：任何非预期异常也只结束本轮，不终结重连循环
+                _logger.LogError(ex, "WatchRouteStatus 非预期异常，{Delay}ms 后重连: {RouteId}", backoffMs, routeId);
             }
 
             // 走到这里说明流已断开：先通知调用方置为离线，避免残留虚假的"已连接"

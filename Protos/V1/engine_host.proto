@@ -35,18 +35,14 @@ message HealthResponse {
   int32 route_count = 3;
 }
 
-message DiagnosticsRequest {
-  bool include_routes = 1;
-  bool include_subscriptions = 2;
-  bool include_queues = 3;
-}
+message DiagnosticsRequest {}
 
 message DiagnosticsResponse {
   string request_id = 1;
   int32 route_count = 2;
-  int32 subscription_count = 3;
-  int32 write_queue_count = 4;
-  string host_version = 5;
+  string host_version = 3;
+  // 已注册但尚未完成装配的路由数（占位中）
+  int32 pending_route_count = 4;
 }
 
 message RegisterRouteRequest {
@@ -63,6 +59,13 @@ message RegisterRouteRequest {
   int32 baud_rate = 9;
 
   int32 min_io_interval_ms = 10;
+
+  // 串口线路参数。留空/为 0 时服务端取默认值 8N1。
+  // 现场并非都是 8N1——Modbus ASCII 常用 7E1，部分老设备用 8E1，
+  // 缺少这三项会导致这些设备根本无法通信。
+  string parity    = 11;  // None / Even / Odd / Mark / Space
+  int32  data_bits = 12;  // 5-8
+  string stop_bits = 13;  // One / OnePointFive / Two
 }
 
 message RegisterRouteResponse {
@@ -140,9 +143,15 @@ message ProtocolDescriptor {
   string protocol_id = 1;
   // 展示名，仅用于界面显示，不参与匹配
   string display_name = 2;
-  // 该协议所需的传输介质（"Tcp" / "Serial"），
-  // UI 据此自动填充 transport_kind 并切换「IP+端口」或「串口+波特率」表单
-  string transport_kind = 3;
+  // 该协议支持的传输介质列表（"Tcp" / "Serial"）。
+  //
+  // 帧格式与传输介质是两个独立维度：Modbus RTU 既能跑 RS-485，
+  // 也能经 TCP 转串口透传装置（Moxa NPort、USR-TCP232 等）跑以太网，
+  // 因此这里是列表而非单值。
+  //
+  // UI 在列表长度大于 1 时应展示介质选择器，并按所选介质
+  // 填充 transport_kind、切换「IP+端口」或「串口+波特率」表单。
+  repeated string supported_transports = 3;
   // 是否需要站号 / 从站地址；false 时 UI 应隐藏站号输入框
   bool requires_station = 4;
   // 站号取值范围提示文案，可直接展示给操作员

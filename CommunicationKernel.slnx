@@ -1,7 +1,6 @@
 <Solution>
   <!-- 核心抽象 -->
   <Project Path="CommunicationKernel.Core.Abstractions/CommunicationKernel.Core.Abstractions.csproj" />
-  <Project Path="CommunicationKernel.Core.Runtime/CommunicationKernel.Core.Runtime.csproj" />
 
   <!-- 通信层抽象 -->
   <Project Path="CommunicationKernel.Communication.Protocol/CommunicationKernel.Communication.Protocol.csproj" />
@@ -14,10 +13,10 @@
   <Project Path="CommunicationKernel.Engine.Router/CommunicationKernel.Engine.Router.csproj" />
 
   <!-- 宿主进程 + 契约 -->
-  <Project Path="CommunicationKernel.Contracts/CommunicationKernel.Contracts.csproj" />
   <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj" />
 
-  <!-- 协议插件：Modbus -->
+  <!-- 协议插件：Modbus（Core 承载三种变体共用的协议语义） -->
+  <Project Path="CommunicationKernel.Plugins.Modbus.Core/CommunicationKernel.Plugins.Modbus.Core.csproj" />
   <Project Path="CommunicationKernel.Plugins.Modbus.Tcp/CommunicationKernel.Plugins.Modbus.Tcp.csproj" />
   <Project Path="CommunicationKernel.Plugins.Modbus.Rtu/CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
   <Project Path="CommunicationKernel.Plugins.Modbus.Ascii/CommunicationKernel.Plugins.Modbus.Ascii.csproj" />

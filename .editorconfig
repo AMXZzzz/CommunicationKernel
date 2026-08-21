@@ -1,0 +1,96 @@
+# ============================================================================
+# CommunicationKernel 代码风格
+#
+# 此前无 .editorconfig，151 个文件里 K&R 与 Allman 两种大括号风格混用，
+# 同一项目内也不统一。配合 Directory.Build.props 的 EnforceCodeStyleInBuild，
+# 违规在构建期即可见。
+# ============================================================================
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,xml,csproj,props,targets,slnx,proto}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_size = 4
+max_line_length = 120
+
+# ── using 指令 ──────────────────────────────────────────────────────────
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:warning
+
+# ── 现代语法偏好 ────────────────────────────────────────────────────────
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_prefer_braces = true:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_prefer_null_check_over_type_check = true:suggestion
+
+# ── 大括号：统一 K&R（左括号不换行），与代码库多数文件一致 ──────────────
+csharp_new_line_before_open_brace = none
+csharp_new_line_before_else = false
+csharp_new_line_before_catch = false
+csharp_new_line_before_finally = false
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_between_query_expression_clauses = true
+
+# ── 命名规则 ────────────────────────────────────────────────────────────
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_symbols.private_fields.required_modifiers =
+
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+dotnet_naming_rule.constants_pascal.severity = warning
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal
+
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+
+dotnet_naming_style.pascal.capitalization = pascal_case
+
+dotnet_naming_rule.types_pascal.severity = warning
+dotnet_naming_rule.types_pascal.symbols = types_and_members
+dotnet_naming_rule.types_pascal.style = pascal
+
+dotnet_naming_symbols.types_and_members.applicable_kinds = class,struct,interface,enum,property,method,event
+dotnet_naming_symbols.types_and_members.applicable_accessibilities = public,internal,protected
+
+# ── 质量规则 ────────────────────────────────────────────────────────────
+# 空 catch 块：审查中发现 13 处静默吞异常
+dotnet_diagnostic.CA1031.severity = suggestion
+# ConfigureAwait：库代码应显式指定
+dotnet_diagnostic.CA2007.severity = none
+# 未使用的私有成员
+dotnet_diagnostic.IDE0051.severity = warning
+# 未使用的参数
+dotnet_diagnostic.IDE0060.severity = suggestion
+# 冗余 using：该规则依赖 GenerateDocumentationFile=true 才能在构建期生效，
+# 而文档生成属于独立的注释补全任务，暂未开启，故此处关闭以免产生噪声诊断。
+dotnet_diagnostic.IDE0005.severity = none
+
+[CommunicationKernel.Tests/**.cs]
+# 测试中的断言辅助方法常被反射调用，放宽未使用成员检查
+dotnet_diagnostic.IDE0051.severity = none

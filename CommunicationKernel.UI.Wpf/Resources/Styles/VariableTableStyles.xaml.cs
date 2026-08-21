@@ -1,4 +1,6 @@
-﻿using System.Windows;
+#nullable disable
+
+using System.Windows;
 
 namespace CommunicationKernel.UI.Wpf.Resources.Styles {
     public partial class VariableTableStyles : ResourceDictionary {

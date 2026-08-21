@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Views/Pages/MesMonitor/DataMonitorPage.xaml.cs
 // 层级: UI 层 — MES 数据监控页 code-behind

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
+using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.EngineHost.Grpc.V1;
@@ -32,23 +33,41 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
     // 状态推流 Channel 容量：超出时丢弃最旧快照（最终一致，不影响准确性）。
     private const int StatusChannelCapacity = 256;
 
+    //! 依赖注入的 HostRuntime 与路由装配服务
     private readonly HostRuntime _hostRuntime;
+
+    //! 依赖注入的路由装配服务（提供协议插件清单）
     private readonly IRouteAssemblyService _routeAssemblyService;
+
+    //! 依赖注入的日志记录器
     private readonly ILogger<EngineHostGrpcService> _logger;
 
-    public EngineHostGrpcService(
+    //! 构造函数：注入 HostRuntime、路由装配服务和日志记录器
+    public EngineHostGrpcService (
+        //! hostRuntime 提供路由注册、读写、状态订阅等核心功能
         HostRuntime hostRuntime,
+        //! routeAssemblyService 提供协议插件清单，用于 QueryProtocols
         IRouteAssemblyService routeAssemblyService,
+        //! logger 提供日志记录功能
         ILogger<EngineHostGrpcService> logger) {
 
+        //! 校验依赖注入参数，确保非空
         ArgumentNullException.ThrowIfNull(hostRuntime);
         ArgumentNullException.ThrowIfNull(routeAssemblyService);
         ArgumentNullException.ThrowIfNull(logger);
-        _hostRuntime          = hostRuntime;
-        _routeAssemblyService = routeAssemblyService;
-        _logger               = logger;
+
+        //! 赋值依赖注入参数到私有字段
+        _hostRuntime            = hostRuntime;
+        _routeAssemblyService   = routeAssemblyService;
+        _logger                 = logger;
     }
 
+    /// <summary>
+    /// 健康检查：返回服务端版本、路由数量等基本信息，供客户端（UI 层）监控。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public override Task<HealthResponse> Health(HealthRequest request, ServerCallContext context) {
         _ = request;
         _ = context;
@@ -59,18 +78,29 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
         });
     }
 
+    /// <summary>
+    /// 诊断信息：返回服务端版本、路由数量、订阅数量等详细信息，供客户端（UI 层）调试。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public override Task<DiagnosticsResponse> GetDiagnostics(DiagnosticsRequest request, ServerCallContext context) {
         _ = context;
         _ = request;
         return Task.FromResult(new DiagnosticsResponse {
             RequestId         = Guid.NewGuid().ToString("N"),
             RouteCount        = _hostRuntime.RouteCount,
-            SubscriptionCount = _hostRuntime.SubscriptionCount,
-            WriteQueueCount   = 0,
+            PendingRouteCount = _hostRuntime.PendingRouteCount,
             HostVersion       = HostVersion
         });
     }
 
+    /// <summary>
+    /// 注册路由：用于一次性注册路由并完成插件组装。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public override async Task<RegisterRouteResponse> RegisterRoute(RegisterRouteRequest request, ServerCallContext context) {
         var command = new HostRuntime.RegisterRouteCommand {
             RouteId       = request.RouteId,
@@ -82,7 +112,10 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
             Station       = request.Station,
             SerialPort    = request.SerialPort,
             BaudRate      = request.BaudRate,
-            MinIoIntervalMs = request.MinIoIntervalMs
+            MinIoIntervalMs = request.MinIoIntervalMs,
+            Parity        = request.Parity,
+            DataBits      = request.DataBits,
+            StopBits      = request.StopBits
         };
 
         OperationResult<string> register = await _hostRuntime
@@ -96,7 +129,13 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
             RouteId      = register.Success ? register.Value ?? string.Empty : string.Empty
         };
     }
-
+    
+    /// <summary>
+    /// 查询路由：根据请求参数过滤路由信息，供客户端（UI 层）查看。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public override Task<QueryRoutesResponse> QueryRoutes(QueryRoutesRequest request, ServerCallContext context) {
         _ = context;
 
@@ -124,7 +163,13 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
 
         return Task.FromResult(response);
     }
-
+    
+    /// <summary>
+    /// 读取数据：根据路由 ID 和数据地址读取数据，供客户端（UI 层）使用。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="context"></param>
+    /// <returns></returns> 
     public override async Task<ReadResponse> Read(ReadRequest request, ServerCallContext context) {
         if (string.IsNullOrWhiteSpace(request.RouteId)) {
             return new ReadResponse {
@@ -147,6 +192,12 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
         };
     }
 
+    /// <summary>
+    /// 写入数据：根据路由 ID、数据地址和数据内容写入数据，供客户端（UI 层）使用。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public override async Task<WriteResponse> Write(WriteRequest request, ServerCallContext context) {
         if (string.IsNullOrWhiteSpace(request.RouteId)) {
             return new WriteResponse {
@@ -168,15 +219,17 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
         };
     }
 
+    /// <summary>
+    /// 订阅路由状态：客户端可通过此接口实时接收指定路由的状态变化事件，供 UI 层显示。
+    /// </summary>
+    /// <param name="request"></param>
+    /// <param name="responseStream"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public override async Task WatchRouteStatus(
         WatchRouteStatusRequest request,
         IServerStreamWriter<RouteStatusEvent> responseStream,
         ServerCallContext context) {
-
-        // 先下发当前快照，避免客户端首连时无状态可用。
-        foreach (HostRuntime.RouteStatusSnapshot snapshot in _hostRuntime.SnapshotStatuses(request.RouteId)) {
-            await responseStream.WriteAsync(ToStatusEvent(snapshot)).ConfigureAwait(false);
-        }
 
         // 有界 Channel（容量 256，溢出丢最旧）：防止慢客户端导致内存无限增长。
         var channel = Channel.CreateBounded<HostRuntime.RouteStatusSnapshot>(
@@ -193,8 +246,16 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
                 _logger.LogWarning("WatchRouteStatus: status channel full, dropped event for route '{RouteId}'.", snapshot.RouteId);
         }
 
+        // 必须「先订阅、再发快照」。
+        // 反过来会留下一个窗口：快照已取、订阅尚未挂上，该窗口内发生的状态变化
+        // 既不在快照里、也不会被推送，客户端将永久停留在过期状态。
+        // 先订阅可能导致快照与首批事件重复，但状态是最终一致模型，重复无害。
         _hostRuntime.RouteStatusChanged += OnStatus;
         try {
+            foreach (HostRuntime.RouteStatusSnapshot snapshot in _hostRuntime.SnapshotStatuses(request.RouteId)) {
+                await responseStream.WriteAsync(ToStatusEvent(snapshot)).ConfigureAwait(false);
+            }
+
             while (!context.CancellationToken.IsCancellationRequested) {
                 HostRuntime.RouteStatusSnapshot snapshot =
                     await channel.Reader.ReadAsync(context.CancellationToken).ConfigureAwait(false);
@@ -242,20 +303,34 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
 
         var response = new QueryProtocolsResponse();
         foreach (ProtocolMetadata meta in _routeAssemblyService.GetAvailableProtocols()) {
-            response.Protocols.Add(new ProtocolDescriptor {
+            var descriptor = new ProtocolDescriptor {
                 ProtocolId      = meta.ProtocolId,
                 DisplayName     = string.IsNullOrWhiteSpace(meta.DisplayName)
                     ? meta.ProtocolId          // 无展示名时回落到 ID，保证下拉框不出现空项
                     : meta.DisplayName,
-                TransportKind   = meta.TransportKind.ToString(),
                 RequiresStation = meta.RequiresStation,
                 StationHint     = meta.StationHint ?? string.Empty
-            });
+            };
+
+            // 支持的介质列表：为空时回落到 Tcp，保证 UI 至少有一个可选项
+            if (meta.SupportedTransports is { Count: > 0 }) {
+                foreach (TransportKind kind in meta.SupportedTransports)
+                    descriptor.SupportedTransports.Add(kind.ToString());
+            } else {
+                descriptor.SupportedTransports.Add(TransportKind.Tcp.ToString());
+            }
+
+            response.Protocols.Add(descriptor);
         }
 
         return Task.FromResult(response);
     }
 
+    /// <summary>
+    /// 将 HostRuntime.RouteStatusSnapshot 转换为 gRPC RouteStatusEvent。
+    /// </summary>
+    /// <param name="snapshot"></param>
+    /// <returns></returns>
     private static RouteStatusEvent ToStatusEvent(HostRuntime.RouteStatusSnapshot snapshot) =>
         new RouteStatusEvent {
             RouteId          = snapshot.RouteId,

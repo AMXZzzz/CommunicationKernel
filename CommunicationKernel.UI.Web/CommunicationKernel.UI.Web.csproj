@@ -8,9 +8,6 @@
        ======================================================================== -->
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <!-- TreatWarningsAsErrors 由 Directory.Build.props 继承 -->
     <AssemblyName>CommunicationKernel.UI.Web</AssemblyName>
     <RootNamespace>CommunicationKernel.UI.Web</RootNamespace>
@@ -41,7 +38,6 @@
 
   <ItemGroup>
     <!-- 契约层引用（共享错误码常量） -->
-    <ProjectReference Include="..\CommunicationKernel.Contracts\CommunicationKernel.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

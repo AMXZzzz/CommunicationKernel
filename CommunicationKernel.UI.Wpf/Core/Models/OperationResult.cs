@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Models/OperationResult.cs
 // 层级: UI层 — 核心模型
 // 作用: 统一的操作结果封装，避免在服务接口中抛出异常来表示业务失败。

@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Engine.Router.Abstractions;
 using CommunicationKernel.Engine.Router.Models;
-using Microsoft.Extensions.Logging;
 
 namespace CommunicationKernel.Engine.Router;
 
@@ -12,67 +11,57 @@ namespace CommunicationKernel.Engine.Router;
 /// -----------------------------------------------------------------------------
 /// 文件: RouterOrchestrator.cs
 /// 层级: Engine.Router
-/// 作用: 聚合路由注册、读写调度与订阅分发的统一编排门面。
+/// 作用: 聚合路由表与读合并的编排门面。
 /// 说明:
-/// - Host 层仅依赖此门面，降低对底层组件组合细节的耦合。
-/// - 面向多 UI 并发访问同一设备场景，统一在此层进行调度分流。
-/// - 提供 TryRemoveAndDisposeAsync 统一路由注销路径，确保 WriteScheduler
-///   信号量与 TransportClient 均被正确清理，不留泄漏。
+/// - 子组件通过构造注入，可在测试中替换为假实现，也可替换合并策略。
+///   历史实现在构造函数里 new 出全部具体类型，属于"面向接口声明、面向实现构造"，
+///   依赖倒置只做到表面一层。
+/// - 读写串行化由 RouteEntry 的独占门控承担，不在本类。
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class RouterOrchestrator : IRouterOrchestrator {
-    public RouterOrchestrator(ILoggerFactory? loggerFactory = null) {
-        ConnectionRouter = new ConnectionRouter(loggerFactory?.CreateLogger<ConnectionRouter>());
-        WriteScheduler   = new WriteScheduler(loggerFactory?.CreateLogger<WriteScheduler>());
-        ReadCoordinator  = new ReadCoordinator();
-        SubscriptionHub  = new SubscriptionHub(loggerFactory?.CreateLogger<SubscriptionHub>());
+
+    /// <param name="connectionRouter">路由表实现。</param>
+    /// <param name="readCoordinator">读合并实现。</param>
+    public RouterOrchestrator(
+        IConnectionRouter connectionRouter,
+        IReadCoordinator readCoordinator) {
+
+        ConnectionRouter = connectionRouter ?? throw new ArgumentNullException(nameof(connectionRouter));
+        ReadCoordinator  = readCoordinator  ?? throw new ArgumentNullException(nameof(readCoordinator));
     }
 
+    /// <inheritdoc />
     public IConnectionRouter ConnectionRouter { get; }
-    public IWriteScheduler   WriteScheduler   { get; }
-    public IReadCoordinator  ReadCoordinator  { get; }
-    public ISubscriptionHub  SubscriptionHub  { get; }
 
-    public int RouteCount        => ConnectionRouter.Count;
-    public int SubscriptionCount => SubscriptionHub.Count;
+    /// <inheritdoc />
+    public IReadCoordinator ReadCoordinator { get; }
 
+    /// <inheritdoc />
+    public int RouteCount => ConnectionRouter.Count;
+
+    /// <inheritdoc />
     public bool TryRegister(RouteEntry entry) => ConnectionRouter.TryRegister(entry);
+
+    /// <inheritdoc />
     public bool TryGet(RouteKey key, out RouteEntry? entry) => ConnectionRouter.TryGet(key, out entry);
 
-    /// <summary>
-    /// 注销路由并释放所有关联资源：
-    /// 1) 从路由表移除。
-    /// 2) 释放 WriteScheduler 信号量（防止内存泄漏）。
-    /// 3) Dispose TransportClient（关闭 socket / 串口句柄）。
-    /// </summary>
+    /// <inheritdoc />
     public async Task<bool> TryRemoveAndDisposeAsync(RouteKey key, CancellationToken cancellationToken) {
         if (!ConnectionRouter.TryRemove(key, out RouteEntry? entry) || entry is null)
             return false;
 
-        WriteScheduler.Release(key);
-
+        // 路由的 I/O 门控随 RouteEntry 一起被 GC 回收，不单独 Dispose——
+        // 释放正在被在途 I/O 持有的信号量会让其 finally 中的 Release 抛
+        // ObjectDisposedException，这正是历史实现的一处未捕获异常来源。
         await entry.DisposeAsync().ConfigureAwait(false);
         return true;
     }
 
-    public Task<OperationResult> ExecuteWriteAsync(
-        RouteKey routeKey,
-        Func<CancellationToken, Task<OperationResult>> writeAction,
-        CancellationToken cancellationToken)
-        => WriteScheduler.ScheduleAsync(routeKey, writeAction, cancellationToken);
-
+    /// <inheritdoc />
     public Task<OperationResult<byte[]>> ExecuteReadAsync(
         ReadRequestKey requestKey,
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
         CancellationToken cancellationToken)
         => ReadCoordinator.ExecuteAsync(requestKey, readAction, cancellationToken);
-
-    public Guid Subscribe(SubscriptionTopic topic, Func<object, CancellationToken, Task> handler)
-        => SubscriptionHub.Subscribe(topic, handler);
-
-    public bool Unsubscribe(Guid subscriptionId)
-        => SubscriptionHub.Unsubscribe(subscriptionId);
-
-    public Task PublishAsync(SubscriptionTopic topic, object payload, CancellationToken cancellationToken)
-        => SubscriptionHub.PublishAsync(topic, payload, cancellationToken);
 }

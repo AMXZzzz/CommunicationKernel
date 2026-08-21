@@ -22,10 +22,9 @@ using CommunicationKernel.Plugins.Modbus.Ascii;
 using CommunicationKernel.Plugins.Siemens.S7;
 using CommunicationKernel.Plugins.Panasonic.MewtocolTcp;
 
-using ModbusTcpAddress   = CommunicationKernel.Plugins.Modbus.Tcp.Internal.ModbusAddress;
-using ModbusRtuAddress   = CommunicationKernel.Plugins.Modbus.Rtu.Internal.ModbusRtuAddress;
-using ModbusAsciiAddress = CommunicationKernel.Plugins.Modbus.Ascii.Internal.ModbusAsciiAddress;
-using MewtocolAddress    = CommunicationKernel.Plugins.Panasonic.MewtocolTcp.Internal.MewtocolAddress;
+// Modbus 三种变体的地址语义已收敛到共享 Core，不再各持一份
+using ModbusSharedAddress = CommunicationKernel.Plugins.Modbus.Core.ModbusAddress;
+using MewtocolAddress     = CommunicationKernel.Plugins.Panasonic.MewtocolTcp.Internal.MewtocolAddress;
 
 namespace CommunicationKernel.Tests;
 
@@ -59,39 +58,22 @@ public class DefaultStationResolutionTests
     }
 
     [TestMethod]
-    public void ModbusTcp_CleanAddress_UsesDeviceUnitId()
+    public void Modbus_CleanAddress_UsesDeviceUnitId()
     {
-        var parsed = ModbusTcpAddress.Parse("40001", defaultUnitId: 9);
+        // 三种 Modbus 变体共用同一份地址解析，一次断言即覆盖全部
+        var parsed = ModbusSharedAddress.Parse("40001", defaultUnitId: 9);
 
         Assert.IsTrue(parsed.Success);
         Assert.AreEqual((byte)9, parsed.Value.UnitId);
     }
 
     [TestMethod]
-    public void ModbusTcp_AddressPrefix_OverridesDeviceUnitId()
+    public void Modbus_AddressPrefix_OverridesDeviceUnitId()
     {
-        var parsed = ModbusTcpAddress.Parse("3:40001", defaultUnitId: 9);
+        var parsed = ModbusSharedAddress.Parse("3:40001", defaultUnitId: 9);
 
         Assert.IsTrue(parsed.Success);
         Assert.AreEqual((byte)3, parsed.Value.UnitId);
-    }
-
-    [TestMethod]
-    public void ModbusRtu_CleanAddress_UsesDeviceSlaveId()
-    {
-        var parsed = ModbusRtuAddress.Parse("40001", defaultSlaveId: 11);
-
-        Assert.IsTrue(parsed.Success);
-        Assert.AreEqual((byte)11, parsed.Value.SlaveId);
-    }
-
-    [TestMethod]
-    public void ModbusAscii_CleanAddress_UsesDeviceSlaveId()
-    {
-        var parsed = ModbusAsciiAddress.Parse("40001", defaultSlaveId: 12);
-
-        Assert.IsTrue(parsed.Success);
-        Assert.AreEqual((byte)12, parsed.Value.SlaveId);
     }
 
     [TestMethod]
@@ -99,7 +81,7 @@ public class DefaultStationResolutionTests
     {
         // 未传默认站号时行为与历史一致，保证既有调用方不受影响
         Assert.AreEqual((byte)1, MewtocolAddress.Parse("DT100").Value.Station);
-        Assert.AreEqual((byte)1, ModbusTcpAddress.Parse("40001").Value.UnitId);
+        Assert.AreEqual((byte)1, ModbusSharedAddress.Parse("40001").Value.UnitId);
     }
 }
 
@@ -138,20 +120,12 @@ public class StationFallbackTests
     [TestMethod]
     public void Modbus_OutOfRangeUnitId_FallsBackToOne()
     {
-        // Modbus 有效从站地址 1-247，248-255 为保留值
-        Assert.AreEqual((byte)1, ModbusTcpAddress.ResolveDefaultUnitId("0"));
-        Assert.AreEqual((byte)1, ModbusTcpAddress.ResolveDefaultUnitId("248"));
-        Assert.AreEqual((byte)1, ModbusTcpAddress.ResolveDefaultUnitId("999"));
-        Assert.AreEqual((byte)247, ModbusTcpAddress.ResolveDefaultUnitId("247"));
-    }
-
-    [TestMethod]
-    public void ModbusSerial_ResolveDefaultSlaveId_MatchesTcpSemantics()
-    {
-        Assert.AreEqual((byte)1,  ModbusRtuAddress.ResolveDefaultSlaveId(null));
-        Assert.AreEqual((byte)17, ModbusRtuAddress.ResolveDefaultSlaveId("17"));
-        Assert.AreEqual((byte)1,  ModbusAsciiAddress.ResolveDefaultSlaveId("300"));
-        Assert.AreEqual((byte)17, ModbusAsciiAddress.ResolveDefaultSlaveId("17"));
+        // Modbus 有效从站地址 1-247，248-255 为保留值。
+        // 三种变体共用同一份解析，不再存在"只在其中一份修好"的漂移风险。
+        Assert.AreEqual((byte)1, ModbusSharedAddress.ResolveDefaultUnitId("0"));
+        Assert.AreEqual((byte)1, ModbusSharedAddress.ResolveDefaultUnitId("248"));
+        Assert.AreEqual((byte)1, ModbusSharedAddress.ResolveDefaultUnitId("999"));
+        Assert.AreEqual((byte)247, ModbusSharedAddress.ResolveDefaultUnitId("247"));
     }
 }
 
@@ -165,7 +139,7 @@ public class ProtocolDriverContextTests
     [TestMethod]
     public void MewtocolFactory_StationFromContext_AppliedToCleanAddress()
     {
-        var factory = new MewtocolTcpProtocolDriverFactory();
+        var factory = new MewtocolProtocolDriverFactory();
         IProtocolDriver driver = factory.CreateDriver(
             new ProtocolDriverContext { Station = "23" });
 
@@ -181,7 +155,7 @@ public class ProtocolDriverContextTests
     [TestMethod]
     public void MewtocolFactory_NullContext_UsesStationOne()
     {
-        var driver = new MewtocolTcpProtocolDriverFactory().CreateDriver(null);
+        var driver = new MewtocolProtocolDriverFactory().CreateDriver(null);
         var frame  = driver.BuildReadFrame("DT100", 2);
 
         Assert.IsTrue(frame.Success);
@@ -223,23 +197,56 @@ public class ProtocolDriverContextTests
 public class ProtocolMetadataContractTests
 {
     [TestMethod]
-    public void SerialProtocols_DeclareSerialTransport()
+    public void SerialCapableProtocols_DeclareSerialSupport()
     {
-        Assert.AreEqual(TransportKind.Serial,
-            new ModbusRtuProtocolDriverFactory().Metadata.TransportKind);
-        Assert.AreEqual(TransportKind.Serial,
-            new ModbusAsciiProtocolDriverFactory().Metadata.TransportKind);
+        CollectionAssert.Contains(
+            new ModbusRtuProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Serial);
+        CollectionAssert.Contains(
+            new ModbusAsciiProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Serial);
+        CollectionAssert.Contains(
+            new MewtocolProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Serial);
     }
 
     [TestMethod]
-    public void TcpProtocols_DeclareTcpTransport()
+    public void RtuAndAscii_AlsoSupportTcp_ForSerialOverEthernetGateways()
     {
-        Assert.AreEqual(TransportKind.Tcp,
-            new ModbusTcpProtocolDriverFactory().Metadata.TransportKind);
-        Assert.AreEqual(TransportKind.Tcp,
-            new MewtocolTcpProtocolDriverFactory().Metadata.TransportKind);
-        Assert.AreEqual(TransportKind.Tcp,
-            new SiemensS7_1200ProtocolDriverFactory().Metadata.TransportKind);
+        // 现场常见接法：Modbus RTU 经 TCP 转串口透传装置（Moxa NPort、USR-TCP232 等）
+        // 接入以太网。若把协议锁死为单一介质，这类设备将完全无法接入。
+        CollectionAssert.Contains(
+            new ModbusRtuProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Tcp);
+        CollectionAssert.Contains(
+            new ModbusAsciiProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Tcp);
+        CollectionAssert.Contains(
+            new MewtocolProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Tcp);
+    }
+
+    [TestMethod]
+    public void Mewtocol_IsSingleProtocolAcrossBothTransports()
+    {
+        // 帧格式与介质无关，因此只应存在一个 ProtocolId，
+        // 拆成 -tcp / -serial 会让同一协议出现两份元信息
+        ProtocolMetadata meta = new MewtocolProtocolDriverFactory().Metadata;
+
+        Assert.AreEqual("panasonic-mewtocol", meta.ProtocolId);
+        Assert.HasCount(2, meta.SupportedTransports);
+    }
+
+    [TestMethod]
+    public void TcpOnlyProtocols_DoNotDeclareSerial()
+    {
+        // MBAP 与 TPKT/COTP 均依赖 TCP 的可靠有序流，无串口对应形式
+        CollectionAssert.DoesNotContain(
+            new ModbusTcpProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Serial);
+        CollectionAssert.DoesNotContain(
+            new SiemensS7_1200ProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
+            TransportKind.Serial);
     }
 
     [TestMethod]
@@ -247,7 +254,7 @@ public class ProtocolMetadataContractTests
     {
         Assert.IsTrue(new ModbusTcpProtocolDriverFactory().Metadata.RequiresStation);
         Assert.IsTrue(new ModbusRtuProtocolDriverFactory().Metadata.RequiresStation);
-        Assert.IsTrue(new MewtocolTcpProtocolDriverFactory().Metadata.RequiresStation);
+        Assert.IsTrue(new MewtocolProtocolDriverFactory().Metadata.RequiresStation);
     }
 
     [TestMethod]
@@ -264,7 +271,7 @@ public class ProtocolMetadataContractTests
         Assert.IsFalse(string.IsNullOrWhiteSpace(
             new ModbusTcpProtocolDriverFactory().Metadata.StationHint));
         Assert.IsFalse(string.IsNullOrWhiteSpace(
-            new MewtocolTcpProtocolDriverFactory().Metadata.StationHint));
+            new MewtocolProtocolDriverFactory().Metadata.StationHint));
     }
 
     [TestMethod]
@@ -275,7 +282,7 @@ public class ProtocolMetadataContractTests
             new ModbusTcpProtocolDriverFactory().Metadata.ProtocolId,
             new ModbusRtuProtocolDriverFactory().Metadata.ProtocolId,
             new ModbusAsciiProtocolDriverFactory().Metadata.ProtocolId,
-            new MewtocolTcpProtocolDriverFactory().Metadata.ProtocolId,
+            new MewtocolProtocolDriverFactory().Metadata.ProtocolId,
             new SiemensS7_1200ProtocolDriverFactory().Metadata.ProtocolId,
             new SiemensS7_200SmartProtocolDriverFactory().Metadata.ProtocolId,
         };

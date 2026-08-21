@@ -86,11 +86,18 @@ public sealed class TcpTransportClient : ITransportClient
     /// <summary>等待 PLC 第一字节的超时（毫秒）。</summary>
     private const int FirstByteTimeoutMs = 5_000;
 
-    /// <summary>首字节到达后继续读取的最大等待时间（毫秒）。</summary>
-    private const int InterByteTimeoutMs = 50;
+    /// <summary>
+    /// 帧已开始接收后，等待后续字节的超时（毫秒）。
+    /// </summary>
+    /// <remarks>
+    /// 这是"帧不完整"的判定阈值，<b>不是</b>"帧已结束"的判定阈值。
+    /// 帧边界一律由协议提供的回调决定；此超时只用于避免半帧永久挂起。
+    /// 取值需容忍链路拥塞与跨网段抖动，因此远大于旧实现的 50 ms。
+    /// </remarks>
+    private const int SubsequentByteTimeoutMs = 1_000;
 
     /// <summary>单次响应最大字节数，超出视为协议错误。</summary>
-    private const int MaxResponseBytes = 512;
+    private const int MaxResponseBytes = 1024;
 
     // -------------------------------------------------------------------------
     // 状态
@@ -98,6 +105,14 @@ public sealed class TcpTransportClient : ITransportClient
     private TcpClient?     _tcp;
     private NetworkStream? _stream;
     private bool           _disposed;
+
+    /// <summary>
+    /// 上一次读取中超出该帧的字节。下次读取优先消费，绝不丢弃。
+    /// </summary>
+    private byte[]? _residual;
+
+    /// <summary><see cref="_residual"/> 中的有效字节数。</summary>
+    private int _residualLength;
 
     // -------------------------------------------------------------------------
     // ITransportClient
@@ -142,9 +157,13 @@ public sealed class TcpTransportClient : ITransportClient
 
     /// <inheritdoc />
     public async Task<OperationResult<byte[]>> SendAndReceiveAsync(
-        byte[] request, CancellationToken cancellationToken)
+        byte[] request, TryGetFrameLength tryGetFrameLength, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+
+        if (tryGetFrameLength is null)
+            return OperationResult<byte[]>.Fail(
+                "tryGetFrameLength is required", KernelErrorCode.InvalidArgument);
 
         if (_stream is null)
             return OperationResult<byte[]>.Fail(
@@ -157,13 +176,16 @@ public sealed class TcpTransportClient : ITransportClient
                 .ConfigureAwait(false);
             await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
-            // 分支2：等待并读取响应
-            return await ReadResponseAsync(cancellationToken).ConfigureAwait(false);
+            // 分支2：按协议给出的帧长读取恰好一帧
+            return await ReadFrameAsync(tryGetFrameLength, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // 外部主动取消：必须映射为 Cancelled 而非 IO 错误。
+            // 上层的重连判据包含 TransportIoError，若在此误报，
+            // 每次用户停轮询/关页面都会触发一轮断开重连，批量停止时形成重连风暴。
             return OperationResult<byte[]>.Fail(
-                "TCP SendAndReceive cancelled", KernelErrorCode.TransportIoError);
+                "TCP SendAndReceive cancelled", KernelErrorCode.Cancelled);
         }
         catch (Exception ex)
         {
@@ -192,70 +214,113 @@ public sealed class TcpTransportClient : ITransportClient
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// 循环读取 TCP 流，直到 <see cref="InterByteTimeoutMs"/> 内无新数据或达到 <see cref="MaxResponseBytes"/>。
+    /// 读取恰好一个完整帧，帧边界由协议提供的 <paramref name="tryGetFrameLength"/> 判定。
     /// </summary>
-    private async Task<OperationResult<byte[]>> ReadResponseAsync(CancellationToken cancellationToken)
+    /// <remarks>
+    /// 超出本帧的字节保留在 <see cref="_residual"/> 中供下次调用消费，
+    /// 绝不丢弃——丢弃会使请求与响应永久错位一格。
+    /// </remarks>
+    private async Task<OperationResult<byte[]>> ReadFrameAsync(
+        TryGetFrameLength tryGetFrameLength, CancellationToken cancellationToken)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxResponseBytes);
         int    total  = 0;
 
         try
         {
-            // 分支1：等待首字节（带首帧超时）
-            using CancellationTokenSource firstByteCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            firstByteCts.CancelAfter(FirstByteTimeoutMs);
-
-            int read = await _stream!.ReadAsync(buffer, total, MaxResponseBytes - total, firstByteCts.Token)
-                .ConfigureAwait(false);
-
-            if (read == 0)
-                return OperationResult<byte[]>.Fail(
-                    "TCP connection closed by remote", KernelErrorCode.TransportIoError);
-
-            total += read;
-
-            // 分支2：继续读取后续字节（短超时，检测帧尾）
-            while (total < MaxResponseBytes)
+            // 先消费上一次多读到的残留字节
+            if (_residualLength > 0)
             {
-                using CancellationTokenSource interByteCts =
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                interByteCts.CancelAfter(InterByteTimeoutMs);
+                Buffer.BlockCopy(_residual!, 0, buffer, 0, _residualLength);
+                total = _residualLength;
+                _residualLength = 0;
+            }
 
+            while (true)
+            {
+                // ── 用已有字节尝试判定帧长 ──
+                if (total > 0)
+                {
+                    if (tryGetFrameLength(buffer.AsSpan(0, total), out int frameLength))
+                    {
+                        if (frameLength <= 0)
+                            return OperationResult<byte[]>.Fail(
+                                "协议判定响应帧非法（无法识别的帧头）", KernelErrorCode.ProtocolError);
+
+                        if (frameLength > MaxResponseBytes)
+                            return OperationResult<byte[]>.Fail(
+                                $"响应帧声明 {frameLength} 字节，超出单帧上限 {MaxResponseBytes}",
+                                KernelErrorCode.ProtocolError);
+
+                        if (total >= frameLength)
+                        {
+                            // 已读满一帧：截取本帧，余下留作残留
+                            byte[] frame = new byte[frameLength];
+                            Buffer.BlockCopy(buffer, 0, frame, 0, frameLength);
+                            SaveResidual(buffer, frameLength, total - frameLength);
+                            return OperationResult<byte[]>.Ok(frame);
+                        }
+                    }
+                }
+
+                if (total >= MaxResponseBytes)
+                    return OperationResult<byte[]>.Fail(
+                        $"响应超过单帧上限 {MaxResponseBytes} 字节仍未成帧",
+                        KernelErrorCode.ProtocolError);
+
+                // ── 继续读取；首字节用长超时，后续字节用短超时 ──
+                int timeoutMs = total == 0 ? FirstByteTimeoutMs : SubsequentByteTimeoutMs;
+                using CancellationTokenSource readCts =
+                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                readCts.CancelAfter(timeoutMs);
+
+                int read;
                 try
                 {
-                    read = await _stream!.ReadAsync(buffer, total, MaxResponseBytes - total, interByteCts.Token)
+                    read = await _stream!.ReadAsync(buffer, total, MaxResponseBytes - total, readCts.Token)
                         .ConfigureAwait(false);
-
-                    if (read == 0) break; // 远端关闭
-                    total += read;
                 }
                 catch (OperationCanceledException)
                 {
-                    // InterByteTimeout 超时→认为帧已结束（非外部取消）
+                    // 区分外部取消与内部超时：前者不应触发上层重连
                     if (cancellationToken.IsCancellationRequested)
                         return OperationResult<byte[]>.Fail(
-                            "TCP read cancelled", KernelErrorCode.TransportIoError);
-                    break;
+                            "TCP 读取被取消", KernelErrorCode.Cancelled);
+
+                    return OperationResult<byte[]>.Fail(
+                        total == 0
+                            ? $"等待响应首字节超时（{FirstByteTimeoutMs} ms）"
+                            : $"响应帧不完整：已收 {total} 字节，后续字节等待超时（{SubsequentByteTimeoutMs} ms）",
+                        KernelErrorCode.Timeout);
                 }
+
+                if (read == 0)
+                    return OperationResult<byte[]>.Fail(
+                        "TCP 连接被远端关闭", KernelErrorCode.TransportIoError);
+
+                total += read;
             }
-
-            if (total == 0)
-                return OperationResult<byte[]>.Fail(
-                    "TCP response empty", KernelErrorCode.ProtocolError);
-
-            byte[] result = new byte[total];
-            Buffer.BlockCopy(buffer, 0, result, 0, total);
-            return OperationResult<byte[]>.Ok(result);
-        }
-        catch (OperationCanceledException)
-        {
-            return OperationResult<byte[]>.Fail(
-                "TCP first-byte timeout", KernelErrorCode.TransportIoError);
         }
         finally
         {
+            // 归还前清零：缓冲区来自共享池，残留报文可能被其他消费方读到
+            Array.Clear(buffer, 0, Math.Min(total, buffer.Length));
             ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+
+    /// <summary>保存超出本帧的字节，供下次 <see cref="ReadFrameAsync"/> 优先消费。</summary>
+    private void SaveResidual(byte[] source, int offset, int length)
+    {
+        if (length <= 0)
+        {
+            _residualLength = 0;
+            return;
+        }
+
+        _residual ??= new byte[MaxResponseBytes];
+        Buffer.BlockCopy(source, offset, _residual, 0, length);
+        _residualLength = length;
     }
 
     // -------------------------------------------------------------------------
@@ -268,6 +333,10 @@ public sealed class TcpTransportClient : ITransportClient
         _stream = null;
         _tcp?.Dispose();
         _tcp = null;
+
+        // 断链后残留字节属于上一条连接，必须丢弃，否则重连后首帧被污染
+        _residualLength = 0;
+        _residual       = null;
     }
 
     private void ThrowIfDisposed()

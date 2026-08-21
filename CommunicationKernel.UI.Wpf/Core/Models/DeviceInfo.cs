@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Models/DeviceInfo.cs
 // 层级: UI层 — 核心模型
 // 作用: 设备/路由的 UI 数据模型，实现 INotifyPropertyChanged 以支持 WPF 数据绑定。

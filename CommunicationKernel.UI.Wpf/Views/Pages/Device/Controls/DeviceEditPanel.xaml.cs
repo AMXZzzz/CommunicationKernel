@@ -1,4 +1,6 @@
-﻿using System;
+#nullable disable
+
+using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -30,6 +32,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
         /// <summary>编辑时保留原扩展 JSON，一期界面不改。</summary>
         private string _extraSettingsJson = "{}";
+
+        /// <summary>批量重建介质下拉框期间抑制 SelectionChanged，避免中间态触发布局刷新。</summary>
+        private bool _suppressTransportEvent;
 
         /// <summary>
         /// 协议解析器（由 DevicePage 赋值）。用于填充协议下拉，不解析地址语义。
@@ -87,10 +92,103 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// 依据协议描述符决定：显示 TCP 参数还是串口参数、是否显示站号、站号提示文案。
         /// descriptor 为 null（协议列表尚未就绪）时退化为 TCP + 显示站号的通用布局。
         /// </summary>
+        /// <summary>
+        /// 填充「连接方式」下拉框。
+        /// 协议只支持一种介质时隐藏该选择器，避免无意义的单选项。
+        /// </summary>
+        private void LoadTransportList (ProtocolDescriptorDto descriptor, string preferred) {
+            if (cmbTransport == null) return;
+
+            _suppressTransportEvent = true;
+            try {
+                cmbTransport.Items.Clear();
+
+                IReadOnlyList<string> kinds = descriptor != null
+                    ? descriptor.SupportedTransports
+                    : null;
+
+                if (kinds == null || kinds.Count == 0)
+                    kinds = new[] { "Tcp" };
+
+                foreach (string kind in kinds) {
+                    cmbTransport.Items.Add(new ComboBoxItem {
+                        Content = DescribeTransport(kind),
+                        Tag     = kind
+                    });
+                }
+
+                // 还原此前选择；未匹配则取首项
+                int index = 0;
+                if (!string.IsNullOrWhiteSpace(preferred)) {
+                    for (int i = 0; i < cmbTransport.Items.Count; i++) {
+                        ComboBoxItem item = cmbTransport.Items[i] as ComboBoxItem;
+                        if (item != null
+                            && string.Equals(item.Tag as string, preferred, StringComparison.OrdinalIgnoreCase)) {
+                            index = i;
+                            break;
+                        }
+                    }
+                }
+                cmbTransport.SelectedIndex = index;
+
+                // 只有一种介质时无需让操作员选择
+                if (panelTransport != null)
+                    panelTransport.Visibility = cmbTransport.Items.Count > 1
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+            } finally {
+                _suppressTransportEvent = false;
+            }
+        }
+
+        /// <summary>介质标识 → 面向操作员的说明文案。</summary>
+        private static string DescribeTransport (string kind) {
+            if (string.Equals(kind, "Serial", StringComparison.OrdinalIgnoreCase))
+                return "串口直连（RS-232 / RS-485）";
+            if (string.Equals(kind, "Tcp", StringComparison.OrdinalIgnoreCase))
+                return "以太网（含 TCP 转串口透传装置）";
+            return kind;
+        }
+
+        /// <summary>取当前选中的介质标识；无选择时回落到协议默认介质。</summary>
+        private string GetSelectedTransport () {
+            ComboBoxItem item = cmbTransport != null
+                ? cmbTransport.SelectedItem as ComboBoxItem
+                : null;
+
+            string kind = item != null ? item.Tag as string : null;
+            if (!string.IsNullOrWhiteSpace(kind))
+                return kind;
+
+            ProtocolDescriptorDto d = GetSelectedDescriptor();
+            return d != null ? d.DefaultTransport : "Tcp";
+        }
+
+        /// <summary>连接方式变化：仅切换连接参数表单，不改变协议选择。</summary>
+        private void CmbTransport_SelectionChanged (object sender, SelectionChangedEventArgs e) {
+            if (_suppressTransportEvent) return;
+            ApplyTransportLayout(GetSelectedDescriptor(), GetSelectedTransport());
+        }
+
         private void ApplyProtocolLayout (ProtocolDescriptorDto descriptor) {
-            // 判定传输介质：描述符缺失时按 TCP 处理，保证表单始终可用
-            bool isSerial = descriptor != null
-                && string.Equals(descriptor.TransportKind, "Serial", StringComparison.OrdinalIgnoreCase);
+            // 协议变化时重建介质列表，尽量保留操作员此前的选择
+            LoadTransportList(descriptor, GetSelectedTransportTagOrNull());
+            ApplyTransportLayout(descriptor, GetSelectedTransport());
+        }
+
+        /// <summary>读取当前介质选择，用于协议切换时尽量保留；无选择返回 null。</summary>
+        private string GetSelectedTransportTagOrNull () {
+            ComboBoxItem item = cmbTransport != null
+                ? cmbTransport.SelectedItem as ComboBoxItem
+                : null;
+            return item != null ? item.Tag as string : null;
+        }
+
+        /// <summary>
+        /// 按「所选介质」渲染连接参数表单，并按「所选协议」决定站号可见性。
+        /// </summary>
+        private void ApplyTransportLayout (ProtocolDescriptorDto descriptor, string transportKind) {
+            bool isSerial = string.Equals(transportKind, "Serial", StringComparison.OrdinalIgnoreCase);
 
             if (panelTcp != null)
                 panelTcp.Visibility = isSerial ? Visibility.Collapsed : Visibility.Visible;
@@ -102,10 +200,31 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (panelStation != null)
                 panelStation.Visibility = needStation ? Visibility.Visible : Visibility.Collapsed;
 
+            // 不需要站号时给出明确说明，而不是留下一片空白让人以为功能缺失
+            if (txtStationNotApplicable != null)
+                txtStationNotApplicable.Visibility = needStation
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
             // 站号范围提示直接来自插件元信息，无需 UI 硬编码
             if (runStationHint != null) {
                 string hint = descriptor != null ? descriptor.StationHint : null;
                 runStationHint.Text = string.IsNullOrWhiteSpace(hint) ? "" : "  " + hint;
+            }
+
+            // 告知操作员当前配置需要填哪些字段，切换时字段变化便不再突兀
+            if (txtTransportHint != null) {
+                if (descriptor == null) {
+                    txtTransportHint.Text = "";
+                } else if (isSerial) {
+                    txtTransportHint.Text = needStation
+                        ? "串口连接：需填写串口号、波特率与站号"
+                        : "串口连接：需填写串口号与波特率";
+                } else {
+                    txtTransportHint.Text = needStation
+                        ? "以太网连接：需填写 IP、端口与站号"
+                        : "以太网连接：需填写 IP 与端口";
+                }
             }
         }
 
@@ -151,8 +270,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (txtStationNo != null)
                 txtStationNo.Text = info.StationNo > 0 ? info.StationNo.ToString() : "1";
 
-            // 依据当前选中协议切换连接参数表单
-            ApplyProtocolLayout(GetSelectedDescriptor());
+            // 依据当前选中协议重建介质列表，并还原设备已保存的连接方式
+            ProtocolDescriptorDto current = GetSelectedDescriptor();
+            LoadTransportList(current, info.TransportKind);
+            ApplyTransportLayout(current, GetSelectedTransport());
 
             if (txtStatus != null) {
                 txtStatus.Text = info.StatusText ?? "离线";
@@ -176,9 +297,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             // 协议：必须写 ProtocolId（服务端匹配键），不能写展示名
             d.Protocol = GetSelectedProtocolId();
 
-            // 传输介质：由协议描述符决定，不再留空导致服务端 Enum.TryParse 失败
-            bool isSerial = descriptor != null
-                && string.Equals(descriptor.TransportKind, "Serial", StringComparison.OrdinalIgnoreCase);
+            // 传输介质：取操作员在「连接方式」中的选择。
+            // 协议只支持一种介质时该下拉框隐藏，此处自动取那唯一一项，
+            // 因此不会留空导致服务端 Enum.TryParse 失败。
+            string transportKind = GetSelectedTransport();
+            bool   isSerial      = string.Equals(transportKind, "Serial", StringComparison.OrdinalIgnoreCase);
             d.TransportKind = isSerial ? "Serial" : "Tcp";
 
             if (isSerial) {

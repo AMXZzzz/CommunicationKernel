@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Interfaces/IDeviceService.cs
 // 层级: UI层 — 核心接口
 // 作用: 定义设备管理服务的抽象接口，供 DevicePageViewModel 依赖注入使用。

@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Views/Pages/Log/LogPage.xaml.cs
 // 层级: UI 层 — 通讯日志页 code-behind

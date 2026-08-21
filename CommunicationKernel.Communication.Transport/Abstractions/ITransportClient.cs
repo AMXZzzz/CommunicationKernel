@@ -34,9 +34,23 @@ public interface ITransportClient : IAsyncDisposable {
     Task<OperationResult> ConnectAsync(TransportEndpoint endpoint, CancellationToken cancellationToken);
 
     /// <summary>
-    /// 发送请求并接收响应。
+    /// 发送请求并接收<b>一个完整帧</b>的响应。
     /// </summary>
-    Task<OperationResult<byte[]>> SendAndReceiveAsync(byte[] request, CancellationToken cancellationToken);
+    /// <param name="request">待发送的完整请求帧。</param>
+    /// <param name="tryGetFrameLength">
+    /// 由协议驱动提供的帧完整性判定回调。传输层不理解协议，
+    /// 必须依赖它决定何时停止读取，禁止用时序静默猜测帧边界。
+    /// 详见 <see cref="TryGetFrameLength"/>。
+    /// </param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <remarks>
+    /// 实现须保证：返回的字节恰为一帧，多读到的下一帧数据必须留在缓冲区中
+    /// 供下次调用使用，不得丢弃——丢弃会导致请求与响应永久错位。
+    /// </remarks>
+    Task<OperationResult<byte[]>> SendAndReceiveAsync(
+        byte[] request,
+        TryGetFrameLength tryGetFrameLength,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// 断开介质连接。
