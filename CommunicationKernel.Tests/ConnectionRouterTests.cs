@@ -64,7 +64,7 @@ public sealed class ConnectionRouterTests {
         public Task<OperationResult> DisconnectAsync(CancellationToken cancellationToken)
             => Task.FromResult(OperationResult.Ok);
 
-        public Task<OperationResult<byte[]>> SendAndReceiveAsync(byte[] request, CancellationToken cancellationToken)
+        public Task<OperationResult<byte[]>> SendAndReceiveAsync(byte[] request, TryGetFrameLength tryGetFrameLength, CancellationToken cancellationToken)
             => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
     }
 

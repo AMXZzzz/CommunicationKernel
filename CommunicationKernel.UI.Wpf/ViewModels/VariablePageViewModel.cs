@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/VariablePageViewModel.cs
 // 层级: UI 层 — 变量配置页 ViewModel

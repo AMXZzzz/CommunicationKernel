@@ -1,4 +1,6 @@
-﻿using System.Windows.Controls;
+#nullable disable
+
+using System.Windows.Controls;
 
 namespace CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls {
     /// <summary>

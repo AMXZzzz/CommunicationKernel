@@ -1,23 +1,27 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Services/GrpcProtocolResolver.cs
 // 层级: UI 层 — 服务实现
-// 作用: IProtocolResolver 的 gRPC 实现。
-//       启动时向 EngineHost 发起 QueryProtocols 请求，
-//       将服务端实际加载的协议插件描述符缓存到本地；
-//       服务端不可达（Unimplemented / 网络错误）时自动回退到本地兜底列表，
-//       保证设备编辑面板的协议下拉框在离线状态下仍可正常显示。
-// 关键约束:
-//       兜底列表中的 ProtocolId 必须与插件 DLL 中 ProtocolMetadata.ProtocolId
-//       完全一致（modbus-tcp 而非 "Modbus TCP"），否则离线添加的设备
-//       在服务端恢复后依然注册失败。
-// 调用链:
-//   App.xaml.cs → DI → GrpcProtocolResolver(EngineHostGrpcClient)
-//     → 构造时 Task.Run 后台拉取 QueryProtocols → _cached 热替换
-//   DeviceEditPanel → IProtocolResolver.GetProtocols() → 渲染下拉框与表单
+// 作用: IProtocolResolver 的 gRPC 实现。协议清单一律来自 EngineHost，
+//       UI 层不内置任何协议知识。
+// 离线策略:
+//       上一次成功获取的服务端清单被缓存到本地 JSON 文件，
+//       宿主不可达时用它填充下拉框，并把状态标记为「离线缓存」。
+//       从未成功获取过时返回空列表，由界面提示用户检查连接。
+// 为什么不硬编码兜底列表:
+//       硬编码等于把协议 ID、展示名、介质、站号需求全部复制到 UI 源码里，
+//       新增一个协议插件就要改 UI 并重新发布客户端，插件架构的收益被抵消；
+//       且两份清单必然漂移（历史上就发生过 UI 用展示名当 ProtocolId 回传，
+//       导致服务端匹配不到工厂、每次添加设备都静默失败）。
 // -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 
@@ -25,82 +29,49 @@ namespace CommunicationKernel.UI.Wpf.Services
 {
     /// <summary>
     /// <see cref="IProtocolResolver"/> 的 gRPC 实现。
-    /// 优先从 EngineHost.QueryProtocols 获取已加载协议清单；
-    /// 服务端未实现或离线时回退到本地兜底列表。
     /// </summary>
     public sealed class GrpcProtocolResolver : IProtocolResolver
     {
-        // =========================================================================
-        // 兜底列表 — 服务端不可达时使用
-        // =========================================================================
+        /// <summary>协议清单本地缓存路径，与 settings.json 同目录。</summary>
+        private static readonly string CachePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "CommunicationKernel", "protocols.cache.json");
 
-        /// <summary>
-        /// 本地兜底协议列表。
-        /// ProtocolId 与各插件 DLL 中的 ProtocolMetadata.ProtocolId 严格对应，
-        /// 修改插件 ProtocolId 时必须同步更新此处。
-        /// 服务端 QueryProtocols 成功后此列表会被服务端结果整体覆盖。
-        /// </summary>
-        private static readonly List<ProtocolDescriptorDto> FallbackProtocols = new()
-        {
-            new ProtocolDescriptorDto("modbus-tcp",
-                "Modbus TCP (MBAP)",              "Tcp",    true,  "从站地址 1-247"),
-            new ProtocolDescriptorDto("modbus-rtu",
-                "Modbus RTU (CRC16, serial framing)", "Serial", true,  "从站地址 1-247"),
-            new ProtocolDescriptorDto("modbus-ascii",
-                "Modbus ASCII (LRC, ':' framing, CRLF)", "Serial", true,  "从站地址 1-247"),
-            new ProtocolDescriptorDto("panasonic-mewtocol-tcp",
-                "Panasonic MEWTOCOL-COM (TCP/ASCII)", "Tcp",    true,  "站号 1-99"),
-            new ProtocolDescriptorDto("siemens-s7-1200",
-                "Siemens S7-1200 (ISO on TCP)",   "Tcp",    false, string.Empty),
-            new ProtocolDescriptorDto("siemens-s7-200smart",
-                "Siemens S7-200Smart (ISO on TCP)", "Tcp",  false, string.Empty),
-        };
+        private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
-        // =========================================================================
-        // 私有字段
-        // =========================================================================
-
-        /// <summary>gRPC 客户端，用于调用 QueryProtocols。</summary>
         private readonly EngineHostGrpcClient _client;
 
         /// <summary>
-        /// 缓存的协议描述符列表。
-        /// 初始值为兜底列表；QueryProtocols 成功后替换为服务端结果。
-        /// 多线程读写通过 volatile + 整体替换（copy-on-write）保证安全，
-        /// 无需加锁（列表内容不可变，只替换引用）。
+        /// 当前协议清单。多线程读写通过 volatile + 整体替换（copy-on-write）保证安全。
         /// </summary>
-        private volatile List<ProtocolDescriptorDto> _cached;
+        private volatile List<ProtocolDescriptorDto> _cached = new();
 
-        // =========================================================================
-        // 构造函数
-        // =========================================================================
+        /// <summary>清单来源，供界面区分「实时」「离线缓存」「不可用」。</summary>
+        private volatile string _sourceState = ProtocolSourceState.Unavailable;
 
-        /// <summary>
-        /// 初始化并立即在后台发起 QueryProtocols 请求。
-        /// 构造完成后 <see cref="GetProtocols"/> 即可安全调用（先返回兜底列表）。
-        /// </summary>
+        /// <summary>防止并发刷新叠加。</summary>
+        private int _refreshing;
+
+        /// <inheritdoc />
+        public event Action ProtocolsChanged;
+
         /// <param name="client">已初始化的 gRPC 客户端。</param>
         public GrpcProtocolResolver(EngineHostGrpcClient client)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
 
-            // 先用兜底列表初始化，保证 GetProtocols 立即可用
-            _cached = new List<ProtocolDescriptorDto>(FallbackProtocols);
+            // 先加载本地缓存，保证界面立即有内容可显示
+            LoadCache();
 
-            // 后台异步拉取服务端真实列表，拉取完成后热替换缓存
-            _ = Task.Run(FetchFromServerAsync);
+            // 后台拉取服务端实时清单
+            _ = Task.Run(() => RefreshAsync(CancellationToken.None));
         }
-
-        // =========================================================================
-        // IProtocolResolver 实现
-        // =========================================================================
 
         /// <inheritdoc />
-        public IList<ProtocolDescriptorDto> GetProtocols()
-        {
-            // 返回当前缓存的快照副本，防止调用方修改内部状态
-            return new List<ProtocolDescriptorDto>(_cached);
-        }
+        public IList<ProtocolDescriptorDto> GetProtocols() => new List<ProtocolDescriptorDto>(_cached);
+
+        /// <inheritdoc />
+        public string SourceState => _sourceState;
 
         /// <inheritdoc />
         public ProtocolDescriptorDto FindById(string protocolId)
@@ -108,7 +79,6 @@ namespace CommunicationKernel.UI.Wpf.Services
             if (string.IsNullOrWhiteSpace(protocolId))
                 return null;
 
-            // 在当前缓存快照中按 Id 不区分大小写查找
             foreach (ProtocolDescriptorDto d in _cached)
             {
                 if (string.Equals(d.ProtocolId, protocolId, StringComparison.OrdinalIgnoreCase))
@@ -117,34 +87,102 @@ namespace CommunicationKernel.UI.Wpf.Services
             return null;
         }
 
-        // =========================================================================
-        // 私有方法
-        // =========================================================================
-
-        /// <summary>
-        /// 后台异步拉取服务端协议列表。
-        /// 成功后热替换 <see cref="_cached"/>；失败时保留兜底列表。
-        /// </summary>
-        private async Task FetchFromServerAsync()
+        /// <inheritdoc />
+        public async Task RefreshAsync(CancellationToken ct)
         {
+            // 已有刷新在途则直接返回，避免重复请求
+            if (Interlocked.Exchange(ref _refreshing, 1) == 1)
+                return;
+
             try
             {
                 IReadOnlyList<ProtocolDescriptorDto> serverList =
-                    await _client.QueryProtocolsAsync().ConfigureAwait(false);
+                    await _client.QueryProtocolsAsync(ct).ConfigureAwait(false);
 
-                // 仅当服务端返回非空列表时才替换缓存。
-                // 空列表意味着服务端未实现该接口或未加载任何插件，此时兜底列表更有用。
-                if (serverList != null && serverList.Count > 0)
+                if (serverList is { Count: > 0 })
                 {
-                    // copy-on-write：替换整个引用，调用方已持有的快照不受影响
-                    _cached = new List<ProtocolDescriptorDto>(serverList);
+                    _cached      = new List<ProtocolDescriptorDto>(serverList);
+                    _sourceState = ProtocolSourceState.Live;
+                    SaveCache(serverList);
+                }
+                else if (_cached.Count == 0)
+                {
+                    // 服务端可达但无插件，且本地无缓存：确实没有可用协议
+                    _sourceState = ProtocolSourceState.Unavailable;
+                }
+
+                ProtocolsChanged?.Invoke();
+            }
+            catch (Exception)
+            {
+                // 拉取失败：保留现有清单（可能来自缓存），仅更新状态
+                if (_cached.Count > 0 && _sourceState != ProtocolSourceState.Live)
+                    _sourceState = ProtocolSourceState.Cached;
+
+                ProtocolsChanged?.Invoke();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _refreshing, 0);
+            }
+        }
+
+        // =====================================================================
+        // 本地缓存
+        // =====================================================================
+
+        private void LoadCache()
+        {
+            try
+            {
+                if (!File.Exists(CachePath))
+                    return;
+
+                string json = File.ReadAllText(CachePath, Encoding.UTF8);
+                List<ProtocolDescriptorDto> loaded =
+                    JsonSerializer.Deserialize<List<ProtocolDescriptorDto>>(json, JsonOpts);
+
+                if (loaded is { Count: > 0 })
+                {
+                    _cached      = loaded;
+                    _sourceState = ProtocolSourceState.Cached;
                 }
             }
             catch (Exception)
             {
-                // 任何异常（网络、超时；Unimplemented 已在客户端内部捕获）
-                // 均保留兜底列表，不影响 UI 正常使用
+                // 缓存损坏或版本不兼容：忽略，等待服务端实时清单
             }
         }
+
+        private static void SaveCache(IReadOnlyList<ProtocolDescriptorDto> protocols)
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName(CachePath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                string tmp = CachePath + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(protocols, JsonOpts), Encoding.UTF8);
+                File.Move(tmp, CachePath, overwrite: true);
+            }
+            catch (Exception)
+            {
+                // 缓存写入失败不影响本次会话可用性
+            }
+        }
+    }
+
+    /// <summary>协议清单的来源状态。</summary>
+    public static class ProtocolSourceState
+    {
+        /// <summary>来自服务端实时查询。</summary>
+        public const string Live = "Live";
+
+        /// <summary>来自本地缓存，服务端当前不可达。</summary>
+        public const string Cached = "Cached";
+
+        /// <summary>无任何可用清单。</summary>
+        public const string Unavailable = "Unavailable";
     }
 }

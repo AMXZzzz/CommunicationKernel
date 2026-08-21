@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Services/GrpcDeviceService.cs
 // 层级: UI层 — 服务实现
@@ -336,18 +338,29 @@ namespace CommunicationKernel.UI.Wpf.Services
 
                 if (!success)
                 {
-                    // 服务端返回业务失败（非 Unimplemented）：仍继续本地删除，但记录警告
-                    _log?.Warn("Device",
-                        string.Format("RemoveRoute 返回失败 route={0} code={1}: {2}", id, code, msg));
+                    // 服务端未能注销：绝不本地删除。
+                    // 否则界面上设备消失、服务端却仍持有该路由与 PLC 连接，
+                    // 两侧状态从此分叉，且该 RouteId 再也无法重新注册。
+                    _log?.Error("Device",
+                        string.Format("删除设备失败 route={0} code={1}: {2}", id, code, msg));
+                    RaiseFailure(string.Format("删除设备失败：{0}",
+                        string.IsNullOrWhiteSpace(msg) ? code : msg));
+                    return;
                 }
 
-                // 3. 切回 UI 线程更新 ObservableCollection
+                // 3. 服务端已注销，切回 UI 线程移除本地条目
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     DeviceInfo target = FindDevice(id);
                     if (target != null)
                         Devices.Remove(target);
                 });
+
+                // 元数据随设备一并清除，避免同 RouteId 复用时残留旧名称
+                lock (_metaLock)
+                {
+                    _localMeta.Remove(id);
+                }
             });
         }
 

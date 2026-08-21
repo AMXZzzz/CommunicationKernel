@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Core/Interfaces/IProtocolResolver.cs
 // 层级: UI层 — 核心接口
@@ -8,7 +10,10 @@
 //   两者不可混用，否则服务端匹配不到协议工厂（历史缺陷即源于此）。
 // -----------------------------------------------------------------------------
 
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using CommunicationKernel.UI.Wpf.Services;
 
 namespace CommunicationKernel.UI.Wpf.Core.Interfaces
@@ -32,5 +37,20 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
         /// </summary>
         /// <param name="protocolId">协议唯一标识。</param>
         ProtocolDescriptorDto FindById(string protocolId);
+
+        /// <summary>
+        /// 协议清单来源状态，取值见 <see cref="ProtocolSourceState"/>。
+        /// 界面据此提示用户当前清单是实时的、来自离线缓存、还是完全不可用。
+        /// </summary>
+        string SourceState { get; }
+
+        /// <summary>
+        /// 重新向服务端拉取协议清单。
+        /// 供界面在宿主恢复后手动重试——构造时的那一次拉取失败后不会自动重试。
+        /// </summary>
+        Task RefreshAsync(CancellationToken ct);
+
+        /// <summary>清单或其来源状态发生变化时触发。可能在任意线程。</summary>
+        event Action ProtocolsChanged;
     }
 }

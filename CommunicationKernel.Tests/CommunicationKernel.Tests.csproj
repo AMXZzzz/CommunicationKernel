@@ -1,12 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="MSTest" Version="4.0.2" />
   </ItemGroup>
@@ -17,12 +10,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Core.Runtime\CommunicationKernel.Core.Runtime.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Plugin.Runtime\CommunicationKernel.Plugin.Runtime.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Engine.Router\CommunicationKernel.Engine.Router.csproj" />
     <ProjectReference Include="..\CommunicationKernel.EngineHost\CommunicationKernel.Engine.Host.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus.Core\CommunicationKernel.Plugins.Modbus.Core.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus.Tcp\CommunicationKernel.Plugins.Modbus.Tcp.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus.Rtu\CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus.Ascii\CommunicationKernel.Plugins.Modbus.Ascii.csproj" />

@@ -28,6 +28,10 @@ namespace CommunicationKernel.Plugin.Runtime.Loader;
 public sealed class PluginCatalog {
     private readonly ILogger<PluginCatalog> _logger;
 
+    /// <summary>
+    /// 初始化插件目录服务实例。
+    /// </summary>
+    /// <param name="logger">可选的日志记录器，用于记录插件加载过程中的信息和错误。</param>
     public PluginCatalog(ILogger<PluginCatalog>? logger = null) {
         _logger = logger ?? NullLogger<PluginCatalog>.Instance;
     }
@@ -36,14 +40,18 @@ public sealed class PluginCatalog {
     /// 扫描目录、校验并加载所有合法插件（单次加载，校验与运行实例同源）。
     /// </summary>
     public IReadOnlyList<PluginLoadResult> DiscoverAndLoad(string pluginDirectory) {
+
+        //! 扫描目录、校验并加载所有合法插件（单次加载，校验与运行实例同源）。
         if (string.IsNullOrWhiteSpace(pluginDirectory) || !Directory.Exists(pluginDirectory)) {
             _logger.LogError("PluginCatalog: plugin directory not found: '{Directory}'.", pluginDirectory);
             return Array.Empty<PluginLoadResult>();
         }
 
+        //! 扫描目录下所有 DLL 文件
         string[] dlls = Directory.GetFiles(pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly);
         _logger.LogInformation("PluginCatalog: scanning {Count} DLL(s) in '{Directory}'.", dlls.Length, pluginDirectory);
 
+        //! 尝试加载每个 DLL，并收集加载结果
         var results = new List<PluginLoadResult>();
         foreach (string dll in dlls) {
             PluginLoadResult? result = TryLoadPlugin(dll);
@@ -51,46 +59,9 @@ public sealed class PluginCatalog {
                 results.Add(result);
         }
 
+        //! 记录加载结果
         _logger.LogInformation("PluginCatalog: loaded {Loaded}/{Total} plugin(s).", results.Count, dlls.Length);
         return results;
-    }
-
-    /// <summary>
-    /// DiscoverAndValidate — 保留旧签名供现有外部代码兼容，内部委托 DiscoverAndLoad。
-    /// </summary>
-    public IReadOnlyList<PluginValidationResult> DiscoverAndValidate(string pluginDirectory) {
-        if (string.IsNullOrWhiteSpace(pluginDirectory) || !Directory.Exists(pluginDirectory)) {
-            _logger.LogError("PluginCatalog: plugin directory not found: '{Directory}'.", pluginDirectory);
-            return new[] {
-                new PluginValidationResult {
-                    AssemblyPath = pluginDirectory ?? string.Empty,
-                    IsValid      = false,
-                    ErrorCode    = KernelErrorCode.PluginNotFound,
-                    Message      = "Plugin directory not found"
-                }
-            };
-        }
-
-        var validationResults = new List<PluginValidationResult>();
-        foreach (string dll in Directory.GetFiles(pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly))
-            validationResults.Add(ValidateOnly(dll));
-
-        return validationResults;
-    }
-
-    /// <summary>
-    /// LoadValidPlugins — 保留旧签名供外部调用；内部按校验结果加载。
-    /// </summary>
-    public IReadOnlyList<PluginLoadResult> LoadValidPlugins(IEnumerable<PluginValidationResult> validations) {
-        ArgumentNullException.ThrowIfNull(validations);
-
-        var loaded = new List<PluginLoadResult>();
-        foreach (PluginValidationResult v in validations.Where(x => x.IsValid && x.Descriptor != null)) {
-            PluginLoadResult? result = TryLoadPlugin(v.AssemblyPath);
-            if (result is not null)
-                loaded.Add(result);
-        }
-        return loaded;
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
@@ -101,17 +72,22 @@ public sealed class PluginCatalog {
     private PluginLoadResult? TryLoadPlugin(string assemblyPath) {
         var loadContext = new PluginLoadContext(assemblyPath);
         try {
+
+            //! 加载插件程序集
             Assembly assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
 
+            //! 查找实现 IPluginManifest 的类型
             Type? manifestType = assembly.GetTypes()
                 .FirstOrDefault(t => !t.IsAbstract && typeof(IPluginManifest).IsAssignableFrom(t));
 
+            //! 校验插件清单类型是否存在
             if (manifestType is null) {
                 _logger.LogWarning("PluginCatalog: no IPluginManifest in '{Path}', skipped.", assemblyPath);
                 loadContext.Unload();
                 return null;
             }
 
+            //! 创建插件清单实例并获取描述符
             var manifest = (IPluginManifest?)Activator.CreateInstance(manifestType);
             if (manifest?.Descriptor is null) {
                 _logger.LogWarning("PluginCatalog: invalid descriptor in '{Path}', skipped.", assemblyPath);
@@ -119,6 +95,7 @@ public sealed class PluginCatalog {
                 return null;
             }
 
+            //! 检查插件 API 版本是否与内核兼容
             PluginDescriptor descriptor = manifest.Descriptor;
             if (descriptor.ApiVersion != KernelVersions.PluginApiVersion) {
                 _logger.LogWarning(
@@ -128,9 +105,11 @@ public sealed class PluginCatalog {
                 return null;
             }
 
+            //! 成功加载插件，记录日志并返回结果
             _logger.LogInformation("PluginCatalog: loaded plugin '{PluginId}' v{Version} from '{Path}'.",
                 descriptor.PluginId, descriptor.Version, assemblyPath);
 
+            //! 返回加载结果，包括插件描述符、程序集和加载上下文
             return new PluginLoadResult {
                 Descriptor  = descriptor,
                 Assembly    = assembly,
@@ -149,51 +128,12 @@ public sealed class PluginCatalog {
     }
 
     /// <summary>
-    /// 轻量校验（仅用于 DiscoverAndValidate 兼容路径），不保留加载上下文。
+    /// 创建一个失败的插件验证结果对象。
     /// </summary>
-    private PluginValidationResult ValidateOnly(string assemblyPath) {
-        var loadContext = new PluginLoadContext(assemblyPath);
-        try {
-            Assembly assembly = loadContext.LoadFromAssemblyPath(assemblyPath);
-
-            Type? manifestType = assembly.GetTypes()
-                .FirstOrDefault(t => !t.IsAbstract && typeof(IPluginManifest).IsAssignableFrom(t));
-
-            if (manifestType is null) {
-                loadContext.Unload();
-                return Fail(assemblyPath, KernelErrorCode.PluginLoadFailed, "No IPluginManifest implementation");
-            }
-
-            var manifest = (IPluginManifest?)Activator.CreateInstance(manifestType);
-            if (manifest?.Descriptor is null) {
-                loadContext.Unload();
-                return Fail(assemblyPath, KernelErrorCode.PluginLoadFailed, "Invalid plugin descriptor");
-            }
-
-            PluginDescriptor descriptor = manifest.Descriptor;
-            loadContext.Unload();
-
-            if (descriptor.ApiVersion != KernelVersions.PluginApiVersion)
-                return new PluginValidationResult {
-                    AssemblyPath = assemblyPath, IsValid = false,
-                    ErrorCode    = KernelErrorCode.PluginApiVersionMismatch,
-                    Message      = $"API version mismatch: {descriptor.ApiVersion}", Descriptor = descriptor
-                };
-
-            return new PluginValidationResult {
-                AssemblyPath = assemblyPath, IsValid = true,
-                ErrorCode    = KernelErrorCode.None, Message = "OK", Descriptor = descriptor
-            };
-        } catch (ReflectionTypeLoadException ex) {
-            loadContext.Unload();
-            return Fail(assemblyPath, KernelErrorCode.PluginIsolationError,
-                ex.LoaderExceptions.FirstOrDefault()?.Message ?? ex.Message);
-        } catch (Exception ex) {
-            loadContext.Unload();
-            return Fail(assemblyPath, KernelErrorCode.PluginLoadFailed, ex.Message);
-        }
-    }
-
+    /// <param name="path"></param>
+    /// <param name="code"></param>
+    /// <param name="msg"></param>
+    /// <returns></returns>
     private static PluginValidationResult Fail(string path, KernelErrorCode code, string msg) =>
         new PluginValidationResult { AssemblyPath = path, IsValid = false, ErrorCode = code, Message = msg };
 }

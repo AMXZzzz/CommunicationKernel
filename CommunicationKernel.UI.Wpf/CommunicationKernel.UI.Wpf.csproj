@@ -5,7 +5,6 @@
        层级: UI 层 — WPF 桌面客户端
        作用: 通过 gRPC 连接 EngineHost，提供桌面端监控与配置界面。
        依赖: Grpc.Net.Client + Google.Protobuf + Grpc.Tools（生成客户端 stub）
-             CommunicationKernel.Contracts（共享契约常量）
        ======================================================================== -->
 
   <PropertyGroup>
@@ -13,10 +12,10 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWpf>true</UseWpf>
     <!-- 启用隐式 using（System, System.Threading.Tasks 等自动引入） -->
-    <ImplicitUsings>enable</ImplicitUsings>
     <!-- 禁用可空引用类型注释（与旧项目风格保持一致） -->
-    <Nullable>disable</Nullable>
-    <LangVersion>latest</LangVersion>
+    <!-- 可空引用检查由 Directory.Build.props 统一开启。
+         存量文件以 #nullable disable 逐文件豁免，改造完一个即摘除一个，
+         新文件默认受检——这是防止继续劣化的棘轮。 -->
     <!-- 输出类型为 WinExe，避免出现控制台黑窗口 -->
     <OutputType>WinExe</OutputType>
     <!-- 继承 Directory.Build.props 的 TreatWarningsAsErrors=true -->
@@ -53,7 +52,6 @@
 
   <ItemGroup>
     <!-- 引用契约层（共享错误码等常量） -->
-    <ProjectReference Include="..\CommunicationKernel.Contracts\CommunicationKernel.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

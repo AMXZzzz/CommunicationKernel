@@ -19,6 +19,7 @@ using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
+using CommunicationKernel.Engine.Router;
 using CommunicationKernel.Engine.Router.Abstractions;
 using CommunicationKernel.Engine.Router.Models;
 using CommunicationKernel.EngineHost.Host;
@@ -37,7 +38,7 @@ public sealed class HostRuntimeLifecycleTests
     {
         // 装配服务人为放慢，放大「检查-装配-登记」之间的竞态窗口
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 50);
-        var runtime  = new HostRuntime(assembly);
+        var runtime  = new HostRuntime(assembly, NewOrchestrator());
 
         // 8 个请求并发注册同一个 RouteId
         Task<OperationResult<string>>[] tasks = Enumerable.Range(0, 8)
@@ -57,7 +58,7 @@ public sealed class HostRuntimeLifecycleTests
     public async Task RegisterRoute_LosersDoNotLeakTransportClients()
     {
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 50);
-        var runtime  = new HostRuntime(assembly);
+        var runtime  = new HostRuntime(assembly, NewOrchestrator());
 
         Task<OperationResult<string>>[] tasks = Enumerable.Range(0, 8)
             .Select(i => runtime.RegisterRouteAsync(
@@ -79,7 +80,7 @@ public sealed class HostRuntimeLifecycleTests
     public async Task RegisterRoute_FailedAssembly_ReleasesReservation()
     {
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 0) { FailAssembly = true };
-        var runtime  = new HostRuntime(assembly);
+        var runtime  = new HostRuntime(assembly, NewOrchestrator());
 
         OperationResult<string> first = await runtime.RegisterRouteAsync(
             NewCommand("route-A"), CancellationToken.None);
@@ -97,7 +98,7 @@ public sealed class HostRuntimeLifecycleTests
     public async Task RegisterRoute_DuplicateRouteKey_IsRejectedAndRolledBack()
     {
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 0);
-        var runtime  = new HostRuntime(assembly);
+        var runtime  = new HostRuntime(assembly, NewOrchestrator());
 
         // 相同 protocol+address+port+station 构成相同 RouteKey
         Assert.IsTrue((await runtime.RegisterRouteAsync(
@@ -118,7 +119,7 @@ public sealed class HostRuntimeLifecycleTests
     [TestMethod]
     public async Task UnregisterRoute_AllowsReRegisteringSameRouteId()
     {
-        var runtime = new HostRuntime(new SlowFakeAssemblyService(0));
+        var runtime = new HostRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
 
         Assert.IsTrue((await runtime.RegisterRouteAsync(
             NewCommand("route-A"), CancellationToken.None)).Success);
@@ -136,7 +137,7 @@ public sealed class HostRuntimeLifecycleTests
     [TestMethod]
     public async Task UnregisterRoute_NotFound_ReturnsRouteNotFound()
     {
-        var runtime = new HostRuntime(new SlowFakeAssemblyService(0));
+        var runtime = new HostRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
 
         OperationResult result = await runtime.UnregisterRouteAsync(
             "missing", CancellationToken.None);
@@ -152,7 +153,7 @@ public sealed class HostRuntimeLifecycleTests
     [TestMethod]
     public async Task UnregisterRoute_BroadcastsFinalOfflineEvent()
     {
-        var runtime = new HostRuntime(new SlowFakeAssemblyService(0));
+        var runtime = new HostRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
         var events  = new List<HostRuntime.RouteStatusSnapshot>();
 
         await runtime.RegisterRouteAsync(NewCommand("route-A"), CancellationToken.None);
@@ -169,7 +170,7 @@ public sealed class HostRuntimeLifecycleTests
     [TestMethod]
     public async Task UnregisterRoute_RemovesStatusSnapshot()
     {
-        var runtime = new HostRuntime(new SlowFakeAssemblyService(0));
+        var runtime = new HostRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
 
         await runtime.RegisterRouteAsync(NewCommand("route-A"), CancellationToken.None);
         Assert.HasCount(1, runtime.SnapshotStatuses("route-A"));
@@ -187,7 +188,7 @@ public sealed class HostRuntimeLifecycleTests
     [TestMethod]
     public async Task RepeatedSuccessfulReads_DoNotFloodStatusEvents()
     {
-        var runtime = new HostRuntime(new SlowFakeAssemblyService(0));
+        var runtime = new HostRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
         await runtime.RegisterRouteAsync(NewCommand("route-A"), CancellationToken.None);
 
         int eventCount = 0;
@@ -208,6 +209,10 @@ public sealed class HostRuntimeLifecycleTests
     // =========================================================================
     // 测试替身
     // =========================================================================
+
+    /// <summary>构造一套真实子组件的编排器（子组件本身是纯内存实现，无需替身）。</summary>
+    private static IRouterOrchestrator NewOrchestrator()
+        => new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator());
 
     private static HostRuntime.RegisterRouteCommand NewCommand(
         string routeId, string address = "127.0.0.1") =>
@@ -303,7 +308,7 @@ public sealed class HostRuntimeLifecycleTests
         public Task<OperationResult> ConnectAsync(TransportEndpoint endpoint, CancellationToken ct)
             => Task.FromResult(OperationResult.Ok);
 
-        public Task<OperationResult<byte[]>> SendAndReceiveAsync(byte[] request, CancellationToken ct)
+        public Task<OperationResult<byte[]>> SendAndReceiveAsync(byte[] request, TryGetFrameLength tryGetFrameLength, CancellationToken ct)
             => Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
 
         public Task<OperationResult> DisconnectAsync(CancellationToken ct)

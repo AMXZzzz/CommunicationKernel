@@ -113,7 +113,10 @@ public sealed class ModbusRtuDriverFrameTests {
         Assert.AreEqual(0x00, r.Value[2]); // Addr Hi
         Assert.AreEqual(0x00, r.Value[3]); // Addr Lo = 0
         Assert.AreEqual(0x00, r.Value[4]); // Qty Hi
-        Assert.AreEqual(0x04, r.Value[5]); // Qty Lo = 4 (驱动以字节数为单位传输 quantity)
+        // length 语义统一为「字节」：请求 4 字节 = 2 个 16 位寄存器。
+        // 历史实现中 RTU/ASCII 把 length 当寄存器数、TCP/S7/MEWTOCOL 当字节数，
+        // 同一变量换协议后读回长度直接翻倍且不报错。
+        Assert.AreEqual(0x02, r.Value[5]); // Qty Lo = 2 个寄存器
     }
 
     [TestMethod]
@@ -232,7 +235,7 @@ public sealed class SiemensS7DriverFrameTests {
 public sealed class MewtocolTcpDriverFrameTests {
 
     private readonly IProtocolDriver _driver =
-        new MewtocolTcpProtocolDriverFactory().CreateDriver();
+        new MewtocolProtocolDriverFactory().CreateDriver();
 
     [TestMethod]
     public void BuildReadFrame_DT100_ReturnsMewtocolAsciiFrame() {

@@ -1,5 +1,42 @@
 <Project>
+
+  <!--
+    全解决方案共用的编译属性。
+
+    此前 TargetFramework / Nullable / ImplicitUsings / TreatWarningsAsErrors
+    在每个 csproj 各写一遍，既冗长又容易漂移——WPF 项目就曾单独关掉
+    可空引用检查，使占解决方案三分之一的代码失去空引用静态分析。
+    各项目仍可按需覆盖，但默认值集中在此处。
+  -->
+
   <PropertyGroup>
-	<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- 统一程序集与包标识前缀 -->
+    <Company>CommunicationKernel</Company>
+    <Product>CommunicationKernel</Product>
+    <Version>1.0.0</Version>
+
+    <!-- 让代码风格违规在构建时可见 -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!--
+      风格类诊断保持"可见但不阻断"。
+      TreatWarningsAsErrors 针对的是正确性问题；把 IDE 风格规则一并变成
+      硬错误会让存量代码的整改与功能修复耦合在一起，反而拖慢真正重要的修复。
+      清理完毕后可逐条从此列表移除。
+    -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IDE0051;IDE0060;EnableGenerateDocumentationFile</WarningsNotAsErrors>
+
+    <!--
+      XML 文档暂不生成。开启后 CS1573（param 标记不全）与 CS1591（缺少注释）
+      会在存量代码中大面积触发，属于独立的注释补全任务，不与本轮修复混做。
+    -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
+
 </Project>

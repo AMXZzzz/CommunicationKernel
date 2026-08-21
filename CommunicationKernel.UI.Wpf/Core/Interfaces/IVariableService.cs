@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Interfaces/IVariableService.cs
 // 层级: UI层 — 核心接口
 // 作用: 定义变量管理服务的抽象接口，供 VariablePageViewModel 依赖注入使用。

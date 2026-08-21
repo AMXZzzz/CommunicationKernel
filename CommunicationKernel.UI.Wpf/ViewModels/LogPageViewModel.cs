@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: ViewModels/LogPageViewModel.cs
 // 层级: UI层 — 日志页 ViewModel
 // 作用: 订阅 IAppLogger.EntryAdded 事件，将日志条目转化为 UI 可绑定的视图模型，

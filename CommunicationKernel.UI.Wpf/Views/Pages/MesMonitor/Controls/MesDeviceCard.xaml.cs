@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: Views/Pages/MesMonitor/Controls/MesDeviceCard.xaml.cs
 // 层级: UI 层 — MES 监控页子控件

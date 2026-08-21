@@ -1,4 +1,6 @@
-﻿using System;
+#nullable disable
+
+using System;
 using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Windows;

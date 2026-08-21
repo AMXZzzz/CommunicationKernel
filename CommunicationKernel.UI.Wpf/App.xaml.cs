@@ -1,3 +1,5 @@
+#nullable disable
+
 // -----------------------------------------------------------------------------
 // 文件: App.xaml.cs
 // 层级: UI 层 — WPF 应用程序启动入口（组合根 Composition Root）
@@ -59,6 +61,9 @@ public partial class App : Application {
     /// 不使用 StartupUri，避免 XAML 解析器绕开 DI 调用无参构造函数。
     /// </summary>
     private async void Application_Startup(object sender, StartupEventArgs e) {
+      try {
+        // 0. 先挂全局异常兜底，确保启动阶段的异常也能被捕获并展示
+        InstallGlobalExceptionHandlers();
 
         // 1. 构建主机（含 DI 容器）
         _host = Host.CreateDefaultBuilder()
@@ -85,6 +90,55 @@ public partial class App : Application {
         // 5. 从 DI 取主窗口并显示
         MainWindow mainWindow = _host.Services.GetRequiredService<MainWindow>();
         mainWindow.Show();
+      } catch (Exception ex) {
+        // Application_Startup 是 async void：首个 await 之后抛出的异常
+        // 会被 post 回同步上下文成为未处理异常，直接闪退且不留任何提示。
+        // 启动失败必须让用户看到原因（最常见的是 EngineHost 地址不可达）。
+        MessageBox.Show(
+            "应用启动失败：\n\n" + ex.Message,
+            "启动错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        Shutdown(1);
+      }
+    }
+
+    /// <summary>
+    /// 安装全局未处理异常兜底。
+    /// </summary>
+    /// <remarks>
+    /// 覆盖三个来源：UI 线程（<see cref="Application.DispatcherUnhandledException"/>）、
+    /// 后台任务（<see cref="TaskScheduler.UnobservedTaskException"/>）、
+    /// 以及其余 AppDomain 级异常。没有兜底时，后台轮询或状态流里的任何
+    /// 意外异常都会让进程静默退出，现场无从排查。
+    /// </remarks>
+    private void InstallGlobalExceptionHandlers() {
+        DispatcherUnhandledException += (_, args) => {
+            TryLog("UI", args.Exception);
+            MessageBox.Show(
+                "发生未处理的界面异常：\n\n" + args.Exception.Message,
+                "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            // 标记已处理，避免单个界面异常导致整个应用退出
+            args.Handled = true;
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, args) => {
+            TryLog("Task", args.Exception);
+            // 标记已观测，防止进程因未观测任务异常而终止
+            args.SetObserved();
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) => {
+            if (args.ExceptionObject is Exception ex)
+                TryLog("AppDomain", ex);
+        };
+    }
+
+    /// <summary>尽力把异常写入应用日志；日志器不可用时静默忽略。</summary>
+    private void TryLog(string category, Exception ex) {
+        try {
+            _host?.Services.GetService<IAppLogger>()?.Error(category, "未处理异常: " + ex.Message, ex);
+        } catch {
+            // 兜底处理器自身绝不能再抛异常
+        }
     }
 
     // -------------------------------------------------------------------------

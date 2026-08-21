@@ -112,7 +112,7 @@
                                Foreground="{StaticResource SF.Brush.Text.Secondary}">
                         <Run Text="地址由所选协议解释：状态点用位地址（如 R10A、M0.0）；数值/字符串用字地址（如 DT100、DB1.DBW0）"/>
                         <LineBreak/>
-                        <Run Text="站号已在设备配置中统一设置，此处直接填写本机地址即可。"/>
+                        <Run Text="站号已在设备配置中统一设置，此处只需填写地址本身。"/>
                     </TextBlock>
 
                     <Grid Margin="0,14,0,0">

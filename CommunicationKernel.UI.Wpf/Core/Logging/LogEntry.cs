@@ -1,3 +1,5 @@
+#nullable disable
+
 // 文件: Core/Logging/LogEntry.cs
 // 层级: UI层 — 核心日志
 // 作用: 表示应用内一条日志记录，包含时间戳、级别、类别和消息正文。
