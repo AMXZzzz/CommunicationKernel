@@ -23,7 +23,29 @@ internal readonly record struct ModbusAsciiAddressInfo(
 /// </summary>
 internal static class ModbusAsciiAddress
 {
-    internal static OperationResult<ModbusAsciiAddressInfo> Parse(string address)
+    /// <summary>Modbus 从站地址的协议缺省值（未配置站号时使用）。</summary>
+    internal const byte FallbackSlaveId = 1;
+
+    /// <summary>
+    /// 将设备级站号原文解析为默认从站 ID。
+    /// 空值或非法值一律回落到 <see cref="FallbackSlaveId"/>。
+    /// </summary>
+    /// <param name="station">RegisterRoute.station 原文，可为 null / 空。</param>
+    internal static byte ResolveDefaultSlaveId(string? station)
+    {
+        if (string.IsNullOrWhiteSpace(station))
+            return FallbackSlaveId;
+
+        // Modbus 从站地址有效范围 1-247
+        return byte.TryParse(station.Trim(), out byte parsed) && parsed is >= 1 and <= 247
+            ? parsed
+            : FallbackSlaveId;
+    }
+
+    /// <param name="address">地址字符串，可含可选的 "从站号:" 前缀。</param>
+    /// <param name="defaultSlaveId">地址未带前缀时使用的从站 ID（来自设备级站号）。</param>
+    internal static OperationResult<ModbusAsciiAddressInfo> Parse(
+        string address, byte defaultSlaveId = FallbackSlaveId)
     {
         if (string.IsNullOrWhiteSpace(address))
             return OperationResult<ModbusAsciiAddressInfo>.Fail(
@@ -31,7 +53,7 @@ internal static class ModbusAsciiAddress
 
         try
         {
-            return DoParse(address.Trim());
+            return DoParse(address.Trim(), defaultSlaveId);
         }
         catch
         {
@@ -40,9 +62,10 @@ internal static class ModbusAsciiAddress
         }
     }
 
-    private static OperationResult<ModbusAsciiAddressInfo> DoParse(string addr)
+    private static OperationResult<ModbusAsciiAddressInfo> DoParse(string addr, byte defaultSlaveId)
     {
-        byte slaveId = 1;
+        // 缺省取设备级站号；下方的 "N:" 前缀分支可覆盖（RS-485 一主多从）
+        byte slaveId = defaultSlaveId;
 
         int colonIdx = addr.IndexOf(':');
         if (colonIdx > 0 && colonIdx < 4)

@@ -31,8 +31,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 只生成客户端 stub -->
-    <Protobuf Include="Protos\V1\engine_host.proto" GrpcServices="Client" />
+    <!-- 引用解决方案根目录下的共享 proto，只生成客户端 stub。
+         此前本项目持有独立副本且长期滞后（缺 RemoveRoute / QueryProtocols）。 -->
+    <Protobuf Include="..\Protos\V1\engine_host.proto"
+              ProtoRoot=".."
+              GrpcServices="Client"
+              Link="Protos\V1\engine_host.proto" />
   </ItemGroup>
 
   <ItemGroup>

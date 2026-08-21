@@ -65,11 +65,15 @@ public sealed class MewtocolTcpProtocolDriverFactory : IProtocolDriverFactory
     {
         ProtocolId       = "panasonic-mewtocol-tcp",
         DisplayName      = "Panasonic MEWTOCOL-COM (TCP/ASCII)",
+        TransportKind    = TransportKind.Tcp,
+        RequiresStation  = true,
+        StationHint      = "站号 1-99",
         PluginApiVersion = 1
     };
 
     /// <inheritdoc />
-    public IProtocolDriver CreateDriver() => new MewtocolTcpProtocolDriver(Metadata);
+    public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        new MewtocolTcpProtocolDriver(Metadata, MewtocolAddress.ResolveDefaultStation(context?.Station));
 }
 
 // =============================================================================
@@ -85,9 +89,16 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
     // 构造
     // -------------------------------------------------------------------------
 
-    internal MewtocolTcpProtocolDriver(ProtocolMetadata metadata)
+    /// <summary>
+    /// 本路由的默认站号，来自设备级站号配置。
+    /// 地址中的 "NN:" 前缀可覆盖它（一条链路挂多台 PLC 的场景）。
+    /// </summary>
+    private readonly byte _defaultStation;
+
+    internal MewtocolTcpProtocolDriver(ProtocolMetadata metadata, byte defaultStation)
     {
-        Metadata = metadata;
+        Metadata        = metadata;
+        _defaultStation = defaultStation;
     }
 
     // -------------------------------------------------------------------------
@@ -99,7 +110,7 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildReadFrame(string address, int length) {
-        OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address);
+        OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address, _defaultStation);
         if (!parsed.Success)
             return OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode);
 
@@ -115,7 +126,7 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
         if (payload is null || payload.Length == 0)
             return OperationResult<byte[]>.Fail("write payload is empty", KernelErrorCode.InvalidArgument);
 
-        OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address);
+        OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address, _defaultStation);
         if (!parsed.Success)
             return OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode);
 
@@ -133,7 +144,7 @@ internal sealed class MewtocolTcpProtocolDriver : IProtocolDriver
             await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success) return response;
 
-        OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address);
+        OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address, _defaultStation);
         bool isBit = !parsed.Success || parsed.Value.IsBit || length == 1;
         return isBit
             ? MewtocolFrame.ParseReadContactResponse(response.Value)

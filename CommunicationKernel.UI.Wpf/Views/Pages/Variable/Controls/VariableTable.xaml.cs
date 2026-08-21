@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Models;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
@@ -44,6 +45,33 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             if (rb == null || rb.Tag == null) return;
             _filterTag = rb.Tag.ToString();
             Rebuild();
+        }
+
+        /// <summary>
+        /// 轮询开关点击：同步新值到 VariableItem，调用 Update 触发 VariablesChanged，
+        /// VariablePollingService 收到通知后重建轮询任务集合。
+        /// </summary>
+        private void ChkPoll_Click(object sender, RoutedEventArgs e) {
+            CheckBox cb = sender as CheckBox;
+            if (cb == null || VariableService == null) return;
+            string id = cb.Tag as string;
+            if (string.IsNullOrEmpty(id)) return;
+
+            bool newValue = cb.IsChecked == true;
+            VariableItem item = FindVariable(id);
+            if (item == null) return;
+
+            // 更新 VariableItem 上的轮询标志，然后通知服务层重建轮询集合
+            item.IsPollingEnabled = newValue;
+            VariableService.Update(item);
+
+            // 同步 Row 视图模型的属性，使 CheckBox 保持正确绑定状态
+            foreach (Row r in _rows) {
+                if (r.Id == id) {
+                    r.IsPollingEnabled = newValue;
+                    break;
+                }
+            }
         }
 
         private void BtnHint_Click (object sender, RoutedEventArgs e) {
@@ -161,6 +189,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             private string _writeText;
             private bool _writeDirty;
             private bool _writeFocused;
+            private bool _isPollingEnabled;
 
             public string Id { get; set; }
             public int Index { get; set; }
@@ -174,6 +203,19 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             public Visibility ValueTextVisibility { get; set; }
             public Visibility WriteEditorVisibility { get; set; }
             public Visibility DescToolTipVisibility { get; set; }
+
+            /// <summary>
+            /// 是否启用轮询。绑定 CheckBox.IsChecked（OneWay），
+            /// 点击时由 ChkPoll_Click 写回此属性并调用 VariableService.Update。
+            /// </summary>
+            public bool IsPollingEnabled {
+                get { return _isPollingEnabled; }
+                set {
+                    if (_isPollingEnabled == value) return;
+                    _isPollingEnabled = value;
+                    Raise(nameof(IsPollingEnabled));
+                }
+            }
 
             public string ValueText {
                 get { return _valueText; }
@@ -240,6 +282,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
                 row._valueText = val;
                 row._writeText = write;
                 row._writeDirty = false;
+                row._isPollingEnabled = v.IsPollingEnabled;
                 row._source = v;
                 v.PropertyChanged += row.OnSourcePropertyChanged;
                 return row;

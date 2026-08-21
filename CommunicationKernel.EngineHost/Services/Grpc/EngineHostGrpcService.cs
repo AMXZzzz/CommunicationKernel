@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.EngineHost.Grpc.V1;
@@ -32,13 +33,20 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
     private const int StatusChannelCapacity = 256;
 
     private readonly HostRuntime _hostRuntime;
+    private readonly IRouteAssemblyService _routeAssemblyService;
     private readonly ILogger<EngineHostGrpcService> _logger;
 
-    public EngineHostGrpcService(HostRuntime hostRuntime, ILogger<EngineHostGrpcService> logger) {
+    public EngineHostGrpcService(
+        HostRuntime hostRuntime,
+        IRouteAssemblyService routeAssemblyService,
+        ILogger<EngineHostGrpcService> logger) {
+
         ArgumentNullException.ThrowIfNull(hostRuntime);
+        ArgumentNullException.ThrowIfNull(routeAssemblyService);
         ArgumentNullException.ThrowIfNull(logger);
-        _hostRuntime = hostRuntime;
-        _logger      = logger;
+        _hostRuntime          = hostRuntime;
+        _routeAssemblyService = routeAssemblyService;
+        _logger               = logger;
     }
 
     public override Task<HealthResponse> Health(HealthRequest request, ServerCallContext context) {
@@ -198,6 +206,54 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
             _hostRuntime.RouteStatusChanged -= OnStatus;
             channel.Writer.TryComplete();
         }
+    }
+
+    /// <summary>
+    /// 注销路由：调用 HostRuntime.UnregisterRouteAsync 释放传输连接和协议驱动，
+    /// 然后向客户端回报操作结果。
+    /// </summary>
+    public override async Task<RemoveRouteResponse> RemoveRoute(
+        RemoveRouteRequest request, ServerCallContext context) {
+
+        OperationResult result = await _hostRuntime
+            .UnregisterRouteAsync(request.RouteId, context.CancellationToken)
+            .ConfigureAwait(false);
+
+        return new RemoveRouteResponse {
+            Success      = result.Success,
+            ErrorCode    = result.ErrorCode.ToString(),
+            ErrorMessage = result.Success ? string.Empty : result.ErrorMessage
+        };
+    }
+
+    /// <summary>
+    /// 列出服务端已加载的全部协议插件描述符。
+    /// 客户端（UI 层）据此渲染协议下拉框与设备表单，无需内置任何协议知识。
+    /// </summary>
+    /// <remarks>
+    /// 数据源是插件工厂清单，与当前是否已注册路由无关——
+    /// 空载 Host 同样返回完整可用协议列表，这正是 UI 首次添加设备时的场景。
+    /// </remarks>
+    public override Task<QueryProtocolsResponse> QueryProtocols(
+        QueryProtocolsRequest request, ServerCallContext context) {
+
+        _ = request;
+        _ = context;
+
+        var response = new QueryProtocolsResponse();
+        foreach (ProtocolMetadata meta in _routeAssemblyService.GetAvailableProtocols()) {
+            response.Protocols.Add(new ProtocolDescriptor {
+                ProtocolId      = meta.ProtocolId,
+                DisplayName     = string.IsNullOrWhiteSpace(meta.DisplayName)
+                    ? meta.ProtocolId          // 无展示名时回落到 ID，保证下拉框不出现空项
+                    : meta.DisplayName,
+                TransportKind   = meta.TransportKind.ToString(),
+                RequiresStation = meta.RequiresStation,
+                StationHint     = meta.StationHint ?? string.Empty
+            });
+        }
+
+        return Task.FromResult(response);
     }
 
     private static RouteStatusEvent ToStatusEvent(HostRuntime.RouteStatusSnapshot snapshot) =>

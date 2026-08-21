@@ -15,7 +15,7 @@
 
   <!-- 宿主进程 + 契约 -->
   <Project Path="CommunicationKernel.Contracts/CommunicationKernel.Contracts.csproj" />
-  <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.EngineHost.csproj" />
+  <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj" />
 
   <!-- 协议插件：Modbus -->
   <Project Path="CommunicationKernel.Plugins.Modbus.Tcp/CommunicationKernel.Plugins.Modbus.Tcp.csproj" />

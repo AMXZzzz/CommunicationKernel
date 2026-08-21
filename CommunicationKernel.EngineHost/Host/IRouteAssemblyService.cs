@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Engine.Router.Abstractions;
@@ -25,6 +27,17 @@ public interface IRouteAssemblyService {
     Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
         HostRuntime.RegisterRouteCommand command,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 列出当前已加载的全部协议插件元信息。
+    /// 用于向 UI 提供可选协议清单（含 ProtocolId、展示名、所需传输介质、是否需要站号），
+    /// 使 UI 无需硬编码任何协议知识即可渲染设备表单。
+    /// </summary>
+    /// <remarks>
+    /// 数据源是插件工厂本身，与「当前是否已注册路由」无关：
+    /// 空载 Host 也必须返回完整的可用协议清单。
+    /// </remarks>
+    IReadOnlyList<ProtocolMetadata> GetAvailableProtocols();
 }
 
 /// <summary>

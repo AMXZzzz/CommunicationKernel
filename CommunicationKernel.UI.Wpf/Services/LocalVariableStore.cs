@@ -1,28 +1,53 @@
+// -----------------------------------------------------------------------------
 // 文件: Services/LocalVariableStore.cs
 // 层级: UI层 — 服务实现
-// 作用: IVariableService 的内存实现，变量列表仅存储在内存中（当前版本不持久化）。
+// 作用: IVariableService 的内存实现，变量列表在内存中维护，并持久化到本地 JSON 文件。
+//       每次 Add / Update / Remove 后：
+//         1) 触发 VariablesChanged 事件，通知 VariablePollingService 重建轮询集合；
+//         2) 异步将最新列表写入 %AppData%\CommunicationKernel\variables.json，
+//            下次启动时自动加载恢复。
 //       WriteAsync 根据变量的 DataType 将值序列化为字节数组，然后调用 gRPC WriteAsync。
 //       字节序均使用大端（Big-Endian），与 PLC 通信规范一致。
+// -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Enums;
+using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Models;
 
 namespace CommunicationKernel.UI.Wpf.Services
 {
     /// <summary>
-    /// <see cref="IVariableService"/> 的内存实现。
+    /// <see cref="IVariableService"/> 的内存+磁盘实现。
     /// 变量列表存储在 List&lt;VariableItem&gt; 中，写入时通过 <see cref="EngineHostGrpcClient"/> 发送。
     /// 每次 Add / Update / Remove 后触发 <see cref="VariablesChanged"/> 事件，
-    /// 供 <c>VariablePollingService</c> 同步轮询任务集合。
+    /// 供 <c>VariablePollingService</c> 同步轮询任务集合；同时异步持久化到本地 JSON 文件。
     /// </summary>
     public sealed class LocalVariableStore : IVariableService
     {
+        // -------------------------------------------------------------------------
+        // 持久化路径
+        // -------------------------------------------------------------------------
+
+        /// <summary>变量定义持久化文件路径，与 settings.json 同目录。</summary>
+        private static readonly string PersistPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "CommunicationKernel", "variables.json");
+
+        /// <summary>JSON 序列化选项：枚举写字符串，缩进输出便于调试查看。</summary>
+        private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {
+            WriteIndented    = true,
+            Converters       = { new JsonStringEnumConverter() },
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
         // -------------------------------------------------------------------------
         // 私有字段
         // -------------------------------------------------------------------------
@@ -43,6 +68,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>
         /// 变量列表发生变化（Add / Update / Remove）时触发。
         /// 触发线程与调用方一致（通常是 UI 线程或后台线程均有可能）。
+        /// 回调可能在任意线程触发，订阅方需自行切换线程。
         /// </summary>
         public event Action VariablesChanged;
 
@@ -51,13 +77,14 @@ namespace CommunicationKernel.UI.Wpf.Services
         // -------------------------------------------------------------------------
 
         /// <summary>
-        /// 初始化 LocalVariableStore。
+        /// 初始化 LocalVariableStore，并从磁盘加载上次保存的变量列表。
         /// </summary>
         /// <param name="client">已初始化的 gRPC 客户端，用于写入操作。</param>
         public LocalVariableStore(EngineHostGrpcClient client)
         {
-            // 保存 gRPC 客户端引用
             _client = client ?? throw new ArgumentNullException(nameof(client));
+            // 启动时从磁盘恢复，恢复失败则静默忽略（内存列表为空，用户可重新导入）
+            LoadFromDisk();
         }
 
         // -------------------------------------------------------------------------
@@ -81,7 +108,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         }
 
         /// <summary>
-        /// 添加新变量到内存列表。
+        /// 添加新变量到内存列表，并持久化到磁盘。
         /// 若 item.Id 为空或 null，自动生成新 Guid。
         /// </summary>
         /// <param name="item">要添加的变量定义。</param>
@@ -96,16 +123,16 @@ namespace CommunicationKernel.UI.Wpf.Services
 
             lock (_lock)
             {
-                // 追加到列表末尾
                 _items.Add(item);
             }
 
-            // 通知轮询服务同步轮询任务集合
+            // 通知轮询服务同步轮询任务集合，并将最新列表写入磁盘
             VariablesChanged?.Invoke();
+            _ = Task.Run(PersistAsync);
         }
 
         /// <summary>
-        /// 更新已有变量的定义。
+        /// 更新已有变量的定义，并持久化到磁盘。
         /// 根据 item.Id 在列表中查找并替换，未找到则忽略（幂等）。
         /// </summary>
         /// <param name="item">已修改的变量定义。</param>
@@ -114,49 +141,56 @@ namespace CommunicationKernel.UI.Wpf.Services
             if (item == null)
                 throw new ArgumentNullException(nameof(item));
 
+            bool found = false;
             lock (_lock)
             {
-                // 查找列表中 Id 匹配的条目
                 for (int i = 0; i < _items.Count; i++)
                 {
                     if (_items[i].Id == item.Id)
                     {
-                        // 找到则替换
+                        // Update 可能修改了 IsPollingEnabled / ScanRateMs
                         _items[i] = item;
-                        return;
+                        found = true;
+                        break;
                     }
                 }
-                // 未找到，忽略（不抛出异常，保持幂等）
             }
 
-            // 通知轮询服务同步轮询任务集合（Update 可能修改了 IsPollingEnabled / ScanRateMs）
-            VariablesChanged?.Invoke();
+            if (found)
+            {
+                // 通知轮询服务同步轮询任务集合（Update 可能修改了 IsPollingEnabled / ScanRateMs）
+                VariablesChanged?.Invoke();
+                _ = Task.Run(PersistAsync);
+            }
         }
 
         /// <summary>
-        /// 从内存列表移除指定 Id 的变量。
+        /// 从内存列表移除指定 Id 的变量，并持久化到磁盘。
         /// 未找到则忽略（幂等）。
         /// </summary>
         /// <param name="id">要移除的变量 Id。</param>
         public void Remove(string id)
         {
+            bool found = false;
             lock (_lock)
             {
-                // 查找并移除匹配条目
                 for (int i = 0; i < _items.Count; i++)
                 {
                     if (_items[i].Id == id)
                     {
-                        // 找到则移除
                         _items.RemoveAt(i);
-                        return;
+                        found = true;
+                        break;
                     }
                 }
-                // 未找到，忽略
             }
 
-            // 通知轮询服务停止被删除变量的轮询任务
-            VariablesChanged?.Invoke();
+            if (found)
+            {
+                // 通知轮询服务停止被删除变量的轮询任务
+                VariablesChanged?.Invoke();
+                _ = Task.Run(PersistAsync);
+            }
         }
 
         /// <summary>
@@ -170,7 +204,6 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <returns>操作结果，Success = true 表示写入成功。</returns>
         public async Task<OperationResult> WriteAsync(string id, object value, CancellationToken ct)
         {
-            // 查找目标变量
             VariableItem variable = null;
             lock (_lock)
             {
@@ -178,18 +211,15 @@ namespace CommunicationKernel.UI.Wpf.Services
                 {
                     if (v.Id == id)
                     {
-                        // 找到目标变量
                         variable = v;
                         break;
                     }
                 }
             }
 
-            // 变量不存在，返回失败
             if (variable == null)
                 return OperationResult.Fail("NOT_FOUND", string.Format("变量 {0} 不存在", id));
 
-            // 根据 DataType 将 value 序列化为字节数组
             byte[] bytes;
             try
             {
@@ -197,26 +227,93 @@ namespace CommunicationKernel.UI.Wpf.Services
             }
             catch (Exception ex)
             {
-                // 序列化失败，返回解析错误
                 return OperationResult.Fail("PARSE_ERROR", ex.Message);
             }
 
-            // 调用 gRPC WriteAsync 将字节数组写入 PLC
             WriteResultDto result = await _client.WriteAsync(
                 variable.DeviceId,
                 variable.Address,
                 bytes,
                 ct).ConfigureAwait(false);
 
-            if (result.Success)
+            return result.Success
+                ? OperationResult.Ok()
+                : OperationResult.Fail(result.ErrorCode, result.ErrorMessage);
+        }
+
+        // -------------------------------------------------------------------------
+        // 持久化
+        // -------------------------------------------------------------------------
+
+        /// <summary>
+        /// 从磁盘加载变量列表。文件不存在或解析失败时静默忽略（内存列表保持为空）。
+        /// 在构造函数中调用，不触发 VariablesChanged（避免启动时轮询服务尚未订阅）。
+        /// </summary>
+        private void LoadFromDisk()
+        {
+            try
             {
-                // 写入成功，返回 Ok
-                return OperationResult.Ok();
+                if (!File.Exists(PersistPath))
+                    return;
+
+                string json = File.ReadAllText(PersistPath, Encoding.UTF8);
+                List<VariableItem> loaded = JsonSerializer.Deserialize<List<VariableItem>>(json, JsonOpts);
+                if (loaded == null || loaded.Count == 0)
+                    return;
+
+                lock (_lock)
+                {
+                    _items.Clear();
+                    foreach (VariableItem item in loaded)
+                    {
+                        // 过滤无效条目（Id 为空时跳过）
+                        if (item != null && !string.IsNullOrWhiteSpace(item.Id))
+                        {
+                            // 清除运行时状态，避免上次崩溃时的错误值显示在界面上
+                            item.LastValue = null;
+                            item.LastError = null;
+                            _items.Add(item);
+                        }
+                    }
+                }
             }
-            else
+            catch
             {
-                // gRPC 服务端返回失败，携带错误码和描述
-                return OperationResult.Fail(result.ErrorCode, result.ErrorMessage);
+                // JSON 损坏或版本不兼容时静默忽略，不影响启动流程
+            }
+        }
+
+        /// <summary>
+        /// 将当前内存变量列表异步写入磁盘。
+        /// 先写到同目录临时文件，成功后再原子替换，防止写入中断导致文件损坏。
+        /// </summary>
+        private async Task PersistAsync()
+        {
+            try
+            {
+                // 获取当前列表快照，避免持锁时进行 I/O 操作
+                VariableItem[] snapshot;
+                lock (_lock)
+                {
+                    snapshot = _items.ToArray();
+                }
+
+                string json = JsonSerializer.Serialize(snapshot, JsonOpts);
+
+                // 确保目录存在
+                string dir = Path.GetDirectoryName(PersistPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                // 先写临时文件，再原子替换，防止部分写入损坏数据
+                string tmp = PersistPath + ".tmp";
+                await File.WriteAllTextAsync(tmp, json, Encoding.UTF8).ConfigureAwait(false);
+                File.Move(tmp, PersistPath, overwrite: true);
+            }
+            catch
+            {
+                // 持久化失败时静默处理，不影响正常业务流程
+                // 内存中的变量列表仍然有效，下次成功持久化时会覆盖
             }
         }
 
@@ -227,23 +324,17 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>
         /// 根据 DataType 枚举将值对象序列化为字节数组（大端序）。
         /// </summary>
-        /// <param name="dataType">变量的数据类型枚举值。</param>
-        /// <param name="value">待序列化的值。</param>
-        /// <returns>序列化后的字节数组（大端序）。</returns>
-        /// <exception cref="InvalidOperationException">不支持的 DataType 或值无法转换。</exception>
         private static byte[] SerializeValue(VariableDataType dataType, object value)
         {
             switch (dataType)
             {
                 case VariableDataType.Bool:
                 {
-                    // bool: 1 字节，true = 0x01，false = 0x00
                     bool b = Convert.ToBoolean(value);
                     return new byte[] { b ? (byte)0x01 : (byte)0x00 };
                 }
                 case VariableDataType.Int16:
                 {
-                    // int16: 2 字节大端序
                     short s = Convert.ToInt16(value);
                     return new byte[] { (byte)(s >> 8), (byte)(s & 0xFF) };
                 }
@@ -254,7 +345,6 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.Int32:
                 {
-                    // int32: 4 字节大端序
                     int n = Convert.ToInt32(value);
                     return new byte[] {
                         (byte)((n >> 24) & 0xFF), (byte)((n >> 16) & 0xFF),
@@ -274,7 +364,6 @@ namespace CommunicationKernel.UI.Wpf.Services
                     long l = Convert.ToInt64(value);
                     byte[] buf = new byte[8];
                     for (int i = 7; i >= 0; i--) { buf[i] = (byte)(l & 0xFF); l >>= 8; }
-                    // 翻转为大端序
                     Array.Reverse(buf);
                     return buf;
                 }
@@ -288,9 +377,8 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.Float:
                 {
-                    // float: 4 字节 IEEE 754 大端序
                     float f = Convert.ToSingle(value);
-                    byte[] le = BitConverter.GetBytes(f); // .NET 返回小端序
+                    byte[] le = BitConverter.GetBytes(f);
                     return new byte[] { le[3], le[2], le[1], le[0] };
                 }
                 case VariableDataType.Double:
@@ -302,12 +390,10 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.String:
                 {
-                    // string: UTF-8 编码字节
                     string str = value != null ? value.ToString() : string.Empty;
                     return Encoding.UTF8.GetBytes(str);
                 }
                 default:
-                    // 不支持的数据类型，抛出异常由调用方捕获并转为 PARSE_ERROR
                     throw new InvalidOperationException(
                         string.Format("不支持的数据类型: {0}", dataType));
             }

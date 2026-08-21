@@ -109,9 +109,11 @@ public partial class App : Application {
         services.AddSingleton<IAppLogger, MemoryAppLogger>();
 
         // ── 业务服务（单例）──────────────────────────────────────────────
-        // GrpcDeviceService 封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus
+        // GrpcDeviceService 封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus / RemoveRoute
         services.AddSingleton<IDeviceService>(sp =>
-            new GrpcDeviceService(sp.GetRequiredService<EngineHostGrpcClient>()));
+            new GrpcDeviceService(
+                sp.GetRequiredService<EngineHostGrpcClient>(),
+                sp.GetRequiredService<IAppLogger>()));
         // LocalVariableStore 维护内存中的变量定义，Write 通过 gRPC 下发
         services.AddSingleton<IVariableService>(sp =>
             new LocalVariableStore(sp.GetRequiredService<EngineHostGrpcClient>()));
@@ -214,8 +216,15 @@ public partial class App : Application {
 
     /// <summary>
     /// 应用退出：先停止变量轮询服务（取消所有 ReadAsync 循环），
-    /// 再停止 IHost（释放 gRPC 通道、DI 容器）。
+    /// 再停止并异步释放 IHost（释放 gRPC 通道、DI 容器）。
     /// </summary>
+    /// <remarks>
+    /// 必须使用 <see cref="IAsyncDisposable.DisposeAsync"/> 而非同步 Dispose：
+    /// EngineHostGrpcClient 只实现了 IAsyncDisposable，
+    /// 对这类单例调用 ServiceProvider.Dispose() 会抛
+    /// InvalidOperationException（"type only implements IAsyncDisposable"），
+    /// 在 async void 中即表现为退出时的未处理异常崩溃。
+    /// </remarks>
     protected override async void OnExit(ExitEventArgs e) {
         if (_host is not null) {
             // 先 Dispose 轮询服务，取消所有后台 ReadAsync 任务
@@ -226,9 +235,18 @@ public partial class App : Application {
                 // Dispose 阶段静默处理异常，不阻塞退出流程
             }
 
-            // 给 Hosted Services 最多 5 秒优雅停止时间
-            await _host.StopAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-            _host.Dispose();
+            try {
+                // 给 Hosted Services 最多 5 秒优雅停止时间
+                await _host.StopAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+
+                // 优先异步释放，兼容仅实现 IAsyncDisposable 的单例服务
+                if (_host is IAsyncDisposable asyncDisposable)
+                    await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                else
+                    _host.Dispose();
+            } catch {
+                // 退出阶段的异常不应弹出崩溃对话框，静默吞掉
+            }
         }
         base.OnExit(e);
     }

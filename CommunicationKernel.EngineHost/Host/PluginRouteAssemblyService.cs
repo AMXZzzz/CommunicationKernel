@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
@@ -51,6 +52,16 @@ public sealed class PluginRouteAssemblyService : IRouteAssemblyService {
         _logger.LogInformation(
             "PluginRouteAssemblyService: loaded {TransportCount} transport factories, {ProtocolCount} protocol factories.",
             _transportFactories.Count, _protocolFactories.Count);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<ProtocolMetadata> GetAvailableProtocols() {
+        // 数据源是插件工厂本身，与是否已注册路由无关：空载 Host 也返回完整清单。
+        return _protocolFactories
+            .Select(f => f.Metadata)
+            .Where(m => !string.IsNullOrWhiteSpace(m.ProtocolId))
+            .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
@@ -105,7 +116,10 @@ public sealed class PluginRouteAssemblyService : IRouteAssemblyService {
 
         _logger.LogInformation("AssembleRoute: transport connected for {RouteKey}.", routeKey);
 
-        IProtocolDriver protocolDriver = protocolFactory.CreateDriver();
+        // 将设备级站号作为该路由驱动实例的默认站号传入。
+        // Host 层不解析站号语义，只原样透传；如何理解由协议插件自行决定。
+        IProtocolDriver protocolDriver = protocolFactory.CreateDriver(
+            new ProtocolDriverContext { Station = command.Station ?? string.Empty });
         var routeEntry = new RouteEntry {
             Key            = routeKey,
             TransportClient = transportClient,
@@ -148,18 +162,51 @@ public sealed class PluginRouteAssemblyService : IRouteAssemblyService {
         var transportFactories = new List<ITransportFactory>();
         var protocolFactories  = new List<IProtocolDriverFactory>();
 
+        ILogger logger = loggerFactory?.CreateLogger<PluginRouteAssemblyService>()
+            ?? (ILogger)NullLogger<PluginRouteAssemblyService>.Instance;
+
         foreach (PluginLoadResult loaded in loads) {
-            foreach (Type type in loaded.Assembly.GetTypes()) {
+            // 逐程序集隔离：单个插件的类型加载失败不应中断其余插件的发现。
+            Type[] types;
+            try {
+                types = loaded.Assembly.GetTypes();
+            } catch (ReflectionTypeLoadException ex) {
+                // 部分类型可加载时 Types 中失败项为 null，取出可用的继续处理。
+                types = ex.Types.Where(t => t is not null).ToArray()!;
+                logger.LogError(ex,
+                    "LoadFactories: assembly '{Assembly}' had type load failures; {Count} usable types recovered.",
+                    loaded.Assembly.FullName, types.Length);
+            } catch (Exception ex) {
+                logger.LogError(ex,
+                    "LoadFactories: skipped assembly '{Assembly}' due to unrecoverable reflection error.",
+                    loaded.Assembly.FullName);
+                continue;
+            }
+
+            foreach (Type type in types) {
                 if (type.IsAbstract || type.IsInterface) continue;
 
-                if (typeof(ITransportFactory).IsAssignableFrom(type)
-                    && Activator.CreateInstance(type) is ITransportFactory tf) {
+                bool isTransport = typeof(ITransportFactory).IsAssignableFrom(type);
+                bool isProtocol  = typeof(IProtocolDriverFactory).IsAssignableFrom(type);
+                if (!isTransport && !isProtocol) continue;
+
+                // 逐类型隔离：缺少无参构造函数、静态构造抛异常等均只跳过该工厂。
+                object? instance;
+                try {
+                    instance = Activator.CreateInstance(type);
+                } catch (Exception ex) {
+                    logger.LogError(ex,
+                        "LoadFactories: skipped factory type '{Type}' (instantiation failed).",
+                        type.FullName);
+                    continue;
+                }
+
+                if (isTransport && instance is ITransportFactory tf) {
                     transportFactories.Add(tf);
                     continue;
                 }
 
-                if (typeof(IProtocolDriverFactory).IsAssignableFrom(type)
-                    && Activator.CreateInstance(type) is IProtocolDriverFactory pf) {
+                if (isProtocol && instance is IProtocolDriverFactory pf) {
                     protocolFactories.Add(pf);
                 }
             }

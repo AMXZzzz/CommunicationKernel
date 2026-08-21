@@ -39,15 +39,42 @@ internal readonly record struct MewtocolAddressInfo(
 /// </summary>
 internal static class MewtocolAddress
 {
+    /// <summary>MEWTOCOL 站号的协议缺省值（未配置站号时使用）。</summary>
+    internal const byte FallbackStation = 1;
+
+    /// <summary>
+    /// 将设备级站号原文解析为默认站号。
+    /// 空值或非法值一律回落到 <see cref="FallbackStation"/>，
+    /// 保证「用户没填站号」不会导致整条路由不可用。
+    /// </summary>
+    /// <param name="station">RegisterRoute.station 原文，可为 null / 空。</param>
+    /// <returns>1-99 范围内的站号。</returns>
+    internal static byte ResolveDefaultStation(string? station)
+    {
+        if (string.IsNullOrWhiteSpace(station))
+            return FallbackStation;
+
+        // MEWTOCOL 站号有效范围 1-99
+        return byte.TryParse(station.Trim(), out byte parsed) && parsed is >= 1 and <= 99
+            ? parsed
+            : FallbackStation;
+    }
+
     /// <summary>解析地址字符串。</summary>
-    internal static OperationResult<MewtocolAddressInfo> Parse(string address)
+    /// <param name="address">地址字符串，可含可选的 "站号:" 前缀。</param>
+    /// <param name="defaultStation">
+    /// 地址未带前缀时使用的站号，通常来自设备级站号配置。
+    /// 普通场景下操作员只需填写 "DT100"，站号在设备表单中统一配置。
+    /// </param>
+    internal static OperationResult<MewtocolAddressInfo> Parse(
+        string address, byte defaultStation = FallbackStation)
     {
         if (string.IsNullOrWhiteSpace(address))
             return OperationResult<MewtocolAddressInfo>.Fail(
                 "address is empty", KernelErrorCode.InvalidArgument);
         try
         {
-            return DoParse(address.Trim());
+            return DoParse(address.Trim(), defaultStation);
         }
         catch (Exception ex)
         {
@@ -56,11 +83,12 @@ internal static class MewtocolAddress
         }
     }
 
-    private static OperationResult<MewtocolAddressInfo> DoParse(string raw)
+    private static OperationResult<MewtocolAddressInfo> DoParse(string raw, byte defaultStation)
     {
-        byte station = 1;
+        // 缺省取设备级站号；下方的 "NN:" 前缀分支可覆盖
+        byte station = defaultStation;
 
-        // 分支1：站号前缀 "01:DT100" 或 "05:R10A"
+        // 分支1：站号前缀 "01:DT100" 或 "05:R10A"（可选，仅多站链路需要）
         int colonIdx = raw.IndexOf(':');
         if (colonIdx > 0 && colonIdx <= 2)
         {

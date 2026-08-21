@@ -1,23 +1,36 @@
+// -----------------------------------------------------------------------------
 // 文件: Core/Interfaces/IProtocolResolver.cs
 // 层级: UI层 — 核心接口
-// 作用: 定义协议名称列表提供者的抽象接口，供设备添加对话框的协议下拉框绑定使用。
-//       具体实现（GrpcProtocolResolver）可提供硬编码列表或从服务端动态获取。
+// 作用: 定义协议描述符提供者的抽象接口，供设备编辑面板渲染协议下拉框与连接参数表单。
+// 说明:
+//   返回的是完整描述符而非裸名称字符串。这是关键约束：
+//   下拉框展示 DisplayName，注册路由时必须回传 ProtocolId——
+//   两者不可混用，否则服务端匹配不到协议工厂（历史缺陷即源于此）。
+// -----------------------------------------------------------------------------
 
 using System.Collections.Generic;
+using CommunicationKernel.UI.Wpf.Services;
 
 namespace CommunicationKernel.UI.Wpf.Core.Interfaces
 {
     /// <summary>
-    /// 协议名称解析器接口。
-    /// 提供当前系统支持的协议名称列表，用于设备配置界面的协议选择下拉框。
+    /// 协议描述符解析器接口。
+    /// 提供当前 EngineHost 已加载的协议清单，用于设备配置界面。
     /// </summary>
     public interface IProtocolResolver
     {
         /// <summary>
-        /// 获取系统支持的协议名称列表。
+        /// 获取可用协议描述符列表。
         /// 列表顺序与 UI 下拉框顺序一致，调用方不应修改返回的列表。
+        /// 服务端不可达时返回本地兜底列表，保证离线状态下界面仍可操作。
         /// </summary>
-        /// <returns>协议名称列表，例如 ["Modbus TCP", "Siemens S7-1200"]。</returns>
-        IList<string> GetProtocolNames();
+        IList<ProtocolDescriptorDto> GetProtocols();
+
+        /// <summary>
+        /// 按 ProtocolId 查找描述符；未找到返回 null。
+        /// 用于编辑既有设备时根据已保存的 ProtocolId 还原表单状态。
+        /// </summary>
+        /// <param name="protocolId">协议唯一标识。</param>
+        ProtocolDescriptorDto FindById(string protocolId);
     }
 }

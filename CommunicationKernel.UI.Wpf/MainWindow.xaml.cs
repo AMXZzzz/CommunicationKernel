@@ -15,6 +15,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using CommunicationKernel.UI.Wpf.Core.Logging;
 using CommunicationKernel.UI.Wpf.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,6 +34,12 @@ public partial class MainWindow : Window {
     /// <summary>DI 服务提供者，用于懒解析页面实例。</summary>
     private readonly IServiceProvider _services;
 
+    /// <summary>应用日志记录器，可为 null（此时不记录日志）。</summary>
+    private readonly IAppLogger _log;
+
+    /// <summary>健康轮询任务的取消源，窗口关闭时触发取消。</summary>
+    private readonly CancellationTokenSource _healthCts = new CancellationTokenSource();
+
     // -------------------------------------------------------------------------
     // 构造函数
     // -------------------------------------------------------------------------
@@ -40,13 +47,28 @@ public partial class MainWindow : Window {
     /// <param name="services">从 App DI 容器注入，用于获取 Page 实例。</param>
     public MainWindow(IServiceProvider services) {
         _services = services ?? throw new ArgumentNullException(nameof(services));
+
+        // 日志器为可选依赖：取不到时降级为不记录，不阻断窗口构造
+        _log = services.GetService<IAppLogger>();
+
         InitializeComponent();
 
         // 将 NavSidebar 的导航事件绑定到本窗口的 NavigateTo 方法
         if (navSidebar != null)
             navSidebar.NavigateRequested += NavigateTo;
 
-        Loaded += MainWindow_Loaded;
+        Loaded  += MainWindow_Loaded;
+        Closed  += MainWindow_Closed;
+    }
+
+    /// <summary>窗口关闭：取消健康轮询，避免后台任务在应用退出后继续运行。</summary>
+    private void MainWindow_Closed(object sender, EventArgs e) {
+        try {
+            _healthCts.Cancel();
+            _healthCts.Dispose();
+        } catch {
+            // 关闭阶段的异常静默处理，不阻塞退出流程
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -70,15 +92,21 @@ public partial class MainWindow : Window {
 
     /// <summary>
     /// 在后台循环调用 HealthAsync，每 10 秒一次，结果更新顶栏指示灯。
-    /// 窗口关闭时无需手动取消——进程退出后台任务自然结束。
+    /// 窗口关闭时通过 <see cref="_healthCts"/> 取消，任务随之结束。
     /// </summary>
+    /// <remarks>
+    /// 必须可取消：无取消的 while(true) 会在应用退出后继续存活，
+    /// 向已释放的 gRPC 通道发请求、向已关闭的 Dispatcher 排队回调。
+    /// </remarks>
     private void StartHealthPolling(EngineHostGrpcClient client) {
+        CancellationToken ct = _healthCts.Token;
+
         // 在线程池后台运行，不阻塞 UI 线程
         Task.Run(async () => {
-            while (true) {
+            while (!ct.IsCancellationRequested) {
                 try {
-                    // 发起健康检查，内部已设置 5 秒超时
-                    (bool ok, string ver, int routes) = await client.HealthAsync()
+                    // 发起健康检查，内部已设置 5 秒截止时间
+                    (bool ok, string ver, int routes) = await client.HealthAsync(ct)
                         .ConfigureAwait(false);
 
                     // 拼接顶栏状态文字
@@ -86,17 +114,24 @@ public partial class MainWindow : Window {
                         ? string.Format("v{0}  路由: {1}", ver, routes)
                         : string.Empty;
 
-                    // 切回 UI 线程更新状态灯（UpdateConnectionStatus 内部已做 Dispatcher.InvokeAsync）
                     UpdateConnectionStatus(ok, info);
-                } catch (Exception) {
+                } catch (OperationCanceledException) {
+                    // 窗口关闭触发的取消：正常退出
+                    return;
+                } catch (Exception ex) {
                     // 网络异常时标记为离线，不中断轮询
+                    _log?.Warn("Host", "健康检查失败: " + ex.Message);
                     UpdateConnectionStatus(false);
                 }
 
                 // 每 10 秒检查一次，避免频繁 gRPC 调用
-                await Task.Delay(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                try {
+                    await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    return;
+                }
             }
-        });
+        }, ct);
     }
 
     // -------------------------------------------------------------------------
@@ -126,6 +161,20 @@ public partial class MainWindow : Window {
             MessageBox.Show("打开页面失败:\n" + ex.Message, "导航错误",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    /// <summary>
+    /// 每次导航完成后清空返回栈。
+    /// 本应用页面注册为 Transient，导航即新建实例；若保留日志，
+    /// Frame 会持有全部历史页面实例导致无限累积（页面又持有 ViewModel 订阅）。
+    /// 界面本身也没有前进/后退入口，日志无使用价值。
+    /// </summary>
+    private void MainFrame_Navigated(object sender, System.Windows.Navigation.NavigationEventArgs e) {
+        if (MainFrame == null) return;
+
+        // 清空返回/前进栈，释放对历史 Page 实例的引用
+        while (MainFrame.CanGoBack)
+            MainFrame.RemoveBackEntry();
     }
 
     // -------------------------------------------------------------------------

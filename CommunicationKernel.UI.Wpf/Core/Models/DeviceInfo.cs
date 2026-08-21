@@ -58,6 +58,8 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         private string _station        = string.Empty;
         private int    _stationNo;
         private string _transportKind  = string.Empty;
+        private string _serialPort     = string.Empty;
+        private int    _baudRate;
         private string _extraSettingsJson = "{}";
         private bool   _isConnected;
         private DeviceStatusType _statusType = DeviceStatusType.Offline;
@@ -162,6 +164,26 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         {
             get => _transportKind;
             set => SetField(ref _transportKind, value);
+        }
+
+        /// <summary>
+        /// 串口名称（如 "COM3"），对应 RouteDto.SerialPort。
+        /// 仅串口类协议（modbus-rtu / modbus-ascii）使用；TCP 路由为空字符串。
+        /// </summary>
+        public string SerialPort
+        {
+            get => _serialPort;
+            set => SetField(ref _serialPort, value);
+        }
+
+        /// <summary>
+        /// 串口波特率，对应 RouteDto.BaudRate。
+        /// 仅串口类协议使用；TCP 路由为 0。
+        /// </summary>
+        public int BaudRate
+        {
+            get => _baudRate;
+            set => SetField(ref _baudRate, value);
         }
 
         /// <summary>

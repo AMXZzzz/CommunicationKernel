@@ -37,8 +37,23 @@ public sealed class HostRuntime {
     private readonly ConcurrentDictionary<string, RouteStatusSnapshot> _routeStatuses =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// RouteId 占位表：值无意义，仅用键表示「已注册或正在注册中」。
+    /// </summary>
+    /// <remarks>
+    /// 装配（含建立真实 TCP/串口连接）是耗时的异步过程。若仅在装配前后各做一次
+    /// ContainsKey 检查，两个同 RouteId 的并发注册会双双通过检查，
+    /// 后者覆盖前者的登记项，导致前者的 TransportClient 成为无人释放的孤儿。
+    /// 因此改为在装配开始前用 TryAdd 原子占位，失败路径在 finally 中释放。
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, byte> _routeIdReservations =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private readonly IRouteAssemblyService _routeAssemblyService;
     private readonly ILogger<HostRuntime> _logger;
+
+    /// <summary>保护「状态比较 + 写入」的原子性，见 <see cref="PublishStatus"/>。</summary>
+    private readonly object _statusPublishLock = new();
 
     /// <summary>当路由状态变化时触发，用于 gRPC 实时推流。</summary>
     public event Action<RouteStatusSnapshot>? RouteStatusChanged;
@@ -110,57 +125,69 @@ public sealed class HostRuntime {
 
         string resolvedRouteId = command.RouteId.Trim();
 
-        // 分支1：同一 RouteId 禁止重复注册（防止旧 RouteEntry 被孤立泄漏）。
-        if (_registrationsByRouteId.ContainsKey(resolvedRouteId)) {
-            _logger.LogWarning("RegisterRoute rejected: route_id '{RouteId}' already registered.", resolvedRouteId);
+        // 分支1：原子占位 RouteId。TryAdd 失败即表示已注册或另一请求正在注册中。
+        if (!_routeIdReservations.TryAdd(resolvedRouteId, 0)) {
+            _logger.LogWarning("RegisterRoute rejected: route_id '{RouteId}' already registered or in progress.", resolvedRouteId);
             return OperationResult<string>.Fail($"route_id already registered: {resolvedRouteId}", KernelErrorCode.RouteBusy);
         }
 
-        // 分支2：委托装配服务构建 RouteEntry 与连接状态。
-        OperationResult<RouteAssemblyResult> assemble = await _routeAssemblyService
-            .AssembleAsync(command, cancellationToken)
-            .ConfigureAwait(false);
+        // 占位是否最终转为正式登记；未转正时必须在 finally 中释放，否则该 RouteId 被永久占死。
+        bool reservationCommitted = false;
 
-        if (!assemble.Success) {
-            _logger.LogError("RegisterRoute failed to assemble route '{RouteId}': {Error}", resolvedRouteId, assemble.ErrorMessage);
-            return OperationResult<string>.Fail(assemble.ErrorMessage, assemble.ErrorCode);
+        try {
+            // 分支2：委托装配服务构建 RouteEntry 与连接状态。
+            OperationResult<RouteAssemblyResult> assemble = await _routeAssemblyService
+                .AssembleAsync(command, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!assemble.Success) {
+                _logger.LogError("RegisterRoute failed to assemble route '{RouteId}': {Error}", resolvedRouteId, assemble.ErrorMessage);
+                return OperationResult<string>.Fail(assemble.ErrorMessage, assemble.ErrorCode);
+            }
+
+            RouteAssemblyResult assembled = assemble.Value;
+
+            // 分支3：原子占位 RouteKey（协议+地址+站号），拒绝指向同一物理设备的重复路由。
+            if (!_routeIdByKey.TryAdd(assembled.RouteKey, resolvedRouteId)) {
+                await assembled.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                _logger.LogWarning("RegisterRoute rejected: RouteKey '{RouteKey}' already exists.", assembled.RouteKey);
+                return OperationResult<string>.Fail($"route already exists: {assembled.RouteKey}", KernelErrorCode.RouteBusy);
+            }
+
+            // 分支4：注册到 Router；失败时先归还 RouteKey 占位，再回滚连接资源。
+            if (!Facade.TryRegister(assembled.RouteEntry)) {
+                _routeIdByKey.TryRemove(assembled.RouteKey, out _);
+                await assembled.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                _logger.LogWarning("RegisterRoute: router rejected registration for '{RouteId}'.", resolvedRouteId);
+                return OperationResult<string>.Fail("router rejected route registration", KernelErrorCode.RouteBusy);
+            }
+
+            var registration = new RouteRuntimeRegistration(
+                resolvedRouteId,
+                assembled.RouteKey,
+                assembled.Endpoint,
+                assembled.TransportId,
+                assembled.RouteEntry,
+                assembled.IsSerialRoute,
+                assembled.MinIoIntervalMs);
+
+            // 占位已确保此处不存在并发写入同一 RouteId 的可能。
+            _registrationsByRouteId[resolvedRouteId] = registration;
+            reservationCommitted = true;
+
+            PublishStatus(resolvedRouteId, online: true, KernelErrorCode.None, string.Empty);
+            _logger.LogInformation("RegisterRoute succeeded: '{RouteId}' ({RouteKey}).", resolvedRouteId, assembled.RouteKey);
+            return OperationResult<string>.Ok(resolvedRouteId);
+        } finally {
+            // 未转正（失败或异常）：释放占位，允许该 RouteId 重新尝试注册。
+            if (!reservationCommitted)
+                _routeIdReservations.TryRemove(resolvedRouteId, out _);
         }
-
-        RouteAssemblyResult assembled = assemble.Value;
-
-        // 分支3：同一 RouteKey（协议+地址+站号）禁止重复注册。
-        if (_routeIdByKey.ContainsKey(assembled.RouteKey)) {
-            await assembled.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogWarning("RegisterRoute rejected: RouteKey '{RouteKey}' already exists.", assembled.RouteKey);
-            return OperationResult<string>.Fail($"route already exists: {assembled.RouteKey}", KernelErrorCode.RouteBusy);
-        }
-
-        // 分支4：注册到 Router；失败时回滚连接资源（并发场景下 TryAdd 可能失败）。
-        if (!Facade.TryRegister(assembled.RouteEntry)) {
-            await assembled.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogWarning("RegisterRoute: router rejected registration for '{RouteId}'.", resolvedRouteId);
-            return OperationResult<string>.Fail("router rejected route registration", KernelErrorCode.RouteBusy);
-        }
-
-        var registration = new RouteRuntimeRegistration(
-            resolvedRouteId,
-            assembled.RouteKey,
-            assembled.Endpoint,
-            assembled.TransportId,
-            assembled.RouteEntry,
-            assembled.IsSerialRoute,
-            assembled.MinIoIntervalMs);
-
-        _registrationsByRouteId[resolvedRouteId] = registration;
-        _routeIdByKey[assembled.RouteKey] = resolvedRouteId;
-
-        PublishStatus(resolvedRouteId, online: true, KernelErrorCode.None, string.Empty);
-        _logger.LogInformation("RegisterRoute succeeded: '{RouteId}' ({RouteKey}).", resolvedRouteId, assembled.RouteKey);
-        return OperationResult<string>.Ok(resolvedRouteId);
     }
 
     /// <summary>
-    /// 注销路由并释放所有关联资源（WriteScheduler 信号量 + TransportClient）。
+    /// 注销路由并释放所有关联资源（串口节流信号量 + TransportClient + 协议驱动）。
+    /// 完成后广播一次终态下线事件，使所有订阅方感知该路由已消失。
     /// </summary>
     public async Task<OperationResult> UnregisterRouteAsync(string routeId, CancellationToken cancellationToken) {
         if (string.IsNullOrWhiteSpace(routeId))
@@ -170,7 +197,8 @@ public sealed class HostRuntime {
             return OperationResult.Fail($"route not found: {routeId}", KernelErrorCode.RouteNotFound);
 
         _routeIdByKey.TryRemove(reg.RouteKey, out _);
-        _routeStatuses.TryRemove(routeId, out _);
+        // 释放 RouteId 占位，使同名路由可被重新注册（更新设备参数即依赖此路径）。
+        _routeIdReservations.TryRemove(routeId, out _);
 
         bool disposed = await Facade.Orchestrator.TryRemoveAndDisposeAsync(reg.RouteKey, cancellationToken)
             .ConfigureAwait(false);
@@ -180,7 +208,40 @@ public sealed class HostRuntime {
         else
             _logger.LogWarning("UnregisterRoute: '{RouteId}' was not in router (state mismatch).", routeId);
 
+        // 传输资源已释放，此时再释放节流信号量。
+        // 并发中的 I/O 若在此之后调用 Release，会得到 ObjectDisposedException，
+        // 该异常已在 ExecuteWithRoutePolicyAsync 的 finally 中被吞掉。
+        reg.DisposeGate();
+
+        // 广播终态：先摘除快照再发事件，避免 PublishStatus 把快照又写回去。
+        PublishFinalOffline(routeId);
+
         return OperationResult.Ok;
+    }
+
+    /// <summary>
+    /// 广播路由注销后的终态下线事件，并清除其状态快照。
+    /// </summary>
+    /// <remarks>
+    /// 不复用 <see cref="PublishStatus"/>：后者会把快照写回 <c>_routeStatuses</c>，
+    /// 使已注销的路由在 SnapshotStatuses 中留下幽灵条目。
+    /// 若不广播此事件，其他客户端的 WatchRouteStatus 流将永远停留在最后已知状态，
+    /// 界面上表现为「设备已被别人删除，但本机仍显示在线」。
+    /// </remarks>
+    private void PublishFinalOffline(string routeId) {
+        var snapshot = new RouteStatusSnapshot {
+            RouteId      = routeId,
+            Online       = false,
+            ErrorCode    = KernelErrorCode.RouteNotFound,
+            ErrorMessage = "route unregistered",
+            TimestampUtc = DateTimeOffset.UtcNow
+        };
+
+        lock (_statusPublishLock) {
+            _routeStatuses.TryRemove(routeId, out _);
+        }
+
+        RouteStatusChanged?.Invoke(snapshot);
     }
 
     /// <summary>通过 route_id 执行读取。</summary>
@@ -227,10 +288,16 @@ public sealed class HostRuntime {
         Func<CancellationToken, Task<OperationResult<byte[]>>> ioAction,
         CancellationToken cancellationToken) {
 
-        if (registration.IsSerialRoute)
-            await WaitSerialWindowAsync(registration, cancellationToken).ConfigureAwait(false);
+        // 仅当 WaitSerialWindowAsync 正常返回才算持有信号量；
+        // 取消路径下它已自行归还，此处不得重复 Release。
+        bool gateAcquired = false;
 
         try {
+            if (registration.IsSerialRoute) {
+                await WaitSerialWindowAsync(registration, cancellationToken).ConfigureAwait(false);
+                gateAcquired = true;
+            }
+
             OperationResult<byte[]> result = await ioAction(cancellationToken).ConfigureAwait(false);
             if (result.Success) {
                 PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
@@ -257,9 +324,13 @@ public sealed class HostRuntime {
             PublishStatus(registration.RouteId, online: false, KernelErrorCode.TransportIoError, ex.Message);
             return OperationResult<byte[]>.Fail(ex.Message, KernelErrorCode.TransportIoError);
         } finally {
-            if (registration.IsSerialRoute) {
+            if (gateAcquired) {
                 registration.MarkSerialIoCompleted();
-                registration.SerialIoGate.Release();
+                try {
+                    registration.SerialIoGate.Release();
+                } catch (ObjectDisposedException) {
+                    // 路由在本次 I/O 期间被并发注销，信号量已释放：无需归还。
+                }
             }
         }
     }
@@ -269,10 +340,15 @@ public sealed class HostRuntime {
         Func<CancellationToken, Task<OperationResult>> ioAction,
         CancellationToken cancellationToken) {
 
-        if (registration.IsSerialRoute)
-            await WaitSerialWindowAsync(registration, cancellationToken).ConfigureAwait(false);
+        // 同读路径：仅在确实持有信号量时才在 finally 中释放。
+        bool gateAcquired = false;
 
         try {
+            if (registration.IsSerialRoute) {
+                await WaitSerialWindowAsync(registration, cancellationToken).ConfigureAwait(false);
+                gateAcquired = true;
+            }
+
             OperationResult result = await ioAction(cancellationToken).ConfigureAwait(false);
             if (result.Success) {
                 PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
@@ -299,20 +375,44 @@ public sealed class HostRuntime {
             PublishStatus(registration.RouteId, online: false, KernelErrorCode.TransportIoError, ex.Message);
             return OperationResult.Fail(ex.Message, KernelErrorCode.TransportIoError);
         } finally {
-            if (registration.IsSerialRoute) {
+            if (gateAcquired) {
                 registration.MarkSerialIoCompleted();
-                registration.SerialIoGate.Release();
+                try {
+                    registration.SerialIoGate.Release();
+                } catch (ObjectDisposedException) {
+                    // 路由在本次 I/O 期间被并发注销，信号量已释放：无需归还。
+                }
             }
         }
     }
 
-    private async Task WaitSerialWindowAsync(RouteRuntimeRegistration registration, CancellationToken cancellationToken) {
+    /// <summary>
+    /// 获取串口 I/O 窗口：先取信号量，再补足最小 I/O 间隔。
+    /// 正常返回即表示调用方持有信号量，必须由调用方在 finally 中释放。
+    /// </summary>
+    /// <remarks>
+    /// 节流等待期间若被取消，本方法负责归还已获取的信号量再抛出——
+    /// 否则该串口路由的信号量将永久耗尽，后续所有读写无限期挂起。
+    /// </remarks>
+    private static async Task WaitSerialWindowAsync(
+        RouteRuntimeRegistration registration, CancellationToken cancellationToken) {
+
         await registration.SerialIoGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-        int elapsedMs = registration.GetElapsedSinceLastIoMs();
-        int delayMs = registration.MinIoIntervalMs - elapsedMs;
-        if (delayMs > 0)
-            await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+        try {
+            int elapsedMs = registration.GetElapsedSinceLastIoMs();
+            int delayMs = registration.MinIoIntervalMs - elapsedMs;
+            if (delayMs > 0)
+                await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+        } catch {
+            // 已持有信号量但未能进入 I/O：必须归还，否则路由死锁。
+            try {
+                registration.SerialIoGate.Release();
+            } catch (ObjectDisposedException) {
+                // 路由已被并发注销，信号量随之释放：无需归还。
+            }
+            throw;
+        }
     }
 
     private static bool ShouldAttemptReconnect(KernelErrorCode errorCode) =>
@@ -343,17 +443,41 @@ public sealed class HostRuntime {
         }
     }
 
+    /// <summary>
+    /// 发布路由状态。仅在状态实际发生变化时才写入快照并广播事件。
+    /// </summary>
+    /// <remarks>
+    /// 每次成功 I/O 都会调用本方法。若无变化检测，轮询场景下
+    /// （N 个变量 × 每秒若干次）会产生等量的"状态变化"事件推给所有订阅客户端，
+    /// 淹没 UI 线程且分配大量无意义快照对象。
+    /// 时间戳语义因此是「状态变为当前值的时刻」，而非「最近一次 I/O 时刻」。
+    /// </remarks>
     private void PublishStatus(string routeId, bool online, KernelErrorCode errorCode, string errorMessage) {
-        var snapshot = new RouteStatusSnapshot {
-            RouteId      = routeId,
-            Online       = online,
-            ErrorCode    = errorCode,
-            ErrorMessage = errorMessage ?? string.Empty,
-            TimestampUtc = DateTimeOffset.UtcNow
-        };
+        string message = errorMessage ?? string.Empty;
+        RouteStatusSnapshot? published = null;
 
-        _routeStatuses[routeId] = snapshot;
-        RouteStatusChanged?.Invoke(snapshot);
+        // 比较+写入需原子完成，否则并发 I/O 可能都判定为"未变化"而丢失事件。
+        lock (_statusPublishLock) {
+            if (_routeStatuses.TryGetValue(routeId, out RouteStatusSnapshot? prev)
+                && prev.Online == online
+                && prev.ErrorCode == errorCode
+                && string.Equals(prev.ErrorMessage, message, StringComparison.Ordinal)) {
+                // 状态未变化：保留原快照（含其原始时间戳），不广播。
+                return;
+            }
+
+            published = new RouteStatusSnapshot {
+                RouteId      = routeId,
+                Online       = online,
+                ErrorCode    = errorCode,
+                ErrorMessage = message,
+                TimestampUtc = DateTimeOffset.UtcNow
+            };
+            _routeStatuses[routeId] = published;
+        }
+
+        // 在锁外触发，避免订阅方回调阻塞其他路由的状态发布。
+        RouteStatusChanged?.Invoke(published);
     }
 
     // ── Inner types ───────────────────────────────────────────────────────────
@@ -421,5 +545,16 @@ public sealed class HostRuntime {
 
         public void MarkSerialIoCompleted() =>
             Interlocked.Exchange(ref _lastSerialIoCompletedUtcTicks, DateTimeOffset.UtcNow.UtcTicks);
+
+        /// <summary>
+        /// 释放串口节流信号量。仅在路由注销、传输资源已释放后调用。
+        /// </summary>
+        public void DisposeGate() {
+            try {
+                SerialIoGate.Dispose();
+            } catch (Exception) {
+                // 释放阶段的异常不影响注销流程的其余步骤。
+            }
+        }
     }
 }

@@ -24,6 +24,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         private string _lastExportPath;
         private MsgPending _msgPending;
 
+        /// <summary>是否已订阅单例 ViewModel 的事件，保证订阅/退订幂等。</summary>
+        private bool _vmWired;
+
         public VariableConfigPage (VariablePageViewModel viewModel) {
             _vm = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
 
@@ -33,6 +36,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             InjectServicesIntoControls();
             WireViewModel();
             WireEvents();
+
+            // Loaded / Unloaded 成对管理单例 ViewModel 的订阅
+            Loaded   += VariableConfigPage_Loaded;
+            Unloaded += VariableConfigPage_Unloaded;
+
             deviceList.Reload();
         }
 
@@ -58,10 +66,36 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             }
         }
 
+        /// <summary>
+        /// 订阅单例 ViewModel 的事件。幂等：重复调用不会造成重复订阅。
+        /// </summary>
+        /// <remarks>
+        /// ViewModel 是单例而本页是瞬态（每次导航新建实例）。
+        /// 若只订阅不退订，来回切页 N 次后一次 RequestShowInfo 会弹出 N 个对话框，
+        /// 且所有历史页面实例被单例永久持有。必须用具名方法成对订阅/退订。
+        /// </remarks>
         private void WireViewModel () {
-            _vm.RequestRefresh += RefreshList;
-            _vm.RequestShowInfo += (title, msg) => ShowInfo(title, msg);
+            if (_vmWired) return;
+            _vmWired = true;
+
+            _vm.RequestRefresh  += RefreshList;
+            _vm.RequestShowInfo += OnRequestShowInfo;
         }
+
+        /// <summary>退订单例 ViewModel 的事件。幂等：未订阅时调用无副作用。</summary>
+        private void UnwireViewModel () {
+            if (!_vmWired) return;
+            _vmWired = false;
+
+            _vm.RequestRefresh  -= RefreshList;
+            _vm.RequestShowInfo -= OnRequestShowInfo;
+        }
+
+        private void OnRequestShowInfo (string title, string msg) => ShowInfo(title, msg);
+
+        private void VariableConfigPage_Loaded (object sender, RoutedEventArgs e) => WireViewModel();
+
+        private void VariableConfigPage_Unloaded (object sender, RoutedEventArgs e) => UnwireViewModel();
 
         private void WireEvents () {
             deviceList.DeviceSelected += OnDeviceSelected;

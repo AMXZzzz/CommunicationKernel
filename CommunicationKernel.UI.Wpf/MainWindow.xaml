@@ -132,8 +132,13 @@
             <!-- Frame：Page 导航容器，隐藏内置导航 UI -->
             <Border Grid.Column="1"
                     Background="{StaticResource SF.Brush.Bg.App}">
+                <!-- JournalOwnership=OwnsJournal + 每次导航后清空日志：
+                     否则 Frame 会持有全部历史 Page 实例（本应用页面为瞬态，
+                     每次导航新建），造成实例无限累积 -->
                 <Frame x:Name="MainFrame"
-                       NavigationUIVisibility="Hidden"/>
+                       NavigationUIVisibility="Hidden"
+                       JournalOwnership="OwnsJournal"
+                       Navigated="MainFrame_Navigated"/>
             </Border>
         </Grid>
     </Grid>
