@@ -17,7 +17,11 @@ public interface IProtocolDriverFactory {
     ProtocolMetadata Metadata { get; }
 
     /// <summary>
-    /// 创建协议驱动实例。
+    /// 创建协议驱动实例（每路由一份）。
     /// </summary>
-    IProtocolDriver CreateDriver();
+    /// <param name="context">
+    /// 该路由的驱动配置快照（含设备级站号）。
+    /// 传 null 时驱动使用自身内置默认值，便于单元测试直接构造无状态驱动。
+    /// </param>
+    IProtocolDriver CreateDriver(ProtocolDriverContext? context = null);
 }

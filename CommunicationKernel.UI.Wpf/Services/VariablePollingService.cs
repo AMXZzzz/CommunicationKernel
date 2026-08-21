@@ -38,6 +38,16 @@ namespace CommunicationKernel.UI.Wpf.Services
     public sealed class VariablePollingService : IDisposable
     {
         // =========================================================================
+        // 常量
+        // =========================================================================
+
+        /// <summary>变量未指定 ScanRateMs 时使用的默认轮询周期（毫秒）。</summary>
+        private const int DefaultScanRateMs = 1000;
+
+        /// <summary>连续失败时退避延迟的上限（毫秒）。</summary>
+        private const int MaxBackoffMs = 60_000;
+
+        // =========================================================================
         // 私有字段
         // =========================================================================
 
@@ -48,11 +58,24 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly EngineHostGrpcClient _client;
 
         /// <summary>
-        /// 每个变量 ID 对应的轮询任务取消令牌源。
-        /// 键为 VariableItem.Id，值为该变量轮询任务的 CancellationTokenSource。
+        /// 正在运行的轮询任务，键为 VariableItem.Id。
+        /// 保存扫描周期以便识别「周期被改动」从而只重启该变量。
         /// </summary>
-        private readonly Dictionary<string, CancellationTokenSource> _polls
-            = new Dictionary<string, CancellationTokenSource>();
+        private readonly Dictionary<string, PollHandle> _polls
+            = new Dictionary<string, PollHandle>();
+
+        /// <summary>单个变量轮询任务的句柄。</summary>
+        private sealed class PollHandle
+        {
+            /// <summary>该任务的取消令牌源。</summary>
+            public CancellationTokenSource Cts { get; set; }
+
+            /// <summary>任务启动时使用的扫描周期，用于比较是否需要重启。</summary>
+            public int ScanRateMs { get; set; }
+        }
+
+        /// <summary>为分散首次请求而共用的随机源（仅用于抖动，无需加密强度）。</summary>
+        private readonly Random _jitter = new Random();
 
         /// <summary>保护 _polls 字典的同步锁（VariablesChanged 可能来自任意线程）。</summary>
         private readonly object _lock = new object();
@@ -106,10 +129,10 @@ namespace CommunicationKernel.UI.Wpf.Services
             lock (_lock)
             {
                 // 取消并释放所有正在运行的轮询任务
-                foreach (CancellationTokenSource cts in _polls.Values)
+                foreach (PollHandle handle in _polls.Values)
                 {
-                    cts.Cancel();
-                    cts.Dispose();
+                    handle.Cts.Cancel();
+                    handle.Cts.Dispose();
                 }
                 _polls.Clear();
             }
@@ -120,46 +143,79 @@ namespace CommunicationKernel.UI.Wpf.Services
         // =========================================================================
 
         /// <summary>
-        /// 变量列表变化时触发：停止所有现有轮询任务，重新启动所有启用了轮询的变量任务。
-        /// "全停全起"策略：变量管理操作频率极低，重建开销可忽略，逻辑最简洁。
+        /// 变量列表变化时触发：差量同步轮询任务集合。
+        /// 只启动新增/新启用的、停止已删除/已禁用的、重启周期被改动的，
+        /// 其余任务原样运行不受打扰。
         /// </summary>
+        /// <remarks>
+        /// 不使用"全停全起"：那会让每次勾选一个复选框都重置所有变量的
+        /// 退避状态与计时相位，使 N 个变量的请求对齐到同一时刻形成周期性尖峰
+        /// （对串口路由尤其危险）。
+        /// </remarks>
         private void OnVariablesChanged()
         {
             // 取得当前变量列表快照（线程安全）
             IReadOnlyList<VariableItem> snapshot = _variableService.Variables;
 
+            // 计算期望运行的轮询集合：Id → 扫描周期
+            Dictionary<string, int> desired = new Dictionary<string, int>();
+            foreach (VariableItem item in snapshot)
+            {
+                // 跳过无效或未启用轮询的变量
+                if (item == null
+                    || !item.IsPollingEnabled
+                    || string.IsNullOrEmpty(item.Id)
+                    || string.IsNullOrEmpty(item.DeviceId)
+                    || string.IsNullOrEmpty(item.Address))
+                {
+                    continue;
+                }
+
+                desired[item.Id] = item.ScanRateMs > 0 ? item.ScanRateMs : DefaultScanRateMs;
+            }
+
             lock (_lock)
             {
-                // 停止所有现有轮询任务
-                foreach (CancellationTokenSource cts in _polls.Values)
+                // 1. 停止不再需要的任务：已删除、已禁用，或周期发生变化需重启
+                List<string> toStop = new List<string>();
+                foreach (KeyValuePair<string, PollHandle> running in _polls)
                 {
-                    cts.Cancel();
-                    cts.Dispose();
+                    bool stillWanted = desired.TryGetValue(running.Key, out int wantedRate)
+                                       && wantedRate == running.Value.ScanRateMs;
+                    if (!stillWanted)
+                        toStop.Add(running.Key);
                 }
-                _polls.Clear();
 
-                // 为每个启用轮询且配置完整的变量启动新任务
-                foreach (VariableItem item in snapshot)
+                foreach (string id in toStop)
                 {
-                    // 跳过无效或未启用轮询的变量
-                    if (item == null
-                        || !item.IsPollingEnabled
-                        || string.IsNullOrEmpty(item.Id)
-                        || string.IsNullOrEmpty(item.DeviceId)
-                        || string.IsNullOrEmpty(item.Address))
-                    {
-                        continue;
-                    }
+                    PollHandle handle = _polls[id];
+                    handle.Cts.Cancel();
+                    handle.Cts.Dispose();
+                    _polls.Remove(id);
+                }
+
+                // 2. 启动尚未运行的任务（含因周期变化刚被停掉的）
+                foreach (KeyValuePair<string, int> want in desired)
+                {
+                    if (_polls.ContainsKey(want.Key))
+                        continue;   // 已在运行且周期未变，保持不动
 
                     CancellationTokenSource cts = new CancellationTokenSource();
-                    _polls[item.Id] = cts;
+                    _polls[want.Key] = new PollHandle { Cts = cts, ScanRateMs = want.Value };
 
-                    // 在后台线程运行轮询循环，捕获必要参数避免闭包问题
-                    string capturedId      = item.Id;
-                    int    capturedRateMs  = item.ScanRateMs > 0 ? item.ScanRateMs : 1000;
+                    // 捕获必要参数避免闭包捕获循环变量
+                    string capturedId     = want.Key;
+                    int    capturedRateMs = want.Value;
                     CancellationToken token = cts.Token;
 
-                    _ = Task.Run(() => PollLoop(capturedId, capturedRateMs, token), token);
+                    // 首次请求加入 0~周期 之间的随机抖动，避免批量启用时
+                    // 所有变量在同一时刻并发发起 Read
+                    int startJitterMs;
+                    lock (_jitter)
+                        startJitterMs = _jitter.Next(0, Math.Max(1, capturedRateMs));
+
+                    _ = Task.Run(
+                        () => PollLoop(capturedId, capturedRateMs, startJitterMs, token), token);
                 }
             }
         }
@@ -171,19 +227,44 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// </summary>
         /// <param name="variableId">目标变量 ID。</param>
         /// <param name="scanRateMs">轮询间隔（毫秒）。</param>
+        /// <param name="startJitterMs">首轮额外延迟，用于分散批量启动时的并发请求。</param>
         /// <param name="ct">外部取消令牌，取消后退出循环。</param>
-        private async Task PollLoop(string variableId, int scanRateMs, CancellationToken ct)
+        private async Task PollLoop(
+            string variableId, int scanRateMs, int startJitterMs, CancellationToken ct)
         {
-            while (!ct.IsCancellationRequested)
+            // 首轮抖动：错开同时启用的多个变量，避免请求对齐成尖峰
+            if (startJitterMs > 0)
             {
-                // 先等待一个周期再读取，避免启动时立即发起请求与设备建立连接时机冲突
                 try
                 {
-                    await Task.Delay(scanRateMs, ct).ConfigureAwait(false);
+                    await Task.Delay(startJitterMs, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    // 等待期间被取消：正常退出
+                    return;
+                }
+            }
+
+            // 连续失败计数，用于指数退避延迟计算
+            int consecutiveFails = 0;
+
+            while (!ct.IsCancellationRequested)
+            {
+                // 指数退避：每次失败后下一轮延迟翻倍，上限 60 秒；成功后重置为正常周期
+                // 首次或成功后使用正常 scanRateMs；失败后 delay = min(scanRateMs * 2^n, 60000)
+                // 先按 long 计算再夹取上限，避免大周期 × 退避倍数时 int 溢出
+                int delayMs = consecutiveFails == 0
+                    ? scanRateMs
+                    : (int)Math.Min(
+                        (long)scanRateMs * (1L << Math.Min(consecutiveFails, 10)),
+                        MaxBackoffMs);
+
+                try
+                {
+                    await Task.Delay(delayMs, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
                     break;
                 }
 
@@ -202,7 +283,6 @@ namespace CommunicationKernel.UI.Wpf.Services
                     break;
                 }
 
-                // 向 EngineHost 发起读取请求
                 try
                 {
                     ReadResultDto result = await _client
@@ -211,11 +291,12 @@ namespace CommunicationKernel.UI.Wpf.Services
 
                     if (result.Success)
                     {
-                        // 解析字节数组为可读字符串
+                        // 读取成功：重置退避计数，解析字节数组并更新 UI
+                        consecutiveFails = 0;
+
                         bool parsed = ValueParser.TryParseBytes(
                             item.DataType, result.Data, out string display);
 
-                        // 切回 UI 线程更新属性（VariableItem 的属性 setter 触发 PropertyChanged）
                         Application app = Application.Current;
                         if (app != null)
                         {
@@ -228,7 +309,8 @@ namespace CommunicationKernel.UI.Wpf.Services
                     }
                     else
                     {
-                        // 读取业务失败：展示错误码，清空 LastValue
+                        // 读取业务失败（PLC 拒绝）：累计失败次数，触发退避
+                        consecutiveFails++;
                         string errText = string.IsNullOrEmpty(result.ErrorCode)
                             ? result.ErrorMessage
                             : string.Format("{0}: {1}", result.ErrorCode, result.ErrorMessage);
@@ -245,12 +327,12 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 catch (OperationCanceledException)
                 {
-                    // 读取期间被取消：正常退出
                     break;
                 }
                 catch (Exception ex)
                 {
-                    // 网络异常：记录到 LastError，不中断轮询（等下一个周期重试）
+                    // 网络异常：累计失败次数，触发退避，不中断轮询（等下一个周期重试）
+                    consecutiveFails++;
                     Application app = Application.Current;
                     if (app != null)
                     {

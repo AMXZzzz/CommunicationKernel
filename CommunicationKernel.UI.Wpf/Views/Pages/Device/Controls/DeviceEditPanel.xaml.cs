@@ -7,6 +7,7 @@ using System.Windows.Input;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Models;
+using CommunicationKernel.UI.Wpf.Services;
 
 namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
     /// <summary>
@@ -41,6 +42,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
         public bool IsNew => string.IsNullOrEmpty(_editingId);
 
+        /// <summary>
+        /// 填充协议下拉框。
+        /// 每个 ComboBoxItem 的 Content 为展示名，Tag 挂载完整描述符——
+        /// 注册路由时必须取 Tag 中的 ProtocolId，绝不能用展示名。
+        /// </summary>
         private void LoadProtocolList () {
             if (cmbProtocol == null)
                 return;
@@ -50,18 +56,65 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (ProtocolResolver == null)
                 return;
 
-            IList<string> names = ProtocolResolver.GetProtocolNames();
-            if (names == null)
+            IList<ProtocolDescriptorDto> protocols = ProtocolResolver.GetProtocols();
+            if (protocols == null)
                 return;
 
-            foreach (string name in names) {
-                if (string.IsNullOrWhiteSpace(name))
+            foreach (ProtocolDescriptorDto p in protocols) {
+                if (p == null || string.IsNullOrWhiteSpace(p.ProtocolId))
                     continue;
-                cmbProtocol.Items.Add(new ComboBoxItem { Content = name });
+
+                // Content 给人看，Tag 给程序用
+                cmbProtocol.Items.Add(new ComboBoxItem {
+                    Content = string.IsNullOrWhiteSpace(p.DisplayName) ? p.ProtocolId : p.DisplayName,
+                    Tag     = p
+                });
             }
 
             if (cmbProtocol.Items.Count > 0)
                 cmbProtocol.SelectedIndex = 0;
+        }
+
+        /// <summary>
+        /// 协议选择变化：按所选协议的描述符切换连接参数表单。
+        /// UI 不内置任何协议知识，全部依据服务端下发的描述符渲染。
+        /// </summary>
+        private void CmbProtocol_SelectionChanged (object sender, SelectionChangedEventArgs e) {
+            ApplyProtocolLayout(GetSelectedDescriptor());
+        }
+
+        /// <summary>
+        /// 依据协议描述符决定：显示 TCP 参数还是串口参数、是否显示站号、站号提示文案。
+        /// descriptor 为 null（协议列表尚未就绪）时退化为 TCP + 显示站号的通用布局。
+        /// </summary>
+        private void ApplyProtocolLayout (ProtocolDescriptorDto descriptor) {
+            // 判定传输介质：描述符缺失时按 TCP 处理，保证表单始终可用
+            bool isSerial = descriptor != null
+                && string.Equals(descriptor.TransportKind, "Serial", StringComparison.OrdinalIgnoreCase);
+
+            if (panelTcp != null)
+                panelTcp.Visibility = isSerial ? Visibility.Collapsed : Visibility.Visible;
+            if (panelSerial != null)
+                panelSerial.Visibility = isSerial ? Visibility.Visible : Visibility.Collapsed;
+
+            // 站号：仅在协议确实需要时展示，避免让操作员填写无意义字段
+            bool needStation = descriptor == null || descriptor.RequiresStation;
+            if (panelStation != null)
+                panelStation.Visibility = needStation ? Visibility.Visible : Visibility.Collapsed;
+
+            // 站号范围提示直接来自插件元信息，无需 UI 硬编码
+            if (runStationHint != null) {
+                string hint = descriptor != null ? descriptor.StationHint : null;
+                runStationHint.Text = string.IsNullOrWhiteSpace(hint) ? "" : "  " + hint;
+            }
+        }
+
+        /// <summary>取当前选中项挂载的协议描述符；未选中或无 Tag 时返回 null。</summary>
+        private ProtocolDescriptorDto GetSelectedDescriptor () {
+            ComboBoxItem item = cmbProtocol != null
+                ? cmbProtocol.SelectedItem as ComboBoxItem
+                : null;
+            return item != null ? item.Tag as ProtocolDescriptorDto : null;
         }
 
         /// <summary>载入设备到表单。</summary>
@@ -86,11 +139,20 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (txtIp != null)
                 txtIp.Text = info.Ip ?? "";
             if (txtPort != null)
-                txtPort.Text = info.Port.ToString();
+                txtPort.Text = info.Port > 0 ? info.Port.ToString() : "502";
 
-            // 站号：只绑 StationNo（控件名可为 txtStationNo，语义是站号）
+            // 串口参数（串口类协议使用）
+            if (txtSerialPort != null)
+                txtSerialPort.Text = info.SerialPort ?? "";
+            if (txtBaudRate != null)
+                txtBaudRate.Text = info.BaudRate > 0 ? info.BaudRate.ToString() : "9600";
+
+            // 站号：设备级配置。变量地址因此可以保持干净（DT100 而非 01:DT100）
             if (txtStationNo != null)
-                txtStationNo.Text = info.StationNo.ToString();
+                txtStationNo.Text = info.StationNo > 0 ? info.StationNo.ToString() : "1";
+
+            // 依据当前选中协议切换连接参数表单
+            ApplyProtocolLayout(GetSelectedDescriptor());
 
             if (txtStatus != null) {
                 txtStatus.Text = info.StatusText ?? "离线";
@@ -108,21 +170,55 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
             d.Name = txtName != null ? txtName.Text.Trim() : "";
             d.Model = txtModel != null ? txtModel.Text.Trim() : "";
-            d.Ip = txtIp != null ? txtIp.Text.Trim() : "";
 
-            int port;
-            d.Port = (txtPort != null && int.TryParse(txtPort.Text.Trim(), out port))
-                ? port
-                : 502;
+            ProtocolDescriptorDto descriptor = GetSelectedDescriptor();
 
-            int station = 1;
-            if (txtStationNo != null)
-                int.TryParse(txtStationNo.Text.Trim(), out station);
-            if (station < 0)
-                station = 0;
-            d.StationNo = station;
+            // 协议：必须写 ProtocolId（服务端匹配键），不能写展示名
+            d.Protocol = GetSelectedProtocolId();
 
-            d.Protocol = GetSelectedProtocol();
+            // 传输介质：由协议描述符决定，不再留空导致服务端 Enum.TryParse 失败
+            bool isSerial = descriptor != null
+                && string.Equals(descriptor.TransportKind, "Serial", StringComparison.OrdinalIgnoreCase);
+            d.TransportKind = isSerial ? "Serial" : "Tcp";
+
+            if (isSerial) {
+                // 串口路由：串口名走 SerialPort 字段，IP/端口留空
+                d.SerialPort = txtSerialPort != null ? txtSerialPort.Text.Trim() : "";
+
+                int baud;
+                d.BaudRate = (txtBaudRate != null && int.TryParse(txtBaudRate.Text.Trim(), out baud) && baud > 0)
+                    ? baud
+                    : 9600;
+
+                d.Ip   = "";
+                d.Port = 0;
+            } else {
+                // TCP 路由：IP + 端口
+                d.Ip = txtIp != null ? txtIp.Text.Trim() : "";
+
+                int port;
+                d.Port = (txtPort != null && int.TryParse(txtPort.Text.Trim(), out port) && port > 0)
+                    ? port
+                    : 502;
+
+                d.SerialPort = "";
+                d.BaudRate   = 0;
+            }
+
+            // 站号：不需要站号的协议（如 S7）统一写 0，Station 字符串留空
+            if (descriptor != null && !descriptor.RequiresStation) {
+                d.StationNo = 0;
+                d.Station   = "";
+            } else {
+                int station = 1;
+                if (txtStationNo != null && int.TryParse(txtStationNo.Text.Trim(), out int parsed) && parsed > 0)
+                    station = parsed;
+
+                d.StationNo = station;
+                // 同步写 Station 字符串：注册路由时传的是它，此前只写 StationNo 导致站号丢失
+                d.Station = station.ToString();
+            }
+
             d.IsDualLane = _isDual;
             d.ExtraSettingsJson = string.IsNullOrWhiteSpace(_extraSettingsJson)
                 ? "{}"
@@ -159,36 +255,38 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             } catch { }
         }
 
-        private void SelectProtocol (string protocol) {
-            if (cmbProtocol == null || string.IsNullOrWhiteSpace(protocol))
+        /// <summary>
+        /// 按 ProtocolId 选中下拉项（编辑既有设备时还原选择）。
+        /// 匹配依据是 Tag 中的 ProtocolId，不是展示名。
+        /// </summary>
+        private void SelectProtocol (string protocolId) {
+            if (cmbProtocol == null || cmbProtocol.Items.Count == 0)
                 return;
 
-            for (int i = 0; i < cmbProtocol.Items.Count; i++) {
-                ComboBoxItem item = cmbProtocol.Items[i] as ComboBoxItem;
-                string text = item != null && item.Content != null
-                    ? item.Content.ToString()
-                    : (cmbProtocol.Items[i] != null ? cmbProtocol.Items[i].ToString() : "");
+            if (!string.IsNullOrWhiteSpace(protocolId)) {
+                for (int i = 0; i < cmbProtocol.Items.Count; i++) {
+                    ComboBoxItem item = cmbProtocol.Items[i] as ComboBoxItem;
+                    ProtocolDescriptorDto d = item != null ? item.Tag as ProtocolDescriptorDto : null;
 
-                if (string.Equals(text, protocol, StringComparison.OrdinalIgnoreCase)) {
-                    cmbProtocol.SelectedIndex = i;
-                    return;
+                    if (d != null
+                        && string.Equals(d.ProtocolId, protocolId, StringComparison.OrdinalIgnoreCase)) {
+                        cmbProtocol.SelectedIndex = i;
+                        return;
+                    }
                 }
             }
 
-            if (cmbProtocol.Items.Count > 0)
-                cmbProtocol.SelectedIndex = 0;
+            // 未匹配到（协议已下架或首次新增）：回落到第一项
+            cmbProtocol.SelectedIndex = 0;
         }
 
-        private string GetSelectedProtocol () {
-            if (cmbProtocol == null || cmbProtocol.SelectedItem == null)
-                return "";
-
-            ComboBoxItem item = cmbProtocol.SelectedItem as ComboBoxItem;
-            if (item != null && item.Content != null)
-                return item.Content.ToString();
-
-            string s = cmbProtocol.SelectedItem as string;
-            return string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
+        /// <summary>
+        /// 取当前选中协议的 ProtocolId（服务端匹配用的键）。
+        /// 描述符缺失时返回空串，由上层校验拦截。
+        /// </summary>
+        private string GetSelectedProtocolId () {
+            ProtocolDescriptorDto d = GetSelectedDescriptor();
+            return d != null ? d.ProtocolId : "";
         }
 
         private void UpdateLaneButtons () {

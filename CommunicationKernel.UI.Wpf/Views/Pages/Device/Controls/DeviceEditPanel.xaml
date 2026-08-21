@@ -115,51 +115,93 @@
                              FontSize="12"/>
                     </TextBlock>
                     <ComboBox x:Name="cmbProtocol"
-                              Style="{StaticResource SF.Style.ComboBox}"/>
+                              Style="{StaticResource SF.Style.ComboBox}"
+                              SelectionChanged="CmbProtocol_SelectionChanged"/>
 
-                    <!-- IP -->
-                    <TextBlock Margin="0,12,0,4">
-                        <Run Text="IP 地址"
-                             Foreground="{StaticResource SF.Brush.Text.Secondary}"
-                             FontSize="12"/>
-                        <Run Text=" *"
-                             Foreground="{StaticResource SF.Brush.Status.Error}"
-                             FontSize="12"/>
-                    </TextBlock>
-                    <TextBox x:Name="txtIp"
-                             Style="{StaticResource SF.Style.DialogTextBox}"
-                             FontFamily="Consolas"/>
+                    <!-- TCP 连接参数：IP + 端口。由所选协议的 TransportKind 决定是否显示 -->
+                    <StackPanel x:Name="panelTcp">
+                        <TextBlock Margin="0,12,0,4">
+                            <Run Text="IP 地址"
+                                 Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                 FontSize="12"/>
+                            <Run Text=" *"
+                                 Foreground="{StaticResource SF.Brush.Status.Error}"
+                                 FontSize="12"/>
+                        </TextBlock>
+                        <TextBox x:Name="txtIp"
+                                 Style="{StaticResource SF.Style.DialogTextBox}"
+                                 FontFamily="Consolas"/>
 
-                    <!-- 端口 + 站号 -->
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Margin="0,0,0,4">
-                                <Run Text="端口"
-                                     Foreground="{StaticResource SF.Brush.Text.Secondary}"
-                                     FontSize="12"/>
-                                <Run Text=" *"
-                                     Foreground="{StaticResource SF.Brush.Status.Error}"
-                                     FontSize="12"/>
-                            </TextBlock>
-                            <TextBox x:Name="txtPort"
-                                     Style="{StaticResource SF.Style.DialogTextBox}"
-                                     FontFamily="Consolas"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="站号"
-                                       FontSize="12"
-                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"
-                                       Margin="0,0,0,4"/>
-                            <TextBox x:Name="txtStationNo"
-                                     Style="{StaticResource SF.Style.DialogTextBox}"
-                                     FontFamily="Consolas"/>
-                        </StackPanel>
-                    </Grid>
+                        <TextBlock Margin="0,12,0,4">
+                            <Run Text="端口"
+                                 Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                 FontSize="12"/>
+                            <Run Text=" *"
+                                 Foreground="{StaticResource SF.Brush.Status.Error}"
+                                 FontSize="12"/>
+                        </TextBlock>
+                        <TextBox x:Name="txtPort"
+                                 Style="{StaticResource SF.Style.DialogTextBox}"
+                                 FontFamily="Consolas"/>
+                    </StackPanel>
+
+                    <!-- 串口连接参数：串口号 + 波特率。仅串口类协议显示 -->
+                    <StackPanel x:Name="panelSerial" Visibility="Collapsed">
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Margin="0,0,0,4">
+                                    <Run Text="串口号"
+                                         Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                         FontSize="12"/>
+                                    <Run Text=" *"
+                                         Foreground="{StaticResource SF.Brush.Status.Error}"
+                                         FontSize="12"/>
+                                </TextBlock>
+                                <TextBox x:Name="txtSerialPort"
+                                         Style="{StaticResource SF.Style.DialogTextBox}"
+                                         FontFamily="Consolas"
+                                         ToolTip="例如 COM3"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Margin="0,0,0,4">
+                                    <Run Text="波特率"
+                                         Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                         FontSize="12"/>
+                                    <Run Text=" *"
+                                         Foreground="{StaticResource SF.Brush.Status.Error}"
+                                         FontSize="12"/>
+                                </TextBlock>
+                                <TextBox x:Name="txtBaudRate"
+                                         Style="{StaticResource SF.Style.DialogTextBox}"
+                                         FontFamily="Consolas"
+                                         ToolTip="例如 9600 / 19200 / 115200"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- 站号：仅需要站号的协议显示；提示文案来自协议描述符 -->
+                    <StackPanel x:Name="panelStation" Margin="0,12,0,0">
+                        <TextBlock Margin="0,0,0,4">
+                            <Run Text="站号"
+                                 Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                 FontSize="12"/>
+                            <Run x:Name="runStationHint"
+                                 Text=""
+                                 Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                 FontSize="11"/>
+                        </TextBlock>
+                        <TextBox x:Name="txtStationNo"
+                                 Style="{StaticResource SF.Style.DialogTextBox}"
+                                 FontFamily="Consolas"/>
+                        <TextBlock Text="变量地址直接填写本机地址即可（如 DT100），无需再加站号前缀"
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                    </StackPanel>
 
                     <!-- 轨道类型 -->
                     <TextBlock Text="轨道类型"

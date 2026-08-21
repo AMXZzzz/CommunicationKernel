@@ -12,7 +12,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="Protos\V1\engine_host.proto" GrpcServices="Server" />
+    <!-- 契约文件位于解决方案根目录 Protos\，由服务端与所有客户端共用。
+         曾经每个项目各存一份副本，导致 Web 端契约长期滞后于服务端。 -->
+    <Protobuf Include="..\Protos\V1\engine_host.proto"
+              ProtoRoot=".."
+              GrpcServices="Server"
+              Link="Protos\V1\engine_host.proto" />
   </ItemGroup>
 
   <PropertyGroup>

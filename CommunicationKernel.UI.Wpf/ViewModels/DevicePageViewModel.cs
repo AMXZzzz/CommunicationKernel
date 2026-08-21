@@ -147,6 +147,14 @@ public sealed class DevicePageViewModel : ViewModelBase {
 
         // ── 订阅设备列表变更，同步 DisplayList ──────────
         _devices.Devices.CollectionChanged += (_, __) => RebuildDisplayList();
+
+        // ── 订阅后台操作失败，转为界面错误提示 ──────────
+        // Add / Update 是即发即忘的，失败只能通过此事件让用户看到原因
+        _devices.OperationFailed += msg => {
+            _log?.Error("Device", msg);
+            RequestShowError?.Invoke(msg);
+        };
+
         RebuildDisplayList();
     }
 

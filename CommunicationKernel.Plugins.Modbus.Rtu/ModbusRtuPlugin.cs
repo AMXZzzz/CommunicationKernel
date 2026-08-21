@@ -57,11 +57,15 @@ public sealed class ModbusRtuProtocolDriverFactory : IProtocolDriverFactory
     {
         ProtocolId       = "modbus-rtu",
         DisplayName      = "Modbus RTU (CRC16, serial framing)",
+        TransportKind    = TransportKind.Serial,
+        RequiresStation  = true,
+        StationHint      = "从站地址 1-247",
         PluginApiVersion = 1
     };
 
     /// <inheritdoc />
-    public IProtocolDriver CreateDriver() => new ModbusRtuProtocolDriver(Metadata);
+    public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        new ModbusRtuProtocolDriver(Metadata, ModbusRtuAddress.ResolveDefaultSlaveId(context?.Station));
 }
 
 // =============================================================================
@@ -76,7 +80,17 @@ internal sealed class ModbusRtuProtocolDriver : IProtocolDriver
     // -------------------------------------------------------------------------
     // 构造
     // -------------------------------------------------------------------------
-    internal ModbusRtuProtocolDriver(ProtocolMetadata metadata) => Metadata = metadata;
+    /// <summary>
+    /// 本路由的默认从站 ID，来自设备级站号配置。
+    /// 地址中的 "N:" 前缀可覆盖它（RS-485 一主多从场景）。
+    /// </summary>
+    private readonly byte _defaultSlaveId;
+
+    internal ModbusRtuProtocolDriver(ProtocolMetadata metadata, byte defaultSlaveId)
+    {
+        Metadata        = metadata;
+        _defaultSlaveId = defaultSlaveId;
+    }
 
     // -------------------------------------------------------------------------
     // IProtocolDriver
@@ -87,7 +101,7 @@ internal sealed class ModbusRtuProtocolDriver : IProtocolDriver
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildReadFrame(string address, int length) {
-        OperationResult<ModbusRtuAddressInfo> addrResult = ModbusRtuAddress.Parse(address);
+        OperationResult<ModbusRtuAddressInfo> addrResult = ModbusRtuAddress.Parse(address, _defaultSlaveId);
         if (!addrResult.Success)
             return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
 
@@ -98,7 +112,7 @@ internal sealed class ModbusRtuProtocolDriver : IProtocolDriver
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildWriteFrame(string address, byte[] payload) {
-        OperationResult<ModbusRtuAddressInfo> addrResult = ModbusRtuAddress.Parse(address);
+        OperationResult<ModbusRtuAddressInfo> addrResult = ModbusRtuAddress.Parse(address, _defaultSlaveId);
         if (!addrResult.Success)
             return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
 
@@ -123,7 +137,7 @@ internal sealed class ModbusRtuProtocolDriver : IProtocolDriver
             await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success) return response;
 
-        OperationResult<ModbusRtuAddressInfo> addrResult = ModbusRtuAddress.Parse(address);
+        OperationResult<ModbusRtuAddressInfo> addrResult = ModbusRtuAddress.Parse(address, _defaultSlaveId);
         if (!addrResult.Success)
             return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
 

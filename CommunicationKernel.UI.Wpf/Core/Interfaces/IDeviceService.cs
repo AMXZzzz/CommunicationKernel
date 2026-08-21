@@ -3,6 +3,7 @@
 // 作用: 定义设备管理服务的抽象接口，供 DevicePageViewModel 依赖注入使用。
 //       具体实现（GrpcDeviceService）封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus。
 
+using System;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,14 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
     /// </summary>
     public interface IDeviceService
     {
+        /// <summary>
+        /// 后台操作（注册 / 更新 / 删除路由）失败时触发，参数为面向操作员的错误描述。
+        /// Add / Update 是即发即忘的异步操作，失败无法通过返回值感知——
+        /// 订阅此事件是唯一能让用户看到失败原因的途径。
+        /// </summary>
+        /// <remarks>回调在 UI 线程触发，订阅方可直接更新界面。</remarks>
+        event Action<string> OperationFailed;
+
         /// <summary>
         /// 当前设备列表，ObservableCollection 会在条目增删时自动通知 WPF 列表控件刷新。
         /// 所有对此集合的修改均须在 UI 线程执行。

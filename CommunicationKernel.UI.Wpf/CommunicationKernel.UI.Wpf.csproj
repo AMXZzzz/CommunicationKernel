@@ -43,8 +43,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 引用本地 proto 文件，GrpcServices=Client 只生成客户端 stub -->
-    <Protobuf Include="Protos\V1\engine_host.proto" GrpcServices="Client" />
+    <!-- 引用解决方案根目录下的共享 proto，GrpcServices=Client 只生成客户端 stub。
+         共享单一文件可杜绝客户端与服务端契约不同步。 -->
+    <Protobuf Include="..\Protos\V1\engine_host.proto"
+              ProtoRoot=".."
+              GrpcServices="Client"
+              Link="Protos\V1\engine_host.proto" />
   </ItemGroup>
 
   <ItemGroup>

@@ -35,11 +35,14 @@ public sealed class SiemensS7_1200ProtocolDriverFactory : IProtocolDriverFactory
     public ProtocolMetadata Metadata { get; } = new() {
         ProtocolId       = "siemens-s7-1200",
         DisplayName      = "Siemens S7-1200 (ISO on TCP)",
+        TransportKind    = TransportKind.Tcp,
+        // S7 的 Rack/Slot 已固化在 TSAP 中，无需操作员填写站号
+        RequiresStation  = false,
         PluginApiVersion = 1
     };
 
     /// <inheritdoc />
-    public IProtocolDriver CreateDriver() =>
+    public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
         new SiemensS7ProtocolDriver(Metadata, remoteTsap: 0x0300);
 }
 
@@ -55,11 +58,14 @@ public sealed class SiemensS7_200SmartProtocolDriverFactory : IProtocolDriverFac
     public ProtocolMetadata Metadata { get; } = new() {
         ProtocolId       = "siemens-s7-200smart",
         DisplayName      = "Siemens S7-200Smart (ISO on TCP)",
+        TransportKind    = TransportKind.Tcp,
+        // S7 的 Rack/Slot 已固化在 TSAP 中，无需操作员填写站号
+        RequiresStation  = false,
         PluginApiVersion = 1
     };
 
     /// <inheritdoc />
-    public IProtocolDriver CreateDriver() =>
+    public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
         new SiemensS7ProtocolDriver(Metadata, remoteTsap: 0x0200);
 }
 

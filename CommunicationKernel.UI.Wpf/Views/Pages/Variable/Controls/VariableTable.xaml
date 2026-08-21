@@ -91,6 +91,7 @@
                             <ColumnDefinition Width="150"/>
                             <ColumnDefinition Width="48"/>
                             <ColumnDefinition Width="76"/>
+                            <ColumnDefinition Width="52"/>
                             <ColumnDefinition Width="64"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="#" Style="{StaticResource SF.Style.VarHeaderText}"/>
@@ -102,7 +103,8 @@
                         <TextBlock Grid.Column="6" Text="写入" Style="{StaticResource SF.Style.VarHeaderText}"/>
                         <TextBlock Grid.Column="7" Text="单位" Style="{StaticResource SF.Style.VarHeaderText}"/>
                         <TextBlock Grid.Column="8" Text="分类" Style="{StaticResource SF.Style.VarHeaderText}"/>
-                        <TextBlock Grid.Column="9" Text="操作" Style="{StaticResource SF.Style.VarHeaderText}"/>
+                        <TextBlock Grid.Column="9" Text="轮询" Style="{StaticResource SF.Style.VarHeaderText}"/>
+                        <TextBlock Grid.Column="10" Text="操作" Style="{StaticResource SF.Style.VarHeaderText}"/>
                     </Grid>
                 </Border>
 
@@ -142,6 +144,7 @@
                                         <ColumnDefinition Width="150"/>
                                         <ColumnDefinition Width="48"/>
                                         <ColumnDefinition Width="76"/>
+                                        <ColumnDefinition Width="52"/>
                                         <ColumnDefinition Width="64"/>
                                     </Grid.ColumnDefinitions>
 
@@ -207,7 +210,15 @@
                                                    Foreground="{StaticResource SF.Brush.Var.Category.Fg}"/>
                                     </Border>
 
-                                    <StackPanel Grid.Column="9" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <!-- 轮询开关：勾选后 VariablePollingService 按 ScanRateMs 周期读取 -->
+                                    <CheckBox Grid.Column="9"
+                                              IsChecked="{Binding IsPollingEnabled, Mode=OneWay}"
+                                              Tag="{Binding Id}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Click="ChkPoll_Click"
+                                              ToolTip="启用轮询后将按扫描周期自动读取实时值"/>
+
+                                    <StackPanel Grid.Column="10" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button Content="✎" Style="{StaticResource SF.Style.VarRowIcon}"
                                                 Tag="{Binding Id}" Click="BtnEdit_Click" ToolTip="编辑"/>
                                         <Button Content="×" Style="{StaticResource SF.Style.VarRowIcon}"

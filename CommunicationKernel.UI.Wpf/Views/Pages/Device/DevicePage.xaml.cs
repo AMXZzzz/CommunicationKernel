@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -23,12 +24,16 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         private readonly DevicePageViewModel _vm;
         private readonly IProtocolResolver _protocols;
 
+        /// <summary>是否已订阅单例 ViewModel 的事件，保证订阅/退订幂等。</summary>
+        private bool _vmWired;
+
         public DevicePage (DevicePageViewModel vm, IProtocolResolver protocols) {
             if (vm == null)
                 throw new ArgumentNullException(nameof(vm));
 
             _vm = vm;
             _protocols = protocols;
+            _vmWired = false;
 
             InitializeComponent();
 
@@ -43,8 +48,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (toolBar != null)
                 toolBar.SetCount(_vm.DeviceCount);
 
-            _vm.DisplayList.CollectionChanged += DisplayList_CollectionChanged;
-            Loaded += (_, __) => InjectServicesToCards();
+            // Loaded / Unloaded 成对管理单例 ViewModel 的订阅：
+            // 页面重新进入可视树时恢复订阅，离开时立即退订，杜绝重复处理器累积。
+            Loaded   += DevicePage_Loaded;
             Unloaded += DevicePage_Unloaded;
             editPanel.ProtocolResolver = _protocols;
         }
@@ -67,19 +73,52 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             }
         }
 
+        /// <summary>
+        /// 订阅 ViewModel 事件。幂等：重复调用不会造成重复订阅。
+        /// </summary>
+        /// <remarks>
+        /// ViewModel 是单例而本页是瞬态（每次导航新建实例）。
+        /// 若只订阅不退订，来回切页 N 次后单例会持有 N 个页面实例，
+        /// 一次 RequestShowError 会弹出 N 个对话框——因此必须使用具名方法
+        /// 配合 <see cref="UnwireViewModel"/> 成对使用，匿名 lambda 无法退订。
+        /// </remarks>
         private void WireViewModel () {
-            _vm.RequestOpenAdd += () => ShowEditPanel(true, null);
-            _vm.RequestOpenEdit += info => ShowEditPanel(false, info);
-            _vm.RequestShowError += msg => ShowWarning("提示", msg ?? "");
+            if (_vmWired) return;
+            _vmWired = true;
 
-            _vm.PropertyChanged += (s, e) => {
-                if (e.PropertyName == nameof(DevicePageViewModel.DeviceCount) && toolBar != null)
-                    toolBar.SetCount(_vm.DeviceCount);
-                if (e.PropertyName == nameof(DevicePageViewModel.IsSelectMode) && toolBar != null) {
-                    toolBar.SetSelectMode(_vm.IsSelectMode);
-                    ApplySelectModeToCards(_vm.IsSelectMode);
-                }
-            };
+            _vm.RequestOpenAdd   += OnRequestOpenAdd;
+            _vm.RequestOpenEdit  += OnRequestOpenEdit;
+            _vm.RequestShowError += OnRequestShowError;
+            _vm.PropertyChanged  += OnViewModelPropertyChanged;
+            _vm.DisplayList.CollectionChanged += DisplayList_CollectionChanged;
+        }
+
+        /// <summary>退订 ViewModel 事件。幂等：未订阅时调用无副作用。</summary>
+        private void UnwireViewModel () {
+            if (!_vmWired) return;
+            _vmWired = false;
+
+            _vm.RequestOpenAdd   -= OnRequestOpenAdd;
+            _vm.RequestOpenEdit  -= OnRequestOpenEdit;
+            _vm.RequestShowError -= OnRequestShowError;
+            _vm.PropertyChanged  -= OnViewModelPropertyChanged;
+            _vm.DisplayList.CollectionChanged -= DisplayList_CollectionChanged;
+        }
+
+        private void OnRequestOpenAdd () => ShowEditPanel(true, null);
+
+        private void OnRequestOpenEdit (DeviceInfo info) => ShowEditPanel(false, info);
+
+        private void OnRequestShowError (string msg) => ShowWarning("提示", msg ?? "");
+
+        private void OnViewModelPropertyChanged (object sender, PropertyChangedEventArgs e) {
+            if (e.PropertyName == nameof(DevicePageViewModel.DeviceCount) && toolBar != null)
+                toolBar.SetCount(_vm.DeviceCount);
+
+            if (e.PropertyName == nameof(DevicePageViewModel.IsSelectMode) && toolBar != null) {
+                toolBar.SetSelectMode(_vm.IsSelectMode);
+                ApplySelectModeToCards(_vm.IsSelectMode);
+            }
         }
 
         private void WireToolbar () {
@@ -249,8 +288,15 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             return ids;
         }
 
+        private void DevicePage_Loaded (object sender, RoutedEventArgs e) {
+            // 恢复订阅（首次为初次订阅），再刷新卡片上的服务注入
+            WireViewModel();
+            InjectServicesToCards();
+        }
+
         private void DevicePage_Unloaded (object sender, RoutedEventArgs e) {
-            _vm.DisplayList.CollectionChanged -= DisplayList_CollectionChanged;
+            // 离开可视树立即退订，防止单例 ViewModel 持有已废弃的页面实例
+            UnwireViewModel();
         }
 
         private static IEnumerable<T> FindVisualChildren<T> (DependencyObject parent)

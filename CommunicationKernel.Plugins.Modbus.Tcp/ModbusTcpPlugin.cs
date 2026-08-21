@@ -65,11 +65,15 @@ public sealed class ModbusTcpProtocolDriverFactory : IProtocolDriverFactory
     {
         ProtocolId       = "modbus-tcp",
         DisplayName      = "Modbus TCP (MBAP)",
+        TransportKind    = TransportKind.Tcp,
+        RequiresStation  = true,
+        StationHint      = "从站地址 1-247",
         PluginApiVersion = 1
     };
 
     /// <inheritdoc />
-    public IProtocolDriver CreateDriver() => new ModbusTcpProtocolDriver(Metadata);
+    public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        new ModbusTcpProtocolDriver(Metadata, ModbusAddress.ResolveDefaultUnitId(context?.Station));
 }
 
 // =============================================================================
@@ -88,13 +92,20 @@ internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
     /// <summary>事务 ID 计数器（Interlocked，线程安全）。</summary>
     private int _transactionIdCounter;
 
+    /// <summary>
+    /// 本路由的默认从站 ID，来自设备级站号配置。
+    /// 地址中的 "N:" 前缀可覆盖它（RS-485 一主多从场景）。
+    /// </summary>
+    private readonly byte _defaultUnitId;
+
     // -------------------------------------------------------------------------
     // 构造
     // -------------------------------------------------------------------------
 
-    internal ModbusTcpProtocolDriver(ProtocolMetadata metadata)
+    internal ModbusTcpProtocolDriver(ProtocolMetadata metadata, byte defaultUnitId)
     {
-        Metadata = metadata;
+        Metadata       = metadata;
+        _defaultUnitId = defaultUnitId;
     }
 
     // -------------------------------------------------------------------------
@@ -106,7 +117,7 @@ internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildReadFrame(string address, int length) {
-        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address);
+        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address, _defaultUnitId);
         if (!addrResult.Success)
             return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
 
@@ -125,7 +136,7 @@ internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
         if (payload is null || payload.Length == 0)
             return OperationResult<byte[]>.Fail("write payload is empty", KernelErrorCode.InvalidArgument);
 
-        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address);
+        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address, _defaultUnitId);
         if (!addrResult.Success)
             return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
 
@@ -143,7 +154,7 @@ internal sealed class ModbusTcpProtocolDriver : IProtocolDriver
             await client.SendAndReceiveAsync(buildResult.Value, cancellationToken).ConfigureAwait(false);
         if (!response.Success) return response;
 
-        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address);
+        OperationResult<ModbusAddressInfo> addrResult = ModbusAddress.Parse(address, _defaultUnitId);
         bool isCoil = addrResult.Success && (addrResult.Value.IsCoil || length == 1);
         return isCoil
             ? ModbusFrame.ParseReadCoilsResponse(response.Value)
