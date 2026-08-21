@@ -34,4 +34,8 @@
 
   <!-- 测试 -->
   <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />
+
+  <!-- UI 客户端 -->
+  <Project Path="CommunicationKernel.UI.Wpf/CommunicationKernel.UI.Wpf.csproj" />
+  <Project Path="CommunicationKernel.UI.Web/CommunicationKernel.UI.Web.csproj" />
 </Solution>

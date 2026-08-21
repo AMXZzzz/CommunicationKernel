@@ -1,0 +1,21 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Routes.razor
+   层级: UI 层 — Blazor 路由组件
+   作用: 配置客户端路由表，所有带 @page 指令的组件均自动注册。
+   ----------------------------------------------------------------------------- *@
+
+@* 路由器扫描当前程序集中所有带 @page 的组件 *@
+<Router AppAssembly="typeof(Routes).Assembly">
+    <Found Context="routeData">
+        @* 找到路由时使用 MainLayout 作为布局外框 *@
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        @* 未找到路由时显示 404 提示 *@
+        <PageTitle>页面未找到</PageTitle>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <p style="color:#ef4444">页面不存在，请返回首页。</p>
+        </LayoutView>
+    </NotFound>
+</Router>

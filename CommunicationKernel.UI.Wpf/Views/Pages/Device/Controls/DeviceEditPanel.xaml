@@ -1,0 +1,218 @@
+﻿<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Device.DeviceEditPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="400">
+
+    <Border Background="{StaticResource SF.Brush.Bg.Surface}"
+            BorderBrush="{StaticResource SF.Brush.Border.Default}"
+            BorderThickness="1"
+            CornerRadius="10"
+            ClipToBounds="True"
+            SnapsToDevicePixels="True">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="panelTranslate" X="0" Y="0"/>
+        </Border.RenderTransform>
+        <DockPanel>
+            <!-- ==================== 标题栏整条可拖动 ==================== -->
+            <Border x:Name="titleBar"
+                    DockPanel.Dock="Top"
+                    Background="{StaticResource SF.Brush.Bg.Hover}"
+                    CornerRadius="10,10,0,0"
+                    Padding="14,12"
+                    BorderThickness="0,0,0,1"
+                    BorderBrush="{StaticResource SF.Brush.Border.Default}"
+                    Cursor="SizeAll"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
+                    MouseMove="TitleBar_MouseMove"
+                    MouseLeftButtonUp="TitleBar_MouseLeftButtonUp"
+                    LostMouseCapture="TitleBar_LostMouseCapture">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                IsHitTestVisible="False">
+                        <Border Width="3" Height="16"
+                                Background="{StaticResource SF.Brush.Accent.Default}"
+                                CornerRadius="1"
+                                Margin="0,0,8,0"/>
+                        <TextBlock x:Name="txtTitle"
+                                   Text="编辑设备"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                    </StackPanel>
+                    <!-- 关闭按钮单独接收点击，不参与拖动 -->
+                    <Button Content="×"
+                            Width="28" Height="28"
+                            HorizontalAlignment="Right"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            FontSize="16"
+                            Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                            Click="BtnClose_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- ==================== 底栏 ==================== -->
+            <Border DockPanel.Dock="Bottom"
+                    Background="{StaticResource SF.Brush.Bg.App}"
+                    CornerRadius="0,0,10,10"
+                    Padding="16,12"
+                    BorderThickness="0,1,0,0"
+                    BorderBrush="{StaticResource SF.Brush.Border.Default}">
+                <Grid>
+                    <Button x:Name="btnDelete"
+                            Content="删除设备"
+                            Style="{StaticResource SF.Style.DangerButton}"
+                            Height="32"
+                            HorizontalAlignment="Left"
+                            Click="BtnDelete_Click"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="取消"
+                                Style="{StaticResource SF.Style.DarkButton}"
+                                Height="32"
+                                Margin="0,0,8,0"
+                                Click="BtnClose_Click"/>
+                        <Button x:Name="btnSave"
+                                Content="保存"
+                                Style="{StaticResource SF.Style.PrimaryButton}"
+                                Height="32"
+                                Click="BtnSave_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ==================== 表单 ==================== -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16,14">
+                <StackPanel>
+                    <!-- 设备名称 -->
+                    <TextBlock Margin="0,0,0,4">
+                        <Run Text="设备名称"
+                             Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                             FontSize="12"/>
+                        <Run Text=" *"
+                             Foreground="{StaticResource SF.Brush.Status.Error}"
+                             FontSize="12"/>
+                    </TextBlock>
+                    <TextBox x:Name="txtName"
+                             Style="{StaticResource SF.Style.DialogTextBox}"/>
+
+                    <!-- 品牌/型号 -->
+                    <TextBlock Text="品牌 / 型号"
+                               FontSize="12"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0,12,0,4"/>
+                    <TextBox x:Name="txtModel"
+                             Style="{StaticResource SF.Style.DialogTextBox}"/>
+
+                    <!-- 协议 -->
+                    <TextBlock Margin="0,12,0,4">
+                        <Run Text="协议"
+                             Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                             FontSize="12"/>
+                        <Run Text=" *"
+                             Foreground="{StaticResource SF.Brush.Status.Error}"
+                             FontSize="12"/>
+                    </TextBlock>
+                    <ComboBox x:Name="cmbProtocol"
+                              Style="{StaticResource SF.Style.ComboBox}"/>
+
+                    <!-- IP -->
+                    <TextBlock Margin="0,12,0,4">
+                        <Run Text="IP 地址"
+                             Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                             FontSize="12"/>
+                        <Run Text=" *"
+                             Foreground="{StaticResource SF.Brush.Status.Error}"
+                             FontSize="12"/>
+                    </TextBlock>
+                    <TextBox x:Name="txtIp"
+                             Style="{StaticResource SF.Style.DialogTextBox}"
+                             FontFamily="Consolas"/>
+
+                    <!-- 端口 + 站号 -->
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Margin="0,0,0,4">
+                                <Run Text="端口"
+                                     Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                     FontSize="12"/>
+                                <Run Text=" *"
+                                     Foreground="{StaticResource SF.Brush.Status.Error}"
+                                     FontSize="12"/>
+                            </TextBlock>
+                            <TextBox x:Name="txtPort"
+                                     Style="{StaticResource SF.Style.DialogTextBox}"
+                                     FontFamily="Consolas"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="站号"
+                                       FontSize="12"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                       Margin="0,0,0,4"/>
+                            <TextBox x:Name="txtStationNo"
+                                     Style="{StaticResource SF.Style.DialogTextBox}"
+                                     FontFamily="Consolas"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 轨道类型 -->
+                    <TextBlock Text="轨道类型"
+                               FontSize="12"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0,12,0,6"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="btnLaneSingle"
+                                Grid.Column="0"
+                                Content="单轨"
+                                Height="32"
+                                Margin="0"
+                                Click="BtnLaneSingle_Click"
+                                Style="{StaticResource SF.Style.DarkButton}"/>
+                        <Button x:Name="btnLaneDual"
+                                Grid.Column="2"
+                                Content="双轨"
+                                Height="32"
+                                Margin="0"
+                                Click="BtnLaneDual_Click"
+                                Style="{StaticResource SF.Style.PrimaryButton}"/>
+                    </Grid>
+
+                    <!-- 当前状态（只读） -->
+                    <TextBlock Text="当前状态"
+                               FontSize="12"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0,14,0,6"/>
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse x:Name="statusDot"
+                                     Width="8" Height="8"
+                                     Fill="{StaticResource SF.Brush.Status.Success}"
+                                     Margin="0,0,6,0"/>
+                            <TextBlock x:Name="txtStatus"
+                                       Text="RUN"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource SF.Brush.Status.Success}"/>
+                        </StackPanel>
+                        <TextBlock Text="只读 · 连接后更新"
+                                   FontSize="11"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>

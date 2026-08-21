@@ -113,7 +113,7 @@ public sealed class ModbusRtuDriverFrameTests {
         Assert.AreEqual(0x00, r.Value[2]); // Addr Hi
         Assert.AreEqual(0x00, r.Value[3]); // Addr Lo = 0
         Assert.AreEqual(0x00, r.Value[4]); // Qty Hi
-        Assert.AreEqual(0x02, r.Value[5]); // Qty Lo = ceil(4/2) = 2
+        Assert.AreEqual(0x04, r.Value[5]); // Qty Lo = 4 (驱动以字节数为单位传输 quantity)
     }
 
     [TestMethod]
@@ -172,7 +172,7 @@ public sealed class ModbusAsciiDriverFrameTests {
 
         Assert.IsTrue(r.Success);
         string ascii = System.Text.Encoding.ASCII.GetString(r.Value);
-        Assert.IsTrue(ascii.Contains("FF00"), $"Expected FF00 in: {ascii}");
+        Assert.Contains("FF00", ascii, StringComparison.Ordinal);
     }
 }
 
@@ -194,7 +194,7 @@ public sealed class SiemensS7DriverFrameTests {
         // TPKT 版本 = 0x03
         Assert.AreEqual(0x03, r.Value[0]);
         // 最小长度：TPKT(4) + COTP DT(3) + S7Header(10) + Param ≥ 31
-        Assert.IsTrue(r.Value.Length >= 31, $"frame too short: {r.Value.Length}");
+        Assert.IsGreaterThanOrEqualTo(r.Value.Length, 31, $"frame too short: {r.Value.Length}");
         // S7 function: Read Var = 0x04
         Assert.AreEqual(0x04, r.Value[17]);
     }
@@ -268,7 +268,7 @@ public sealed class MewtocolTcpDriverFrameTests {
         Assert.IsTrue(r.Success);
         Assert.AreEqual((byte)'%', r.Value[0]);
         string ascii = System.Text.Encoding.ASCII.GetString(r.Value);
-        Assert.IsTrue(ascii.Contains("WD"), $"Expected WD command, got: {ascii}");
+        Assert.Contains("WD", ascii, StringComparison.Ordinal);
     }
 
     [TestMethod]

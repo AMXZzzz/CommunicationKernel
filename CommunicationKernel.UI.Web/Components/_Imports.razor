@@ -1,0 +1,22 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/_Imports.razor
+   作用: Blazor 全局 using 声明，所有组件自动继承。
+   ----------------------------------------------------------------------------- *@
+
+@* Blazor 核心 *@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+
+@* DI / Logging *@
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.Extensions.Logging
+
+@* 本项目命名空间 *@
+@using CommunicationKernel.UI.Web.Components
+@using CommunicationKernel.UI.Web.Components.Layout
+@using CommunicationKernel.UI.Web.Components.Pages
+@using CommunicationKernel.UI.Web.Services

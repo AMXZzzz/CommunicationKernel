@@ -1,0 +1,309 @@
+﻿<UserControl x:Class="CommunicationDebuggingTools.Views.Pages.MESMonitor.Controls.MesAlarmDetail"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="440">
+    <Border Background="{StaticResource SF.Brush.Bg.Surface}"
+            BorderBrush="{StaticResource SF.Brush.Border.Default}"
+            BorderThickness="1"
+            CornerRadius="10"
+            ClipToBounds="True"
+            SnapsToDevicePixels="True">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Style="{StaticResource SF.Style.ScrollViewer.VerticalBar}"
+                      MaxHeight="560">
+            <StackPanel>
+
+                <!-- ===== 标题 ===== -->
+                <Border Background="{StaticResource SF.Brush.Mes.AlarmBg}"
+                        CornerRadius="10 10 0 0"
+                        Padding="14 12">
+                    <Grid>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0 0 0 6">
+                                <Border Width="28" Height="28"
+                                        Background="{StaticResource SF.Brush.Mes.AlarmBg}"
+                                        BorderBrush="{StaticResource SF.Brush.Mes.AlarmBorder}"
+                                        BorderThickness="1"
+                                        CornerRadius="14"
+                                        Margin="0 0 8 0">
+                                    <TextBlock Text="!" FontSize="14" FontWeight="Bold"
+                                               Foreground="{StaticResource SF.Brush.Mes.AlarmFg}"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Border>
+                                <Border Background="{StaticResource SF.Brush.Mes.AlarmBg}"
+                                        BorderBrush="{StaticResource SF.Brush.Mes.AlarmBorder}"
+                                        BorderThickness="1"
+                                        CornerRadius="3"
+                                        Padding="6 2"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="严重 · 未确认"
+                                               FontSize="10"
+                                               Foreground="{StaticResource SF.Brush.Mes.AlarmFg}"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="AOI NG报警 · 待确认"
+                                       FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                            <TextBlock Text="发生时间：2026-08-05 02:42:10"
+                                       FontSize="11"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                       Margin="0 4 0 0"/>
+                        </StackPanel>
+                        <TextBlock Text="×"
+                                   FontSize="16"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Top"
+                                   Cursor="Hand"
+                                   Padding="6"
+                                   MouseLeftButtonUp="BtnX_Click"/>
+                    </Grid>
+                </Border>
+
+                <!-- ===== 信息网格 2×3 ===== -->
+                <UniformGrid Columns="2" Margin="12 12 12 0">
+                    <Border Background="{StaticResource SF.Brush.Bg.App}"
+                            CornerRadius="6" Padding="10 8" Margin="0 0 6 6">
+                        <StackPanel>
+                            <TextBlock Text="设备名称" FontSize="10"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <TextBlock Text="AOI" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource SF.Brush.Text.Primary}"
+                                       Margin="0 2 0 0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource SF.Brush.Bg.App}"
+                            CornerRadius="6" Padding="10 8" Margin="0 0 0 6">
+                        <StackPanel>
+                            <TextBlock Text="设备型号" FontSize="10"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <TextBlock Text="Koh Young Zenith" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource SF.Brush.Text.Primary}"
+                                       Margin="0 2 0 0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource SF.Brush.Bg.App}"
+                            CornerRadius="6" Padding="10 8" Margin="0 0 6 6">
+                        <StackPanel>
+                            <TextBlock Text="IP 地址" FontSize="10"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <TextBlock Text="192.168.0.60" FontSize="13" FontFamily="Consolas"
+                                       Foreground="{StaticResource SF.Brush.Text.Primary}"
+                                       Margin="0 2 0 0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource SF.Brush.Bg.App}"
+                            CornerRadius="6" Padding="10 8" Margin="0 0 0 6">
+                        <StackPanel>
+                            <TextBlock Text="轨道类型" FontSize="10"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <TextBlock Text="双轨" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource SF.Brush.Text.Primary}"
+                                       Margin="0 2 0 0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource SF.Brush.Bg.App}"
+                            CornerRadius="6" Padding="10 8" Margin="0 0 6 0">
+                        <StackPanel>
+                            <TextBlock Text="报警代码" FontSize="10"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <TextBlock Text="AOI-NG-001" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource SF.Brush.Mes.AlarmFg}"
+                                       Margin="0 2 0 0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource SF.Brush.Bg.App}"
+                            CornerRadius="6" Padding="10 8">
+                        <StackPanel>
+                            <TextBlock Text="持续时间" FontSize="10"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <TextBlock Text="00:08:25" FontSize="13" FontFamily="Consolas"
+                                       Foreground="{StaticResource SF.Brush.Text.Primary}"
+                                       Margin="0 2 0 0"/>
+                        </StackPanel>
+                    </Border>
+                </UniformGrid>
+
+                <!-- ===== 报警描述 ===== -->
+                <StackPanel Margin="12 14 12 0">
+                    <TextBlock Text="报警描述" FontSize="11"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0 0 0 6"/>
+                    <TextBlock TextWrapping="Wrap" FontSize="12" LineHeight="20"
+                               Foreground="{StaticResource SF.Brush.Text.Primary}"
+                               Text="AOI 检测站发现 PCB 焊点缺陷（NG），当前板件已停在检测位等待人工确认。轨道1、轨道2 通信超时，无法读取实时宽度。"/>
+                </StackPanel>
+
+                <!-- ===== 关联实时数据 ===== -->
+                <StackPanel Margin="12 14 12 0">
+                    <TextBlock Text="关联实时数据" FontSize="11"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0 0 0 6"/>
+                    <!-- 表头 -->
+                    <Grid Margin="0 0 0 4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="40"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="名称" FontSize="10"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <TextBlock Grid.Column="1" Text="地址" FontSize="10"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <TextBlock Grid.Column="2" Text="当前值" FontSize="10"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <TextBlock Grid.Column="3" Text="单位" FontSize="10"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                    </Grid>
+                    <!-- 行示例 -->
+                    <Grid Margin="0 0 0 3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="40"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="NG计数" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                        <TextBlock Grid.Column="1" Text="D400" FontSize="12"
+                                   FontFamily="Consolas"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <TextBlock Grid.Column="2" Text="56" FontSize="12" FontWeight="SemiBold"
+                                   FontFamily="Consolas"
+                                   Foreground="{StaticResource SF.Brush.Mes.AlarmFg}"/>
+                        <TextBlock Grid.Column="3" Text="pcs" FontSize="11"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                    </Grid>
+                    <Grid Margin="0 0 0 3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="40"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="良率" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                        <TextBlock Grid.Column="1" Text="D402" FontSize="12"
+                                   FontFamily="Consolas"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <TextBlock Grid.Column="2" Text="98.52" FontSize="12"
+                                   FontFamily="Consolas"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                        <TextBlock Grid.Column="3" Text="%" FontSize="11"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                    </Grid>
+                    <Grid Margin="0 0 0 3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="40"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="轨道1宽度" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                        <TextBlock Grid.Column="1" Text="—" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <TextBlock Grid.Column="2" Text="通信超时" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Mes.AlarmFg}"/>
+                        <TextBlock Grid.Column="3" Text="mm" FontSize="11"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="40"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="轨道2宽度" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                        <TextBlock Grid.Column="1" Text="—" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <TextBlock Grid.Column="2" Text="通信超时" FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Mes.AlarmFg}"/>
+                        <TextBlock Grid.Column="3" Text="mm" FontSize="11"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- ===== 处理建议 ===== -->
+                <StackPanel Margin="12 14 12 0">
+                    <TextBlock Text="处理建议" FontSize="11"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0 0 0 6"/>
+                    <Border Background="{StaticResource SF.Brush.Bg.App}"
+                            BorderBrush="{StaticResource SF.Brush.Accent.Default}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12 10">
+                        <TextBlock FontSize="12" LineHeight="20"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"
+                                   Text="1. 检查 AOI 相机与光源是否正常&#x0a;2. 确认当前 NG 板件，决定放行或取出&#x0a;3. 检查设备网络连接（192.168.0.60）&#x0a;4. 确认后点击「确认」，再执行整线复位"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- ===== 事件时间线 ===== -->
+                <StackPanel Margin="12 14 12 0">
+                    <TextBlock Text="事件时间线" FontSize="11"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0 0 0 8"/>
+                    <StackPanel Orientation="Horizontal" Margin="0 0 0 6">
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{StaticResource SF.Brush.Mes.AlarmFg}"
+                                 Margin="0 0 8 0" VerticalAlignment="Center"/>
+                        <TextBlock FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}">
+                            <Run Text="02:42:10  " Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <Run Text="报警触发 · AOI NG检测"/>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0 0 0 6">
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{StaticResource SF.Brush.Text.Secondary}"
+                                 Margin="0 0 8 0" VerticalAlignment="Center"/>
+                        <TextBlock FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                   Text="02:42:11  轨道通信超时"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8"
+                                 Fill="{StaticResource SF.Brush.Text.Secondary}"
+                                 Margin="0 0 8 0" VerticalAlignment="Center"/>
+                        <TextBlock FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                   Text="02:42:12  整线状态切换为「报警中」"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- ===== 底部按钮 ===== -->
+                <Border Background="{StaticResource SF.Brush.Bg.App}"
+                        CornerRadius="0 0 10 10"
+                        Padding="12 12"
+                        Margin="0 14 0 0">
+                    <Grid>
+                        <Button Content="← 返回列表"
+                                Style="{StaticResource SF.Style.DarkButton}"
+                                Height="32" FontSize="12"
+                                HorizontalAlignment="Left"
+                                Click="BtnBack_Click"/>
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right">
+                            <Button Content="确认报警"
+                                    Style="{StaticResource SF.Style.DangerButton}"
+                                    Height="32" FontSize="12"
+                                    Margin="0 0 8 0"/>
+                            <Button Content="↻ 复位"
+                                    Style="{StaticResource SF.Style.PrimaryButton}"
+                                    Height="32" FontSize="12"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

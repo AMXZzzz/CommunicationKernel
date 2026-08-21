@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CommunicationDebuggingTools.Tests</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CommunicationDebuggingTools.Business\CommunicationDebuggingTools.Business.csproj" />
+    <ProjectReference Include="..\CommunicationDebuggingTools.Core\CommunicationDebuggingTools.Core.csproj" />
+    <ProjectReference Include="..\Plugin.ModbusTcp\Plugin.ModbusTcp.csproj" />
+    <ProjectReference Include="..\Plugin.Panasonic\Plugin.Panasonic.csproj" />
+    <ProjectReference Include="..\Plugin.SiemensS7\Plugin.SiemensS7.csproj" />
+  </ItemGroup>
+</Project>

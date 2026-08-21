@@ -1,0 +1,41 @@
+<Solution>
+  <!-- 基础层 -->
+  <Project Path="CommunicationDebuggingTools.Core/CommunicationDebuggingTools.Core.csproj"
+           Id="80a3d4a2-c795-4dc6-9a2c-a13397241885" />
+  <Project Path="CommunicationDebuggingTools.Business/CommunicationDebuggingTools.Business.csproj"
+           Id="b8d745d0-2789-4ce3-bbd3-45efdfe9cbbf" />
+
+  <!-- gRPC 合约 + 客户端 SDK -->
+  <Project Path="CommunicationDebuggingTools.Contracts/CommunicationDebuggingTools.Contracts.csproj"
+           Id="7dfd4be3-329d-44ad-a9d7-59119aacb79d" />
+  <Project Path="CommunicationDebuggingTools.Client/CommunicationDebuggingTools.Client.csproj"
+           Id="b4889bb3-c5b2-40de-b746-431e24a99908" />
+
+  <!-- 协议插件 -->
+  <Project Path="Plugin.ModbusTcp/Plugin.ModbusTcp.csproj"
+           Id="ba21f510-a243-40f0-a52f-4919278c9a3f" />
+  <Project Path="Plugin.Panasonic/Plugin.Panasonic.csproj"
+           Id="ef746e8d-6148-41ab-94ae-6ef601467d47" />
+  <Project Path="Plugin.SiemensS7/Plugin.SiemensS7.csproj"
+           Id="8a6cd834-9868-4142-bdbd-cf9e6b416f04" />
+
+  <!-- 后端引擎进程 -->
+  <Project Path="CommunicationDebuggingTools.EngineHost/CommunicationDebuggingTools.EngineHost.csproj"
+           Id="e9fe12ad-fd25-428f-ba97-78ecac8464bb" />
+
+  <!-- 前端 UI -->
+  <Project Path="CommunicationDebuggingTools.WebUI/CommunicationDebuggingTools.WebUI.csproj"
+           Id="58e3ccf0-5a55-459d-9f0e-399f07b2ea1f" />
+  <Project Path="CommunicationDebuggingTools/CommunicationDebuggingTools.csproj"
+           Id="61200b47-bc1d-4d0b-8c02-ff1af23a0a4e" />
+
+  <!-- 测试 -->
+  <Project Path="CommunicationDebuggingTools.Tests/CommunicationDebuggingTools.Tests.csproj"
+           Id="96e0da3c-84f5-491f-ba7a-8a5d904525db" />
+
+  <!-- 协议模拟器 -->
+  <Project Path="Simulator MEWTOCOL Slave/Simulator MEWTOCOL Slave.csproj"
+           Id="8d22210d-534a-467a-8bbb-c2f7699a9390" />
+  <Project Path="Simulator SiemensS7 Slabe/Simulator SiemensS7 Slabe.csproj"
+           Id="956155d5-9b3e-4347-95d5-67bea35ec073" />
+</Solution>

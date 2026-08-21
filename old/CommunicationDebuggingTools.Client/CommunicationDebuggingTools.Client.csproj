@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>            <!-- 无 -windows，跨平台 -->
+    <RootNamespace>CommunicationDebuggingTools.Client</RootNamespace>
+    <AssemblyName>CommunicationDebuggingTools.Client</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!--
+      打包为 NuGet 包：dotnet pack
+      各平台项目只引用这一个包，业务升级只换包版本
+    -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>CommunicationDebuggingTools.Client</PackageId>
+    <Version>1.0.0</Version>
+    <Description>CommunicationDebuggingTools Engine gRPC 客户端 SDK。跨平台（Windows/Mac/Linux/Android/iOS/Web）。</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Grpc.Net.Client"  Version="2.67.0" />
+    <PackageReference Include="Google.Protobuf"  Version="3.28.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CommunicationDebuggingTools.Contracts\CommunicationDebuggingTools.Contracts.csproj" />
+    <ProjectReference Include="..\CommunicationDebuggingTools.Core\CommunicationDebuggingTools.Core.csproj" />
+  </ItemGroup>
+</Project>

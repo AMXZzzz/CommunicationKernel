@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- ========================================================================
+       文件: CommunicationKernel.UI.Web.csproj
+       层级: UI 层 — Blazor Server Web 客户端
+       作用: 通过 gRPC-Web 或 gRPC 连接 EngineHost，提供浏览器端监控界面。
+             Blazor Server 模式：组件在服务端渲染，通过 SignalR 推送 DOM diff 到浏览器。
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- TreatWarningsAsErrors 由 Directory.Build.props 继承 -->
+    <AssemblyName>CommunicationKernel.UI.Web</AssemblyName>
+    <RootNamespace>CommunicationKernel.UI.Web</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- gRPC 客户端库 -->
+    <PackageReference Include="Grpc.Net.Client" Version="2.70.0" />
+    <!-- Grpc.Net.Client.Web：允许 gRPC-Web 穿透不支持 HTTP/2 的代理 -->
+    <PackageReference Include="Grpc.Net.Client.Web" Version="2.70.0" />
+    <!-- Protobuf 序列化 -->
+    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
+    <!-- Grpc.Tools：编译时从 .proto 生成 C# 代码 -->
+    <PackageReference Include="Grpc.Tools" Version="2.70.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 只生成客户端 stub -->
+    <Protobuf Include="Protos\V1\engine_host.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 契约层引用（共享错误码常量） -->
+    <ProjectReference Include="..\CommunicationKernel.Contracts\CommunicationKernel.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

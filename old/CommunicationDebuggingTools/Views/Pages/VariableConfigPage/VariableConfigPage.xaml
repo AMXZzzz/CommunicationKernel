@@ -1,0 +1,76 @@
+﻿<Page x:Class="CommunicationDebuggingTools.Views.VariableConfigPage.VariableConfigPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ctrl="clr-namespace:CommunicationDebuggingTools.Views.VariableConfigPage.Controls"
+      xmlns:controls="clr-namespace:CommunicationDebuggingTools.Views.Controls"
+      Background="{StaticResource SF.Brush.Bg.App}"
+      Title="变量配置">
+
+    <Grid x:Name="rootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <ctrl:VariableToolBar x:Name="toolBar" Grid.Row="0"/>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <ctrl:VariableDeviceList x:Name="deviceList" Grid.Column="0"/>
+
+            <Border Grid.Column="1"
+                    Margin="16,12,16,16"
+                    Padding="16"
+                    Background="{StaticResource SF.Brush.Var.PanelBg}"
+                    BorderBrush="{StaticResource SF.Brush.Var.PanelBorder}"
+                    BorderThickness="1"
+                    CornerRadius="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <ctrl:VariableDeviceHeader x:Name="deviceHeader" Grid.Row="0"/>
+                    <ctrl:VariableTable x:Name="variableTable" Grid.Row="1"/>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Border x:Name="editOverlay"
+                Grid.Row="0" Grid.RowSpan="2"
+                Background="#99000000"
+                Visibility="Collapsed"
+                MouseLeftButtonDown="EditOverlay_MouseLeftButtonDown">
+            <Grid>
+                <ctrl:VariableEditPanel x:Name="editPanel"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed"/>
+
+                <ctrl:VariableBatchAddPanel x:Name="batchPanel"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Visibility="Collapsed"/>
+
+                <ctrl:VariableExportPanel x:Name="exportPanel"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Visibility="Collapsed"/>
+
+                <ctrl:VariableImportPanel x:Name="importPanel"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Visibility="Collapsed"/>
+
+                <controls:AppMessageDialog x:Name="msgDialog"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

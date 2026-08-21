@@ -1,0 +1,145 @@
+<Page x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Settings.SettingsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Background="{StaticResource SF.Brush.Bg.App}"
+      Title="系统设置">
+
+    <Page.Resources>
+        <!-- BooleanToVisibilityConverter：供 IsRemoteMode → pnlRemote.Visibility 使用 -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Page.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="32,24" MaxWidth="560">
+
+            <!-- 页面标题 -->
+            <TextBlock Text="系统设置"
+                       FontSize="20" FontWeight="SemiBold"
+                       Foreground="{StaticResource SF.Brush.Text.Primary}"
+                       Margin="0,0,0,24"/>
+
+            <!-- ─── 连接模式 ─── -->
+            <Border Background="{StaticResource SF.Brush.Bg.Card}"
+                    CornerRadius="8" Padding="20" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="连接模式"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource SF.Brush.Text.Primary}"
+                               Margin="0,0,0,12"/>
+
+                    <!-- 本地模式：默认选中（IsRemoteMode 初始值 false），选中时 pnlRemote 折叠 -->
+                    <RadioButton x:Name="rdoLocal"
+                                 Content="本地模式（本机插件直连 PLC；可与 EngineHost 同时运行）"
+                                 GroupName="mode"
+                                 IsChecked="True"
+                                 Checked="RdoLocal_Checked"
+                                 Foreground="{StaticResource SF.Brush.Text.Primary}"
+                                 Margin="0,0,0,8"/>
+
+                    <!-- 远端模式：选中时 IsRemoteMode=true，pnlRemote 展开 -->
+                    <RadioButton x:Name="rdoRemote"
+                                 Content="远端优先（Host 可达走 gRPC；不可达自动回退本地）"
+                                 GroupName="mode"
+                                 Checked="RdoRemote_Checked"
+                                 Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+
+                    <!-- 远端配置面板：绑定 IsRemoteMode，自动显示/隐藏 -->
+                    <StackPanel x:Name="pnlRemote"
+                                Margin="20,16,0,0"
+                                Visibility="{Binding IsRemoteMode, Converter={StaticResource BoolToVis}}">
+
+                        <TextBlock Text="EngineHost 地址"
+                                   FontSize="12"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                   Margin="0,0,0,6"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 地址输入框：双向绑定 HostAddress -->
+                            <TextBox x:Name="txtAddress"
+                                     Grid.Column="0"
+                                     Text="{Binding HostAddress, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="13"
+                                     Padding="10,8"
+                                     Margin="0,0,8,0"/>
+
+                            <!-- 测试按钮：绑定命令，测试中禁用 -->
+                            <Button x:Name="btnTest"
+                                    Grid.Column="1"
+                                    Content="测试连接"
+                                    Command="{Binding TestConnectionCommand}"
+                                    IsEnabled="{Binding IsNotTesting}"
+                                    Padding="16,8"/>
+                        </Grid>
+
+                        <!-- 测试结果显示：绑定 TestResultText -->
+                        <TextBlock x:Name="lblTestResult"
+                                   Text="{Binding TestResultText}"
+                                   FontSize="12"
+                                   Margin="0,8,0,0"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- 模式说明 -->
+                        <Border Background="{StaticResource SF.Brush.Bg.App}"
+                                CornerRadius="6" Padding="12" Margin="0,12,0,0">
+                            <StackPanel>
+                                <TextBlock FontSize="11"
+                                           Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                           TextWrapping="Wrap">
+                                    <Run FontWeight="SemiBold">远端模式</Run>
+                                    <Run>：EngineHost 运行在靠近 PLC 的机器上，本客户端通过 gRPC 远程操作。</Run>
+                                </TextBlock>
+                                <TextBlock Text="适用于跨平台场景（Web / Mac / Android）—— 业务升级只需更新 EngineHost 进程。"
+                                           FontSize="11"
+                                           Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ─── 保存区域 ─── -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 保存确认文字：SaveConfirmText 非空时可见，空字符串时折叠 -->
+                <TextBlock x:Name="lblRestart"
+                           Grid.Column="0"
+                           Text="{Binding SaveConfirmText}"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource SF.Brush.Text.Secondary}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <!-- 默认可见；SaveConfirmText 为空字符串时折叠 -->
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SaveConfirmText}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <!-- 保存按钮：绑定 SaveCommand -->
+                <Button x:Name="btnSave"
+                        Grid.Column="1"
+                        Content="保存设置（重启生效）"
+                        Command="{Binding SaveCommand}"
+                        Padding="16,8"/>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

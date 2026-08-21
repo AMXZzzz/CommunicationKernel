@@ -1,0 +1,185 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Pages/LogPage.razor
+   层级: UI 层 — 通讯日志页（Blazor）
+   作用: 实时展示应用日志（通过自定义 ILoggerProvider 接入），支持级别过滤。
+   路由: /log
+   ----------------------------------------------------------------------------- *@
+
+@page "/log"
+@rendermode InteractiveServer
+
+@using Microsoft.Extensions.Logging
+@inject ILoggerFactory LoggerFactory
+
+<PageTitle>通讯日志 — CommunicationKernel</PageTitle>
+
+<div class="page-log">
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <h2 class="page-title">通讯日志</h2>
+
+        <!-- 级别过滤按钮 -->
+        <div class="filter-group">
+            @foreach (var lvl in new[] { "ALL", "INF", "WRN", "ERR" }) {
+                <button class="btn-filter @(FilterLevel == lvl ? "active" : string.Empty)"
+                        @onclick="() => SetFilter(lvl)">
+                    @lvl
+                </button>
+            }
+        </div>
+
+        <!-- 关键字搜索 -->
+        <input class="search-input" placeholder="搜索..."
+               @bind="FilterText" @bind:event="oninput" />
+
+        <!-- 清空按钮 -->
+        <button class="btn ghost" @onclick="ClearLogs">✕ 清空</button>
+
+        <!-- 自动滚动 -->
+        <label class="auto-scroll">
+            <input type="checkbox" @bind="AutoScroll" />
+            自动滚动
+        </label>
+    </div>
+
+    <!-- 日志列表 -->
+    <div class="log-area" id="log-area">
+        @foreach (var entry in FilteredEntries) {
+            <!-- 每行：时间 / 级别 / 类别 / 消息 -->
+            <div class="log-row">
+                <span class="log-time">@entry.Time</span>
+                <span class="log-level level-@entry.LevelClass">@entry.Level</span>
+                <span class="log-cat">@entry.Category</span>
+                <span class="log-msg level-@entry.LevelClass">@entry.Message</span>
+            </div>
+        }
+        @if (!FilteredEntries.Any()) {
+            <div class="empty-hint">暂无日志。</div>
+        }
+    </div>
+
+</div>
+
+@code {
+
+    // -------------------------------------------------------------------------
+    // 日志条目模型
+    // -------------------------------------------------------------------------
+
+    private sealed class LogEntry {
+        public string Time      { get; init; } = string.Empty;
+        public string Level     { get; init; } = string.Empty;
+        public string LevelClass { get; init; } = string.Empty;  // CSS 类名
+        public string Category  { get; init; } = string.Empty;
+        public string Message   { get; init; } = string.Empty;
+    }
+
+    // -------------------------------------------------------------------------
+    // 状态
+    // -------------------------------------------------------------------------
+
+    private const int MaxEntries = 1000;
+
+    private readonly List<LogEntry> _allEntries = new();
+
+    private string       FilterLevel  { get; set; } = "ALL";
+    private string       FilterText   { get; set; } = string.Empty;
+    private bool         AutoScroll   { get; set; } = true;
+
+    /// <summary>过滤后的条目（根据 FilterLevel / FilterText 计算）。</summary>
+    private IEnumerable<LogEntry> FilteredEntries =>
+        _allEntries.Where(e =>
+            (FilterLevel == "ALL" || e.Level == FilterLevel) &&
+            (string.IsNullOrEmpty(FilterText) ||
+             e.Message.Contains(FilterText, StringComparison.OrdinalIgnoreCase) ||
+             e.Category.Contains(FilterText, StringComparison.OrdinalIgnoreCase)));
+
+    // -------------------------------------------------------------------------
+    // 日志接入 — 自定义 ILogger 将日志条目追加到页面
+    // -------------------------------------------------------------------------
+
+    protected override void OnInitialized() {
+        // 将此页面注入到日志管道，所有 ILogger<T>.Log 均会流经此处
+        // 注意：Blazor Server 组件生命周期较短，页面卸载时即停止接收
+        LoggerFactory.AddProvider(new PageLoggerProvider(AppendEntry));
+    }
+
+    /// <summary>追加一条日志条目到列表，超出上限时移除最早条目。</summary>
+    private void AppendEntry(LogLevel level, string category, string message) {
+        string lvl = level switch {
+            LogLevel.Trace       => "TRC",
+            LogLevel.Debug       => "DBG",
+            LogLevel.Information => "INF",
+            LogLevel.Warning     => "WRN",
+            LogLevel.Error       => "ERR",
+            LogLevel.Critical    => "CRT",
+            _                    => "UNK",
+        };
+        string cls = level switch {
+            LogLevel.Warning  => "warn",
+            LogLevel.Error or
+            LogLevel.Critical => "error",
+            LogLevel.Debug or
+            LogLevel.Trace    => "muted",
+            _                 => "info",
+        };
+
+        _allEntries.Add(new LogEntry {
+            Time      = DateTime.Now.ToString("HH:mm:ss.fff"),
+            Level     = lvl,
+            LevelClass = cls,
+            Category  = ShortenCat(category),
+            Message   = message,
+        });
+
+        // 保持上限
+        while (_allEntries.Count > MaxEntries)
+            _allEntries.RemoveAt(0);
+
+        // 在 UI 线程刷新 DOM
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SetFilter(string level) {
+        FilterLevel = level;
+    }
+
+    private void ClearLogs() {
+        _allEntries.Clear();
+    }
+
+    /// <summary>截取类别最后一段（去掉命名空间前缀）。</summary>
+    private static string ShortenCat(string cat) {
+        int i = cat.LastIndexOf('.');
+        return i >= 0 && i < cat.Length - 1 ? cat[(i + 1)..] : cat;
+    }
+
+    // -------------------------------------------------------------------------
+    // 内部日志 Provider（仅此页面实例使用，生命周期同组件）
+    // -------------------------------------------------------------------------
+
+    private sealed class PageLoggerProvider : ILoggerProvider {
+        private readonly Action<LogLevel, string, string> _sink;
+        public PageLoggerProvider(Action<LogLevel, string, string> sink) => _sink = sink;
+        public ILogger CreateLogger(string cat) => new PageLogger(_sink, cat);
+        public void Dispose() { }
+    }
+
+    private sealed class PageLogger : ILogger {
+        private readonly Action<LogLevel, string, string> _sink;
+        private readonly string _category;
+        public PageLogger(Action<LogLevel, string, string> sink, string category) {
+            _sink = sink; _category = category;
+        }
+        public IDisposable? BeginScope<T>(T state) where T : notnull => null;
+        public bool IsEnabled(LogLevel l) => l >= LogLevel.Information;
+        public void Log<T>(LogLevel level, EventId id, T state, Exception? ex,
+            Func<T, Exception?, string> fmt) {
+            if (!IsEnabled(level)) return;
+            string msg = fmt(state, ex);
+            if (ex is not null) msg += $" [{ex.GetType().Name}]";
+            _sink(level, _category, msg);
+        }
+    }
+}

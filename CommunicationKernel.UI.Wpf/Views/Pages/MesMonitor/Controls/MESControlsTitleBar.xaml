@@ -1,0 +1,82 @@
+﻿<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls.MESControlsTitleBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    
+    <Border Grid.Row="0"
+            CornerRadius="0"
+            Background="{StaticResource SF.Brush.Bg.Surface}"
+            BorderBrush="{StaticResource SF.Brush.Accent.Default}"
+            BorderThickness="0"
+            Padding="16 8">
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- MES控制列 -->
+            <Border Grid.Column="0">
+                <!-- 工具栏按钮 -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="开始监控" Style="{StaticResource SF.Style.PrimaryButton}"/>
+                    <Button Content="停止" Style="{StaticResource SF.Style.DangerButton}"/>
+                    <Button Content="配置" Style="{StaticResource SF.Style.DarkButton}"/>
+                    <Button Content="刷新" Style="{StaticResource SF.Style.DarkButton}"/>
+                </StackPanel>
+            </Border>
+            
+            
+            <!-- MES信息列 -->
+            <Border Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16 0">
+                <StackPanel Orientation="Horizontal" >
+           
+                    <Border Background="{StaticResource  SF.Brush.Mes.LiveBg}" 
+                            CornerRadius="12" 
+                            Padding="10 3" 
+                            Margin="0 0 16 0" 
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center">
+                        
+                        <!-- 在线状态图标 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 在线图标 -->
+                            <Ellipse Grid.Column="0" 
+                             Width="{StaticResource SF.ControlsSize.PlcStatusLightWidth}"
+                             Height="{StaticResource SF.ControlsSize.PlcStatusLightHeight}"
+                             Fill="{StaticResource SF.Brush.Mes.LiveFg}"
+                             VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0 0 8 0"/>
+
+                            <!-- 在线状态 -->
+                            <TextBlock  Grid.Column="1"
+                                Text="实时"
+                                FontSize="12"
+                                Foreground="{StaticResource SF.Brush.Mes.LiveFg}"
+                                VerticalAlignment="Center" />
+
+                        </Grid>
+                    </Border>
+
+                    <!-- 刷新周期 -->
+                    <TextBlock Text="刷新周期: 500ms"
+                       FontSize="10"
+                       Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                       VerticalAlignment="Center"
+                       Margin="0 0 16 0"/>
+
+                    <!-- 更新事件 -->
+                    <TextBlock Text="上次更新: 2024-06-01 08:30:59"
+                       FontSize="10"
+                       Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                       VerticalAlignment="Center"/>
+                </StackPanel>
+
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

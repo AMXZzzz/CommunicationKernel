@@ -1,0 +1,66 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      导航 / 侧栏动画
+      注意：DoubleAnimation.To 绑定 StaticResource 在部分环境下会冻结失败，
+      数值需与 Sizes.xaml 中 SF.ControlsSize.NavBarCollapsed/Expanded 保持一致（40 / 120）。
+    -->
+
+    <!-- 导航指示条：展开 -->
+    <Storyboard x:Key="SF.Anim.NavIndicatorExpand">
+        <DoubleAnimation Storyboard.TargetName="Indicator"
+                         Storyboard.TargetProperty="Height"
+                         To="16"
+                         Duration="0:0:0.35">
+            <DoubleAnimation.EasingFunction>
+                <QuadraticEase EasingMode="EaseOut"/>
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetName="Indicator"
+                         Storyboard.TargetProperty="Opacity"
+                         To="1"
+                         Duration="0:0:0.28"/>
+    </Storyboard>
+
+    <!-- 导航指示条：收起 -->
+    <Storyboard x:Key="SF.Anim.NavIndicatorCollapse">
+        <DoubleAnimation Storyboard.TargetName="Indicator"
+                         Storyboard.TargetProperty="Height"
+                         To="0"
+                         Duration="0:0:0.28">
+            <DoubleAnimation.EasingFunction>
+                <QuadraticEase EasingMode="EaseIn"/>
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+        <DoubleAnimation Storyboard.TargetName="Indicator"
+                         Storyboard.TargetProperty="Opacity"
+                         To="0"
+                         Duration="0:0:0.22"/>
+    </Storyboard>
+
+    <!-- 侧栏宽度：收起 → 40（= SF.ControlsSize.NavBarCollapsed） -->
+    <Storyboard x:Key="SF.Anim.Sidebar.Collapse">
+        <DoubleAnimation Storyboard.TargetName="SidebarBorder"
+                         Storyboard.TargetProperty="Width"
+                         To="40"
+                         Duration="0:0:0.22">
+            <DoubleAnimation.EasingFunction>
+                <QuadraticEase EasingMode="EaseInOut"/>
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+    <!-- 侧栏宽度：展开 → 120（= SF.ControlsSize.NavBarExpanded） -->
+    <Storyboard x:Key="SF.Anim.Sidebar.Expand">
+        <DoubleAnimation Storyboard.TargetName="SidebarBorder"
+                         Storyboard.TargetProperty="Width"
+                         To="120"
+                         Duration="0:0:0.22">
+            <DoubleAnimation.EasingFunction>
+                <QuadraticEase EasingMode="EaseInOut"/>
+            </DoubleAnimation.EasingFunction>
+        </DoubleAnimation>
+    </Storyboard>
+
+</ResourceDictionary>
