@@ -1,0 +1,184 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Pages/Index.razor
+   层级: UI 层 — MES 监控页（Blazor）
+   作用: 展示所有路由的在线状态卡片和整线健康摘要。
+         在 OnInitializedAsync 中加载设备列表，
+         并为每个设备启动后台 WatchRouteStatus 流更新在线状态。
+   路由: /
+   ----------------------------------------------------------------------------- *@
+
+@page "/"
+@rendermode InteractiveServer
+
+@using CommunicationKernel.UI.Web.Services
+@inject EngineHostWebClient Client
+@inject ILogger<Index> Logger
+@implements IAsyncDisposable
+
+<PageTitle>MES监控 — CommunicationKernel</PageTitle>
+
+<div class="page-mes">
+
+    <!-- 摘要栏 -->
+    <div class="summary-bar">
+        <!-- 在线设备数 -->
+        <div class="summary-card">
+            <div class="summary-label">在线 / 总计</div>
+            <div class="summary-value">
+                <span class="val-green">@OnlineCount</span>
+                <span class="val-sep"> / </span>
+                <span>@TotalCount</span>
+            </div>
+        </div>
+
+        <!-- Host 状态 -->
+        <div class="summary-card">
+            <div class="summary-label">EngineHost</div>
+            <div class="summary-value @(HostOnline ? "val-green" : "val-red")">
+                @(HostOnline ? "在线" : "离线")
+            </div>
+            <div class="summary-sub">v@HostVersion</div>
+        </div>
+
+        <!-- 报警 -->
+        <div class="summary-card">
+            <div class="summary-label">报警状态</div>
+            <div class="summary-value @(HasAlarm ? "val-red" : "val-green")">
+                @(HasAlarm ? "有报警" : "正常")
+            </div>
+        </div>
+    </div>
+
+    <!-- 设备卡片 -->
+    <div class="section-title">设备状态</div>
+    <div class="device-grid">
+        @foreach (var card in Cards) {
+            <!-- 每张卡片：路由名称 + 地址 + 协议 + 在线状态条 -->
+            <div class="device-card">
+                <div class="card-name">@card.RouteId</div>
+                <div class="card-addr">@card.Address:@card.Port</div>
+                <div class="card-proto">@card.ProtocolId</div>
+                <div class="card-status @(card.Online ? "online" : "offline")">
+                    @(card.Online ? "在线" : "离线")
+                </div>
+            </div>
+        }
+        @if (!Cards.Any()) {
+            <!-- 空状态：无设备时展示提示 -->
+            <div class="empty-hint">
+                暂无设备，请前往「设备管理」注册 PLC 路由。
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+
+    // -------------------------------------------------------------------------
+    // 状态（Blazor 自动 StateHasChanged 刷新 DOM）
+    // -------------------------------------------------------------------------
+
+    /// <summary>设备卡片列表（来自 QueryRoutes）。</summary>
+    private List<DeviceCard> Cards { get; set; } = new();
+
+    private bool   HostOnline  { get; set; }
+    private string HostVersion { get; set; } = "--";
+    private bool   HasAlarm    { get; set; }
+    private int    OnlineCount => Cards.Count(c => c.Online);
+    private int    TotalCount  => Cards.Count;
+
+    /// <summary>取消 WatchRouteStatus 后台任务的令牌源。</summary>
+    private CancellationTokenSource? _watchCts;
+
+    // -------------------------------------------------------------------------
+    // 生命周期
+    // -------------------------------------------------------------------------
+
+    protected override async Task OnInitializedAsync() {
+        // 1. Health 检查
+        var (ok, version, _) = await Client.HealthAsync().ConfigureAwait(false);
+        HostOnline  = ok;
+        HostVersion = version;
+
+        // 2. 加载设备列表
+        IReadOnlyList<RouteDto> routes = await Client.QueryRoutesAsync().ConfigureAwait(false);
+        Cards = routes.Select(r => new DeviceCard {
+            RouteId    = r.RouteId,
+            ProtocolId = r.ProtocolId,
+            Address    = r.Address,
+            Port       = r.Port,
+            Online     = false,   // 初始离线，等待流推送
+        }).ToList();
+
+        // 通知 Blazor 更新 DOM
+        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+
+        // 3. 为每个设备启动状态流监听
+        StartWatching();
+    }
+
+    // -------------------------------------------------------------------------
+    // 状态流监听
+    // -------------------------------------------------------------------------
+
+    /// <summary>为所有卡片启动后台状态流任务，独立 Task 互不干扰。</summary>
+    private void StartWatching() {
+        _watchCts = new CancellationTokenSource();
+        CancellationToken ct = _watchCts.Token;
+
+        foreach (DeviceCard card in Cards) {
+            string routeId = card.RouteId;
+
+            // 每个路由一个独立后台任务
+            _ = Task.Run(async () => {
+                try {
+                    // 异步枚举状态事件流
+                    await foreach (RouteStatusDto dto in Client.WatchRouteStatusAsync(routeId, ct)) {
+                        // 更新对应卡片的在线状态
+                        DeviceCard? target = Cards.FirstOrDefault(c => c.RouteId == dto.RouteId);
+                        if (target is not null)
+                            target.Online = dto.Online;
+
+                        // 标记报警（有错误码时）
+                        HasAlarm = Cards.Any(c => !c.Online);
+
+                        // 通知 Blazor 在 UI 线程重新渲染
+                        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException) {
+                    // 正常取消，静默退出
+                }
+                catch (Exception ex) {
+                    Logger.LogError(ex, "WatchRouteStatus 异常: {RouteId}", routeId);
+                }
+            }, ct);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // IAsyncDisposable — 组件卸载时取消所有监听任务
+    // -------------------------------------------------------------------------
+
+    public async ValueTask DisposeAsync() {
+        if (_watchCts is not null) {
+            // 取消所有后台 Task
+            await _watchCts.CancelAsync().ConfigureAwait(false);
+            _watchCts.Dispose();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 内部模型
+    // -------------------------------------------------------------------------
+
+    /// <summary>设备卡片数据容器（简单 class，不需要 INotifyPropertyChanged，
+    /// Blazor Server 通过 StateHasChanged 全量刷新）。</summary>
+    private sealed class DeviceCard {
+        public string RouteId    { get; init; } = string.Empty;
+        public string ProtocolId { get; init; } = string.Empty;
+        public string Address    { get; init; } = string.Empty;
+        public int    Port       { get; init; }
+        public bool   Online     { get; set; }  // mutable，由流更新
+    }
+}

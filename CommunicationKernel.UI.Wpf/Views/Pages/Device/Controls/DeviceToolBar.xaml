@@ -1,0 +1,80 @@
+﻿<!--
+  设备管理页顶部工具栏（风格对齐 MES 顶栏：左操作、右统计）
+  普通模式：一键连接 / 一键断开 / 刷新 / 删除
+  多选模式：确认删除 / 取消（由 SetSelectMode 切换 Visibility）
+-->
+<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Device.DeviceToolBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border Background="{StaticResource SF.Brush.Bg.Surface}"
+            BorderBrush="{StaticResource SF.Brush.Border.Default}"
+            BorderThickness="0,0,0,1"
+            Padding="16,8">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <!-- 左侧操作按钮 -->
+                <ColumnDefinition Width="*"/>
+                <!-- 右侧设备总数 -->
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ==================== 左侧：操作 ==================== -->
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+
+                <!-- 普通模式 -->
+                <Button x:Name="btnConnectAll"
+                        Content="一键连接"
+                        Style="{StaticResource SF.Style.PrimaryButton}"
+                        Click="BtnConnectAll_Click"/>
+                <Button x:Name="btnDisconnectAll"
+                        Content="一键断开"
+                        Style="{StaticResource SF.Style.DangerButton}"
+                        Click="BtnDisconnectAll_Click"/>
+                <Button x:Name="btnRefresh"
+                        Content="刷新"
+                        Style="{StaticResource SF.Style.DarkButton}"
+                        Click="BtnRefresh_Click"/>
+                <!-- 点删除：进入多选，不直接删 -->
+                <Button x:Name="btnDelete"
+                        Content="删除"
+                        Style="{StaticResource SF.Style.DangerButton}"
+                        Click="BtnDelete_Click"/>
+
+                <!-- 多选模式（默认隐藏） -->
+                <Button x:Name="btnConfirmDelete"
+                        Content="确认删除"
+                        Style="{StaticResource SF.Style.DangerButton}"
+                        Visibility="Collapsed"
+                        Click="BtnConfirmDelete_Click"/>
+                <Button x:Name="btnCancelSelect"
+                        Content="取消"
+                        Style="{StaticResource SF.Style.DarkButton}"
+                        Visibility="Collapsed"
+                        Click="BtnCancelSelect_Click"/>
+            </StackPanel>
+
+            <!-- ==================== 右侧：统计 ==================== -->
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <TextBlock Text="设备总数"
+                           FontSize="12"
+                           Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,8,0"/>
+                <Border Background="{StaticResource SF.Brush.Bg.Hover}"
+                        CornerRadius="10"
+                        Padding="8,2"
+                        VerticalAlignment="Center">
+                    <TextBlock x:Name="txtCount"
+                               Text="0"
+                               FontSize="12"
+                               Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                </Border>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

@@ -1,0 +1,68 @@
+@page "/settings"
+@inject Services.EngineGateway Gateway
+@inject Services.WebUiSettingsStore SettingsStore
+
+<PageTitle>设置</PageTitle>
+
+<div class="page-titlebar">
+    <div>
+        <h3>设置</h3>
+        <div class="page-subtitle">配置 WebUI 连接的 EngineHost 地址与重连行为</div>
+    </div>
+    <div class="status-chip @(Gateway.IsConnected ? "ok" : "error")">
+        @(Gateway.IsConnected ? "EngineHost 在线" : "EngineHost 离线")
+    </div>
+</div>
+
+<div class="card-panel settings-panel">
+    <div class="panel-title">连接设置</div>
+
+    <div class="field">
+        <label>EngineHost 地址</label>
+        <input @bind="_hostAddress" placeholder="http://127.0.0.1:5100" />
+    </div>
+
+    <div class="page-actions">
+        <button class="primary" @onclick="SaveAndReconnectAsync">保存并重连</button>
+        <button @onclick="TestAsync">测试连接</button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message)) {
+        <div class="@(_ok ? "banner-ok" : "banner-error")">@_message</div>
+    }
+</div>
+
+@code {
+    private string _hostAddress = "http://127.0.0.1:5100";
+    private string _message = string.Empty;
+    private bool _ok;
+
+    protected override void OnInitialized () {
+        _hostAddress = SettingsStore.Load().HostAddress;
+    }
+
+    private async Task SaveAndReconnectAsync () {
+        try {
+            SettingsStore.Save(new Services.WebUiSettings {
+                HostAddress = _hostAddress
+            });
+            await Gateway.ReconnectAsync(_hostAddress);
+            _ok = Gateway.IsConnected;
+            _message = _ok ? "已保存并重连成功" : "已保存，但当前未连接到 EngineHost";
+        } catch (Exception ex) {
+            _ok = false;
+            _message = ex.Message;
+        }
+    }
+
+    private async Task TestAsync () {
+        try {
+            await Gateway.ReconnectAsync(_hostAddress);
+            _ok = Gateway.IsConnected;
+            _message = _ok ? "连接成功" : "连接失败";
+        } catch (Exception ex) {
+            _ok = false;
+            _message = ex.Message;
+        }
+    }
+}

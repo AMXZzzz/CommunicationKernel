@@ -1,0 +1,91 @@
+﻿<UserControl x:Class="CommunicationDebuggingTools.Views.Controls.AppMessageDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="420">
+
+    <Border Background="{StaticResource SF.Brush.Bg.Surface}"
+            BorderBrush="{StaticResource SF.Brush.Border.Default}"
+            BorderThickness="1"
+            CornerRadius="10"
+            ClipToBounds="True">
+        <DockPanel>
+            <!-- 标题 -->
+            <Border DockPanel.Dock="Top"
+                    Background="{StaticResource SF.Brush.Bg.Hover}"
+                    BorderBrush="{StaticResource SF.Brush.Border.Default}"
+                    BorderThickness="0,0,0,1"
+                    Padding="18,14"
+                    CornerRadius="10,10,0,0">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border x:Name="barAccent" Width="3" Height="16" CornerRadius="2"
+                                Margin="0,0,8,0"
+                                Background="{StaticResource SF.Brush.Accent.Default}"/>
+                        <TextBlock x:Name="txtTitle" Text="提示" FontSize="15" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                    </StackPanel>
+                    <Button Content="×" Width="28" Height="28" HorizontalAlignment="Right"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="16"
+                            Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                            Click="BtnClose_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- 底栏 -->
+            <Border DockPanel.Dock="Bottom"
+                    Background="{StaticResource SF.Brush.Bg.App}"
+                    BorderBrush="{StaticResource SF.Brush.Border.Default}"
+                    BorderThickness="0,1,0,0"
+                    Padding="20,14"
+                    CornerRadius="0,0,10,10">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="btnSecondary" Content="取消"
+                            Style="{StaticResource SF.Style.DarkButton}"
+                            Click="BtnSecondary_Click"/>
+                    <Button x:Name="btnPrimary" Content="确定"
+                            Style="{StaticResource SF.Style.PrimaryButton}"
+                            Click="BtnPrimary_Click"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 正文 -->
+            <StackPanel Margin="20,20">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 圆形图标 -->
+                    <Border x:Name="iconCircle" Width="40" Height="40" CornerRadius="20"
+                            Background="{StaticResource SF.Brush.Accent.Default}"
+                            VerticalAlignment="Top" Margin="0,0,14,0">
+                        <TextBlock x:Name="txtIcon" Text="i" FontSize="18" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="txtMessage" Text="" FontSize="14" FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                        <TextBlock x:Name="txtDetail" Text="" FontSize="12" Margin="0,8,0,0"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <!-- 路径等详情块 -->
+                        <Border x:Name="detailBox" Margin="0,12,0,0" Padding="10,8"
+                                CornerRadius="6" Visibility="Collapsed"
+                                Background="{StaticResource SF.Brush.Bg.App}"
+                                BorderBrush="{StaticResource SF.Brush.Border.Default}"
+                                BorderThickness="1">
+                            <TextBlock x:Name="txtDetailBox" FontSize="12" FontFamily="Consolas"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</UserControl>

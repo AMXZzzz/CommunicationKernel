@@ -1,0 +1,194 @@
+<UserControl x:Class="CommunicationDebuggingTools.Views.VariableConfigPage.Controls.VariableEditPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="460">
+
+    <UserControl.Resources>
+        <!-- 弹窗内圆角输入框 -->
+        <Style x:Key="SF.Style.DialogTextBox" TargetType="TextBox">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{StaticResource SF.Brush.Text.Primary}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource SF.Brush.Text.Primary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd"
+                                Background="{StaticResource SF.Brush.Bg.Hover}"
+                                BorderBrush="{StaticResource SF.Brush.Border.Default}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{StaticResource SF.Brush.Accent.Default}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{StaticResource SF.Brush.Bg.Surface}"
+            BorderBrush="{StaticResource SF.Brush.Border.Default}"
+            BorderThickness="1"
+            CornerRadius="10"
+            ClipToBounds="True"
+            MouseLeftButtonDown="Root_MouseLeftButtonDown">
+
+        <DockPanel>
+            <!-- 标题 -->
+            <Border DockPanel.Dock="Top"
+                    Background="{StaticResource SF.Brush.Bg.Hover}"
+                    BorderBrush="{StaticResource SF.Brush.Border.Default}"
+                    BorderThickness="0,0,0,1"
+                    Padding="18,14"
+                    CornerRadius="10,10,0,0">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="3" Height="16" CornerRadius="2" Margin="0,0,8,0"
+                                Background="{StaticResource SF.Brush.Accent.Default}"/>
+                        <TextBlock x:Name="txtTitle" Text="添加变量" FontSize="15" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource SF.Brush.Text.Primary}"/>
+                    </StackPanel>
+                    <Button HorizontalAlignment="Right" Content="×" Width="28" Height="28"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="16"
+                            Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                            Click="BtnClose_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- 底栏 -->
+            <Border DockPanel.Dock="Bottom"
+                    Background="{StaticResource SF.Brush.Bg.App}"
+                    BorderBrush="{StaticResource SF.Brush.Border.Default}"
+                    BorderThickness="0,1,0,0"
+                    Padding="20,14"
+                    CornerRadius="0,0,10,10">
+                <Grid>
+                    <Button x:Name="btnDelete" Content="删除变量"
+                            Style="{StaticResource SF.Style.DangerButton}"
+                            HorizontalAlignment="Left" Visibility="Collapsed"
+                            Click="BtnDelete_Click"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="取消" Style="{StaticResource SF.Style.DarkButton}"
+                                Click="BtnClose_Click"/>
+                        <Button x:Name="btnSave" Content="添加"
+                                Style="{StaticResource SF.Style.PrimaryButton}"
+                                Click="BtnSave_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 表单 -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" CanContentScroll="False">
+                <StackPanel Margin="20,18">
+
+                    <TextBlock FontSize="12" Margin="0,0,0,6">
+                        <Run Text="显示名称 " Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <Run Text="*" Foreground="{StaticResource SF.Brush.Status.Error}"/>
+                    </TextBlock>
+                    <TextBox x:Name="txtName" Style="{StaticResource SF.Style.DialogTextBox}"/>
+
+                    <TextBlock FontSize="12" Margin="0,14,0,6">
+                        <Run Text="地址 " Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <Run Text="*" Foreground="{StaticResource SF.Brush.Status.Error}"/>
+                    </TextBlock>
+                    <TextBox x:Name="txtAddress" FontFamily="Consolas"
+                             Style="{StaticResource SF.Style.DialogTextBox}"/>
+                    <TextBlock Text="地址由所选协议解释：状态点用位地址（如 R10A、M0.0）；数值/字符串用字地址（如 DT100、DB1.DBW0）"
+                               FontSize="11" Margin="0,4,0,0"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontSize="12" Margin="0,0,0,6">
+                                <Run Text="数据类型 " Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                                <Run Text="*" Foreground="{StaticResource SF.Brush.Status.Error}"/>
+                            </TextBlock>
+                            <ComboBox x:Name="cmbDataType"
+                                      Style="{StaticResource SF.Style.ComboBox}"
+                                      Height="36"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="单位" FontSize="12" Margin="0,0,0,6"
+                                       Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                            <TextBox x:Name="txtUnit" Style="{StaticResource SF.Style.DialogTextBox}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock FontSize="12" Margin="0,14,0,6">
+                        <Run Text="读写属性 " Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <Run Text="*" Foreground="{StaticResource SF.Brush.Status.Error}"/>
+                    </TextBlock>
+                    <UniformGrid Columns="3">
+                        <Button x:Name="btnAccR" Content="R 只读" Margin="0,0,4,0" Height="36"
+                                Click="BtnAccess_Click" Tag="ReadOnly"/>
+                        <Button x:Name="btnAccW" Content="W 只写" Margin="0,0,4,0" Height="36"
+                                Click="BtnAccess_Click" Tag="WriteOnly"/>
+                        <Button x:Name="btnAccRW" Content="R/W 读写" Height="36"
+                                Click="BtnAccess_Click" Tag="ReadWrite"/>
+                    </UniformGrid>
+
+                    <TextBlock FontSize="12" Margin="0,14,0,6">
+                        <Run Text="分类 " Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                        <Run Text="*" Foreground="{StaticResource SF.Brush.Status.Error}"/>
+                    </TextBlock>
+                    <UniformGrid Columns="3">
+                        <Button x:Name="btnCatStatus" Content="状态点" Margin="0,0,4,0" Height="36"
+                                Click="BtnCategory_Click" Tag="状态点"/>
+                        <Button x:Name="btnCatData" Content="监控数据" Margin="0,0,4,0" Height="36"
+                                Click="BtnCategory_Click" Tag="监控数据"/>
+                        <Button x:Name="btnCatWidth" Content="轨道宽度" Height="36"
+                                Click="BtnCategory_Click" Tag="轨道宽度"/>
+                    </UniformGrid>
+
+                    <TextBlock Text="用途说明"
+                               FontSize="12"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+                    <Grid>
+                        <TextBox x:Name="txtDesc"
+                                 Style="{StaticResource SF.Style.DialogTextBox}"/>
+
+                        <!-- 无内容时显示提示，不拦截鼠标 -->
+                        <TextBlock Text="可选，备注该变量用途"
+                                   FontSize="13"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False"
+                                   Foreground="{StaticResource SF.Brush.Text.Secondary}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=txtDesc}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>

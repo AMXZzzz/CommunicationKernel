@@ -1,0 +1,204 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Pages/DevicesPage.razor
+   层级: UI 层 — 设备管理页（Blazor）
+   作用: 展示路由设备列表，支持通过表单注册新路由。
+   路由: /devices
+   ----------------------------------------------------------------------------- *@
+
+@page "/devices"
+@rendermode InteractiveServer
+
+@using CommunicationKernel.UI.Web.Services
+@inject EngineHostWebClient Client
+@inject ILogger<DevicesPage> Logger
+
+<PageTitle>设备管理 — CommunicationKernel</PageTitle>
+
+<div class="page-dev">
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <h2 class="page-title">设备管理</h2>
+        <button class="btn ghost" @onclick="RefreshAsync">↻ 刷新</button>
+        <button class="btn primary" @onclick="ShowAddForm">＋ 添加设备</button>
+        @if (IsBusy) {
+            <span class="busy-hint">处理中...</span>
+        }
+    </div>
+
+    <!-- 状态消息 -->
+    @if (!string.IsNullOrEmpty(StatusMessage)) {
+        <div class="status-msg @StatusColor">@StatusMessage</div>
+    }
+
+    <!-- 设备列表表格 -->
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>路由 ID</th>
+                <th>协议</th>
+                <th>传输</th>
+                <th>地址</th>
+                <th>端口</th>
+                <th>站号</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var route in Routes) {
+                <tr>
+                    <td class="route-id">@route.RouteId</td>
+                    <td>@route.ProtocolId</td>
+                    <td>@route.TransportKind</td>
+                    <td class="addr">@route.Address</td>
+                    <td>@route.Port</td>
+                    <td>@route.Station</td>
+                </tr>
+            }
+            @if (!Routes.Any()) {
+                <tr>
+                    <td colspan="6" class="empty-cell">
+                        暂无路由，点击「添加设备」注册 PLC。
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <!-- 添加设备表单（内联展示，类似 HTML 模板的对话框） -->
+    @if (ShowForm) {
+        <div class="add-form-overlay" @onclick="HideAddForm">
+            <!-- @onclick:stopPropagation 防止点击内部时关闭 -->
+            <div class="add-form" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>注册新路由</h3>
+                    <button class="close-btn" @onclick="HideAddForm">✕</button>
+                </div>
+
+                <label>路由 ID *</label>
+                <input @bind="EditRouteId" placeholder="例如: plc-001" />
+
+                <label>协议 ID *</label>
+                <select @bind="EditProtocolId">
+                    <option value="modbus.tcp">modbus.tcp</option>
+                    <option value="modbus.rtu">modbus.rtu</option>
+                    <option value="modbus.ascii">modbus.ascii</option>
+                    <option value="siemens.s7">siemens.s7</option>
+                    <option value="panasonic.mewtocol.tcp">panasonic.mewtocol.tcp</option>
+                </select>
+
+                <label>传输类型</label>
+                <select @bind="EditTransportKind">
+                    <option value="tcp">tcp</option>
+                    <option value="serialport">serialport</option>
+                </select>
+
+                <label>IP 地址 *</label>
+                <input @bind="EditAddress" placeholder="192.168.1.100" />
+
+                <label>端口</label>
+                <input type="number" @bind="EditPort" />
+
+                <label>站号</label>
+                <input @bind="EditStation" placeholder="1" />
+
+                <div class="form-actions">
+                    <button class="btn ghost" @onclick="HideAddForm">取消</button>
+                    <button class="btn primary" @onclick="RegisterAsync"
+                            disabled="@(string.IsNullOrWhiteSpace(EditRouteId) || IsBusy)">
+                        注册
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+</div>
+
+@code {
+
+    // -------------------------------------------------------------------------
+    // 状态
+    // -------------------------------------------------------------------------
+
+    private List<RouteDto> Routes        { get; set; } = new();
+    private bool           IsBusy        { get; set; }
+    private string         StatusMessage { get; set; } = string.Empty;
+    private string         StatusColor   { get; set; } = string.Empty;
+    private bool           ShowForm      { get; set; }
+
+    // 表单字段
+    private string EditRouteId       { get; set; } = string.Empty;
+    private string EditProtocolId    { get; set; } = "modbus.tcp";
+    private string EditTransportKind { get; set; } = "tcp";
+    private string EditAddress       { get; set; } = string.Empty;
+    private int    EditPort          { get; set; } = 502;
+    private string EditStation       { get; set; } = "1";
+
+    // -------------------------------------------------------------------------
+    // 生命周期
+    // -------------------------------------------------------------------------
+
+    protected override async Task OnInitializedAsync() {
+        // 初始加载设备列表
+        await RefreshAsync().ConfigureAwait(false);
+    }
+
+    // -------------------------------------------------------------------------
+    // 操作方法
+    // -------------------------------------------------------------------------
+
+    /// <summary>刷新路由列表：调用 QueryRoutes。</summary>
+    private async Task RefreshAsync() {
+        IsBusy = true;
+        try {
+            Routes = (await Client.QueryRoutesAsync().ConfigureAwait(false)).ToList();
+            StatusMessage = $"共 {Routes.Count} 台设备";
+            StatusColor   = "status-info";
+        }
+        finally {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>注册新路由：提交表单到 gRPC RegisterRoute。</summary>
+    private async Task RegisterAsync() {
+        // 前端校验：路由 ID 和地址不能为空
+        if (string.IsNullOrWhiteSpace(EditRouteId) ||
+            string.IsNullOrWhiteSpace(EditAddress)) {
+            StatusMessage = "路由 ID 和地址为必填项";
+            StatusColor   = "status-error";
+            return;
+        }
+
+        IsBusy = true;
+        try {
+            var (success, errCode, errMsg, _) = await Client.RegisterRouteAsync(
+                EditRouteId, EditProtocolId, EditTransportKind,
+                EditAddress, EditPort, EditStation).ConfigureAwait(false);
+
+            if (success) {
+                StatusMessage = $"路由 {EditRouteId} 注册成功";
+                StatusColor   = "status-ok";
+                HideAddForm();
+                // 注册成功后刷新列表
+                await RefreshAsync().ConfigureAwait(false);
+            }
+            else {
+                StatusMessage = $"注册失败: [{errCode}] {errMsg}";
+                StatusColor   = "status-error";
+            }
+        }
+        finally {
+            IsBusy = false;
+        }
+    }
+
+    private void ShowAddForm() => ShowForm = true;
+
+    /// <summary>隐藏表单并清空输入字段。</summary>
+    private void HideAddForm() {
+        ShowForm      = false;
+        EditRouteId   = string.Empty;
+        EditAddress   = string.Empty;
+    }
+}

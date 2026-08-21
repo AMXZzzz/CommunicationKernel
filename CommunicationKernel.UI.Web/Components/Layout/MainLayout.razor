@@ -1,0 +1,94 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Layout/MainLayout.razor
+   层级: UI 层 — Blazor 主布局组件
+   作用: 实现深色工业主题的整体布局：顶部标题栏 + 左侧导航 + 主内容区。
+         参考 app_full_ui.html 的视觉风格和导航结构。
+   继承: LayoutComponentBase
+   ----------------------------------------------------------------------------- *@
+
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+
+<div class="app-shell">
+
+    <!-- 顶部标题栏 -->
+    <div class="titlebar">
+        <span class="app-logo">⬡</span>
+        <span class="app-name">CommunicationKernel</span>
+        <span class="title-status">— @PageTitle</span>
+        <div class="titlebar-right">
+            <!-- Host 在线状态（由布局管理，各页面可注入更新） -->
+            <span class="status-dot @(HostOnline ? "online" : "offline")"></span>
+            <span class="status-text">@(HostOnline ? "已连接" : "未连接")</span>
+        </div>
+    </div>
+
+    <div class="main-area">
+
+        <!-- 左侧导航栏 -->
+        <nav class="sidebar">
+            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All"
+                     ActiveClass="active" @onclick='() => SetTitle("MES监控")'>
+                ⊞ MES监控
+            </NavLink>
+            <NavLink class="nav-item" href="/variables"
+                     ActiveClass="active" @onclick='() => SetTitle("变量配置")'>
+                ≡ 变量配置
+            </NavLink>
+            <NavLink class="nav-item" href="/devices"
+                     ActiveClass="active" @onclick='() => SetTitle("设备管理")'>
+                ⬡ 设备管理
+            </NavLink>
+            <NavLink class="nav-item" href="/log"
+                     ActiveClass="active" @onclick='() => SetTitle("通讯日志")'>
+                ▤ 通讯日志
+            </NavLink>
+            <NavLink class="nav-item" href="/settings"
+                     ActiveClass="active" @onclick='() => SetTitle("系统设置")'>
+                ⚙ 系统设置
+            </NavLink>
+        </nav>
+
+        <!-- 主内容区，渲染当前路由组件 -->
+        <main class="page-content">
+            @Body
+        </main>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <div class="statusbar">
+        <span>@StatusMessage</span>
+        <span class="version">v@HostVersion</span>
+    </div>
+</div>
+
+@code {
+    // -------------------------------------------------------------------------
+    // 状态属性（由子页面组件通过 CascadingValue 或 EventCallback 更新）
+    // -------------------------------------------------------------------------
+
+    /// <summary>当前页面标题，显示在标题栏。</summary>
+    private string PageTitle  { get; set; } = "MES监控";
+
+    /// <summary>Host 是否在线（由健康检查更新）。</summary>
+    [CascadingParameter]
+    public bool HostOnline    { get; set; }
+
+    /// <summary>Host 版本（由健康检查更新）。</summary>
+    [CascadingParameter]
+    public string HostVersion { get; set; } = "--";
+
+    /// <summary>底部状态栏消息。</summary>
+    private string StatusMessage { get; set; } = "就绪";
+
+    // -------------------------------------------------------------------------
+    // 辅助方法
+    // -------------------------------------------------------------------------
+
+    /// <summary>导航按钮点击时更新标题。</summary>
+    private void SetTitle(string title) {
+        PageTitle = title;
+        // 通知 Blazor 重新渲染
+        StateHasChanged();
+    }
+}

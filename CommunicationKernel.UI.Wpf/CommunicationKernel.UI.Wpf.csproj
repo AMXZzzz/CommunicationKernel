@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========================================================================
+       文件: CommunicationKernel.UI.Wpf.csproj
+       层级: UI 层 — WPF 桌面客户端
+       作用: 通过 gRPC 连接 EngineHost，提供桌面端监控与配置界面。
+       依赖: Grpc.Net.Client + Google.Protobuf + Grpc.Tools（生成客户端 stub）
+             CommunicationKernel.Contracts（共享契约常量）
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <!-- 目标框架：net8.0-windows，启用 WPF -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWpf>true</UseWpf>
+    <!-- 启用隐式 using（System, System.Threading.Tasks 等自动引入） -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 禁用可空引用类型注释（与旧项目风格保持一致） -->
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!-- 输出类型为 WinExe，避免出现控制台黑窗口 -->
+    <OutputType>WinExe</OutputType>
+    <!-- 继承 Directory.Build.props 的 TreatWarningsAsErrors=true -->
+    <AssemblyName>CommunicationKernel.UI.Wpf</AssemblyName>
+    <RootNamespace>CommunicationKernel.UI.Wpf</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- gRPC 客户端核心库 -->
+    <PackageReference Include="Grpc.Net.Client" Version="2.70.0" />
+    <!-- Protobuf 序列化库 -->
+    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
+    <!-- Grpc.Tools 负责在编译时从 .proto 生成 C# 代码 -->
+    <PackageReference Include="Grpc.Tools" Version="2.70.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Microsoft.Extensions.Logging — ILogger / ILoggerFactory -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+    <!-- Microsoft.Extensions.DependencyInjection — IoC 容器 -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <!-- Microsoft.Extensions.Hosting — 宿主生命周期管理 -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 引用本地 proto 文件，GrpcServices=Client 只生成客户端 stub -->
+    <Protobuf Include="Protos\V1\engine_host.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 引用契约层（共享错误码等常量） -->
+    <ProjectReference Include="..\CommunicationKernel.Contracts\CommunicationKernel.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

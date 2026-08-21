@@ -1,0 +1,29 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/App.razor
+   层级: UI 层 — Blazor 应用根组件
+   作用: 提供 HTML 文档骨架，挂载 Blazor 路由器。
+   ----------------------------------------------------------------------------- *@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>通讯调试工具 — CommunicationKernel</title>
+
+    <!-- Blazor 内置 CSS（加载指示器等） -->
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="CommunicationKernel.UI.Web.styles.css" />
+
+    <!-- 深色工业主题样式 -->
+    <link rel="stylesheet" href="css/theme.css" />
+
+    <HeadOutlet />
+</head>
+
+<body>
+    <Routes />
+    <script src="_framework/blazor.server.js"></script>
+</body>
+
+</html>

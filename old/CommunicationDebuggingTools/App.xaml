@@ -1,0 +1,39 @@
+﻿<Application x:Class="CommunicationDebuggingTools.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CommunicationDebuggingTools">
+    <Application.Resources>
+         
+        <!-- 加载资源字典 -->
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 加载颜色 -->
+                <ResourceDictionary Source="Resources/Colors.xaml"/>
+                <!-- 加载尺寸 -->
+                <ResourceDictionary Source="Resources/Sizes.xaml"/>
+                <!-- 加载动画 -->
+                <ResourceDictionary Source="Resources/Animations.xaml"/>
+                <!-- 加载按钮样式 -->
+                <ResourceDictionary Source="Resources/Styles/Buttons.xaml"/>
+                <!-- 加载导航样式 -->
+                <ResourceDictionary Source="Resources/Styles/SlideIndicatorBar.xaml"/>
+                <!-- 加载滚动条样式 -->
+                <ResourceDictionary Source="Resources/Styles/ScrollBar.xaml"/>
+                <!-- 加载勾选框样式 -->
+                <ResourceDictionary Source="Resources/Styles/CheckBox.xaml"/>
+                <!-- 加载数据表格样式 -->
+                <ResourceDictionary Source="Resources/Styles/DataGrid.xaml"/>
+                <!-- 加载下拉框样式 -->
+                <ResourceDictionary Source="Resources/Styles/ComboBox.xaml"/>
+                <!-- 加载文本框样式 -->
+                <ResourceDictionary Source="Resources/Styles/TextBox.xaml"/>
+                <!-- 加载变量表样式 -->
+                <ResourceDictionary Source="Resources/Styles/VariableTableStyles.xaml"/>
+                <!-- 加载图标样式 -->
+                <ResourceDictionary Source="Resources/Styles/Icon.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+    
+   
+</Application>

@@ -1,0 +1,15 @@
+/* Blazor 基础样式覆盖 */
+html, body { height: 100%; margin: 0; padding: 0; }
+#blazor-error-ui {
+    background: #450a0a;
+    color: #f87171;
+    padding: 8px 16px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 999;
+    font-size: 12px;
+    display: none;
+}
+#blazor-error-ui .dismiss { cursor: pointer; margin-left: 8px; }
