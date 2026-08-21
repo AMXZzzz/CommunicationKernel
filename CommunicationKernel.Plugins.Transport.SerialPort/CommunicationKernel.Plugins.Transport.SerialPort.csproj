@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- 类库默认不复制 NuGet 依赖到输出目录，导致 System.IO.Ports.dll 缺失，
+         宿主按插件目录加载本插件时会在首次打开串口处抛 FileNotFoundException。
+         插件必须自带其私有第三方依赖，而不是要求宿主去引用——
+         否则宿主就被迫知晓某个具体传输插件的实现细节。 -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>

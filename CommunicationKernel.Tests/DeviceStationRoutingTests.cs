@@ -229,6 +229,50 @@ public class ProtocolMetadataContractTests
             new ModbusRtuProtocolDriverFactory().Metadata.TransportKind);
         Assert.AreEqual(TransportKind.Serial,
             new ModbusAsciiProtocolDriverFactory().Metadata.TransportKind);
+        Assert.AreEqual(TransportKind.Serial,
+            new MewtocolSerialProtocolDriverFactory().Metadata.TransportKind);
+    }
+
+    [TestMethod]
+    public void MewtocolSerial_HasDistinctProtocolIdFromTcpVariant()
+    {
+        string tcpId    = new MewtocolTcpProtocolDriverFactory().Metadata.ProtocolId;
+        string serialId = new MewtocolSerialProtocolDriverFactory().Metadata.ProtocolId;
+
+        Assert.AreEqual("panasonic-mewtocol-tcp", tcpId);
+        Assert.AreEqual("panasonic-mewtocol-serial", serialId);
+        Assert.AreNotEqual(tcpId, serialId,
+            "两种介质必须是不同的 ProtocolId，否则装配时无法区分");
+    }
+
+    [TestMethod]
+    public void MewtocolSerial_ProducesIdenticalFramesToTcpVariant()
+    {
+        // MEWTOCOL-COM 的帧格式与介质无关：同站号同地址下两者必须逐字节相同。
+        // 这正是「同一驱动可同时服务 TCP 与串口」的前提。
+        var ctx = new ProtocolDriverContext { Station = "9" };
+
+        var tcpFrame = new MewtocolTcpProtocolDriverFactory()
+            .CreateDriver(ctx).BuildReadFrame("DT100", 2);
+        var serialFrame = new MewtocolSerialProtocolDriverFactory()
+            .CreateDriver(ctx).BuildReadFrame("DT100", 2);
+
+        Assert.IsTrue(tcpFrame.Success);
+        Assert.IsTrue(serialFrame.Success);
+        CollectionAssert.AreEqual(tcpFrame.Value, serialFrame.Value);
+    }
+
+    [TestMethod]
+    public void MewtocolSerial_AppliesDeviceStation()
+    {
+        var driver = new MewtocolSerialProtocolDriverFactory()
+            .CreateDriver(new ProtocolDriverContext { Station = "23" });
+
+        var frame = driver.BuildReadFrame("DT100", 2);
+
+        Assert.IsTrue(frame.Success);
+        string text = System.Text.Encoding.ASCII.GetString(frame.Value);
+        StringAssert.StartsWith(text, "%17#", "站号 23 → 十六进制 0x17");
     }
 
     [TestMethod]
@@ -276,6 +320,7 @@ public class ProtocolMetadataContractTests
             new ModbusRtuProtocolDriverFactory().Metadata.ProtocolId,
             new ModbusAsciiProtocolDriverFactory().Metadata.ProtocolId,
             new MewtocolTcpProtocolDriverFactory().Metadata.ProtocolId,
+            new MewtocolSerialProtocolDriverFactory().Metadata.ProtocolId,
             new SiemensS7_1200ProtocolDriverFactory().Metadata.ProtocolId,
             new SiemensS7_200SmartProtocolDriverFactory().Metadata.ProtocolId,
         };
