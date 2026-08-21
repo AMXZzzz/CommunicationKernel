@@ -102,10 +102,31 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (panelStation != null)
                 panelStation.Visibility = needStation ? Visibility.Visible : Visibility.Collapsed;
 
+            // 不需要站号时给出明确说明，而不是留下一片空白让人以为功能缺失
+            if (txtStationNotApplicable != null)
+                txtStationNotApplicable.Visibility = needStation
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
             // 站号范围提示直接来自插件元信息，无需 UI 硬编码
             if (runStationHint != null) {
                 string hint = descriptor != null ? descriptor.StationHint : null;
                 runStationHint.Text = string.IsNullOrWhiteSpace(hint) ? "" : "  " + hint;
+            }
+
+            // 告知操作员当前协议走哪种介质，切换协议时字段变化便不再突兀
+            if (txtTransportHint != null) {
+                if (descriptor == null) {
+                    txtTransportHint.Text = "";
+                } else if (isSerial) {
+                    txtTransportHint.Text = needStation
+                        ? "串口协议：需填写串口号、波特率与站号"
+                        : "串口协议：需填写串口号与波特率";
+                } else {
+                    txtTransportHint.Text = needStation
+                        ? "网口协议：需填写 IP、端口与站号"
+                        : "网口协议：需填写 IP 与端口";
+                }
             }
         }
 
