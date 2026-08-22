@@ -101,7 +101,7 @@ public sealed class StaticRouteAssemblyService : IRouteAssemblyService {
             .ToList();
 
     /// <inheritdoc />
-    public IReadOnlyList<SerialPortDescriptor> GetAvailableSerialPorts()
+    public IReadOnlyList<SerialPortInfo> GetAvailableSerialPorts()
         // 每次都重新枚举而非缓存：USB 转串口设备可以随时插拔，
         // 缓存会让操作员插上线后仍然看不到新串口。
         => SerialPortDiscovery.Enumerate(_transportFactories);

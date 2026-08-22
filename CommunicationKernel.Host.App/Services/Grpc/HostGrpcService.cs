@@ -418,13 +418,11 @@ public sealed class HostGrpcService : EngineHostApi.EngineHostApiBase {
 
         var response = new QuerySerialPortsResponse();
 
+        // 引擎模型 SerialPortInfo → 线上契约 SerialPortDescriptor。
         // 没有串口是正常状态（纯以太网现场未装串口插件），返回空列表即可，
         // 不是错误，UI 据此提示"未发现串口"并保留手工输入。
-        // 传输层的 SerialPortDescriptor 与 Protobuf 生成的同名类型重名，
-        // 用别名区分：左边是引擎侧模型，右边是线上契约。
-        foreach (CommunicationKernel.Communication.Transport.Abstractions.SerialPortDescriptor port
-                 in _routeAssemblyService.GetAvailableSerialPorts()) {
-            response.Ports.Add(new Grpc.V1.SerialPortDescriptor {
+        foreach (SerialPortInfo port in _routeAssemblyService.GetAvailableSerialPorts()) {
+            response.Ports.Add(new SerialPortDescriptor {
                 PortName    = port.PortName ?? string.Empty,
                 Description = port.Description ?? string.Empty
             });

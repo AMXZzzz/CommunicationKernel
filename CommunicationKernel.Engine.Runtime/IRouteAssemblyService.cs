@@ -62,7 +62,7 @@ public interface IRouteAssemblyService {
     /// 引擎本身不持有任何串口知识。
     /// </para>
     /// </remarks>
-    IReadOnlyList<SerialPortDescriptor> GetAvailableSerialPorts();
+    IReadOnlyList<SerialPortInfo> GetAvailableSerialPorts();
 }
 
 /// <summary>

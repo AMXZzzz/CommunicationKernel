@@ -34,13 +34,13 @@ public class SerialPortDiscoveryTests {
         // ============================================================================
         var assembly = BuildAssembly(
             new EnumeratingTransportFactory(TransportKind.Serial,
-                new SerialPortDescriptor("/dev/ttyUSB0", "usb-FTDI_FT232R-if00-port0"),
-                new SerialPortDescriptor("/dev/ttyAMA0", "")));
+                new SerialPortInfo("/dev/ttyUSB0", "usb-FTDI_FT232R-if00-port0"),
+                new SerialPortInfo("/dev/ttyAMA0", "")));
 
         // ============================================================================
         // Act
         // ============================================================================
-        IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
+        IReadOnlyList<SerialPortInfo> ports = assembly.GetAvailableSerialPorts();
 
         // ============================================================================
         // Assert
@@ -77,12 +77,12 @@ public class SerialPortDiscoveryTests {
         var assembly = BuildAssembly(
             new ThrowingTransportFactory(),
             new EnumeratingTransportFactory(TransportKind.Serial,
-                new SerialPortDescriptor("COM3", "")));
+                new SerialPortInfo("COM3", "")));
 
         // ============================================================================
         // Act
         // ============================================================================
-        IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
+        IReadOnlyList<SerialPortInfo> ports = assembly.GetAvailableSerialPorts();
 
         // ============================================================================
         // Assert
@@ -101,15 +101,15 @@ public class SerialPortDiscoveryTests {
         // 会让操作员以为有两个设备。
         var assembly = BuildAssembly(
             new EnumeratingTransportFactory(TransportKind.Serial,
-                new SerialPortDescriptor("COM3", "")),
+                new SerialPortInfo("COM3", "")),
             new EnumeratingTransportFactory(TransportKind.Serial,
-                new SerialPortDescriptor("com3", ""),
-                new SerialPortDescriptor("COM5", "")));
+                new SerialPortInfo("com3", ""),
+                new SerialPortInfo("COM5", "")));
 
         // ============================================================================
         // Act
         // ============================================================================
-        IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
+        IReadOnlyList<SerialPortInfo> ports = assembly.GetAvailableSerialPorts();
 
         // ============================================================================
         // Assert
@@ -128,14 +128,14 @@ public class SerialPortDiscoveryTests {
         // 空设备名进了下拉框就是一个选不中也用不了的空项
         var assembly = BuildAssembly(
             new EnumeratingTransportFactory(TransportKind.Serial,
-                new SerialPortDescriptor("", ""),
-                new SerialPortDescriptor("   ", ""),
-                new SerialPortDescriptor("COM7", "")));
+                new SerialPortInfo("", ""),
+                new SerialPortInfo("   ", ""),
+                new SerialPortInfo("COM7", "")));
 
         // ============================================================================
         // Act
         // ============================================================================
-        IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
+        IReadOnlyList<SerialPortInfo> ports = assembly.GetAvailableSerialPorts();
 
         // ============================================================================
         // Assert
@@ -157,13 +157,13 @@ public class SerialPortDiscoveryTests {
         // ============================================================================
         // Act
         // ============================================================================
-        IReadOnlyList<SerialPortDescriptor> ports = factory.ListPorts();
+        IReadOnlyList<SerialPortInfo> ports = factory.ListPorts();
 
         // ============================================================================
         // Assert
         // ============================================================================
         Assert.IsNotNull(ports);
-        foreach (SerialPortDescriptor port in ports)
+        foreach (SerialPortInfo port in ports)
             Assert.IsFalse(string.IsNullOrWhiteSpace(port.PortName));
     }
 
@@ -177,9 +177,9 @@ public class SerialPortDiscoveryTests {
     /// <summary>实现了枚举接口的传输工厂替身。</summary>
     private sealed class EnumeratingTransportFactory : ITransportFactory, ISerialPortEnumerator {
         private readonly TransportKind _kind;
-        private readonly SerialPortDescriptor[] _ports;
+        private readonly SerialPortInfo[] _ports;
 
-        public EnumeratingTransportFactory(TransportKind kind, params SerialPortDescriptor[] ports) {
+        public EnumeratingTransportFactory(TransportKind kind, params SerialPortInfo[] ports) {
             _kind  = kind;
             _ports = ports;
         }
@@ -188,7 +188,7 @@ public class SerialPortDiscoveryTests {
         public TransportKind Kind => _kind;
         public int PluginApiVersion => 1;
         public ITransportClient CreateClient() => throw new NotSupportedException();
-        public IReadOnlyList<SerialPortDescriptor> ListPorts() => _ports;
+        public IReadOnlyList<SerialPortInfo> ListPorts() => _ports;
     }
 
     /// <summary>不实现枚举接口的传输工厂替身（如 TCP 插件）。</summary>
@@ -208,7 +208,7 @@ public class SerialPortDiscoveryTests {
         public TransportKind Kind => TransportKind.Serial;
         public int PluginApiVersion => 1;
         public ITransportClient CreateClient() => throw new NotSupportedException();
-        public IReadOnlyList<SerialPortDescriptor> ListPorts() =>
+        public IReadOnlyList<SerialPortInfo> ListPorts() =>
             throw new UnauthorizedAccessException("模拟权限不足");
     }
 }

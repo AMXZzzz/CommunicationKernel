@@ -33,12 +33,21 @@ public interface ISerialPortEnumerator {
     /// 串口描述集合；无可用串口时返回空集合，不返回 null，也不抛异常——
     /// 没有串口是正常状态（纯以太网现场），不是错误。
     /// </returns>
-    IReadOnlyList<SerialPortDescriptor> ListPorts();
+    IReadOnlyList<SerialPortInfo> ListPorts();
 }
 
 /// <summary>
-/// 一个可用串口的描述。
+/// 宿主本机上发现的一个串口（引擎 / 传输层模型）。
 /// </summary>
+/// <remarks>
+/// 三层命名必须分开，禁止再出现两套同名类型：
+/// <list type="bullet">
+/// <item>引擎 / 传输：<see cref="SerialPortInfo"/></item>
+/// <item>gRPC 线上契约：<c>EngineHost.Grpc.V1.SerialPortDescriptor</c></item>
+/// <item>UI SDK：<c>SerialPortDto</c></item>
+/// </list>
+/// 本类型禁止再命名为 <c>SerialPortDescriptor</c>。
+/// </remarks>
 /// <param name="PortName">
 /// 传给 <see cref="TransportEndpoint.SerialPort"/> 的设备名，
 /// Windows 上形如 <c>COM3</c>，Linux 上形如 <c>/dev/ttyUSB0</c>。
@@ -48,4 +57,4 @@ public interface ISerialPortEnumerator {
 /// Linux 上通常填 by-id 稳定路径——多个 USB 串口同时插着时，
 /// ttyUSB 的编号会随枚举顺序在重启后对调，而接错 PLC 的代价远大于读不到数。
 /// </param>
-public readonly record struct SerialPortDescriptor(string PortName, string Description);
+public readonly record struct SerialPortInfo(string PortName, string Description);
