@@ -26,8 +26,8 @@ namespace CommunicationKernel.Engine;
 ///    访问路由信息，禁止穿透至 Facade/Orchestrator 内部。
 /// 2) RegisterRoute 通过装配抽象服务完成 RouteEntry 获取并落表；
 ///    重复 RouteId / RouteKey 均被拒绝，已建立的连接通过 RollbackAsync 回滚。
-/// 3) UnregisterRouteAsync 统一注销入口，确保 WriteScheduler + TransportClient 均被释放。
-/// 4) 统一处理串口节流、单次重连、状态发布等企业级运行策略。
+/// 3) UnregisterRouteAsync 统一注销入口：摘表后经 Orchestrator 释放 RouteEntry/TransportClient。
+/// 4) 读写互斥与串口帧间隔由 RouteEntry.ExecuteExclusiveAsync 承担；此处负责重连与状态发布。
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class HostRuntime : IAsyncDisposable {
@@ -202,7 +202,7 @@ public sealed class HostRuntime : IAsyncDisposable {
     }
 
     /// <summary>
-    /// 注销路由并释放所有关联资源（串口节流信号量 + TransportClient + 协议驱动）。
+    /// 注销路由并释放关联资源（RouteEntry / TransportClient / 协议驱动）。
     /// 完成后广播一次终态下线事件，使所有订阅方感知该路由已消失。
     /// </summary>
     public async Task<OperationResult> UnregisterRouteAsync(string routeId, CancellationToken cancellationToken) {
@@ -223,11 +223,6 @@ public sealed class HostRuntime : IAsyncDisposable {
             _logger.LogInformation("UnregisterRoute: '{RouteId}' removed and disposed.", routeId);
         else
             _logger.LogWarning("UnregisterRoute: '{RouteId}' was not in router (state mismatch).", routeId);
-
-        // 传输资源已释放，此时再释放节流信号量。
-        // 并发中的 I/O 若在此之后调用 Release，会得到 ObjectDisposedException，
-        // 该异常已在 ExecuteWithRoutePolicyAsync 的 finally 中被吞掉。
-        reg.DisposeGate();
 
         // 广播终态：先摘除快照再发事件，避免 PublishStatus 把快照又写回去。
         PublishFinalOffline(routeId);
@@ -513,9 +508,11 @@ public sealed class HostRuntime : IAsyncDisposable {
     // 作为嵌套类型时，实现 IRouteAssemblyService 必须依赖 HostRuntime 这个具体类。
 
 
+    /// <summary>
+    /// Host 侧路由登记项：RouteId 与 Router 层 RouteEntry 的对应关系。
+    /// 读写互斥与串口帧间隔在 <see cref="RouteEntry"/> 内实现，此处不再持有第二套信号量。
+    /// </summary>
     private sealed class RouteRuntimeRegistration {
-        private long _lastSerialIoCompletedUtcTicks;
-
         public RouteRuntimeRegistration(
             string routeId, RouteKey routeKey, TransportEndpoint endpoint,
             string transportId, RouteEntry routeEntry, bool isSerialRoute, int minIoIntervalMs) {
@@ -527,37 +524,16 @@ public sealed class HostRuntime : IAsyncDisposable {
             RouteEntry       = routeEntry;
             IsSerialRoute    = isSerialRoute;
             MinIoIntervalMs  = Math.Max(0, minIoIntervalMs);
-            _lastSerialIoCompletedUtcTicks = DateTimeOffset.MinValue.UtcTicks;
         }
 
-        public string           RouteId         { get; }
-        public RouteKey         RouteKey        { get; }
+        public string            RouteId         { get; }
+        public RouteKey          RouteKey        { get; }
         public TransportEndpoint Endpoint       { get; }
-        public string           TransportId     { get; }
-        public RouteEntry       RouteEntry      { get; }
-        public bool             IsSerialRoute   { get; }
-        public int              MinIoIntervalMs { get; }
-        public SemaphoreSlim    SerialIoGate    { get; } = new(1, 1);
-
-        public int GetElapsedSinceLastIoMs() {
-            long ticks = Interlocked.Read(ref _lastSerialIoCompletedUtcTicks);
-            if (ticks == DateTimeOffset.MinValue.UtcTicks) return int.MaxValue;
-            var elapsed = DateTimeOffset.UtcNow - new DateTimeOffset(ticks, TimeSpan.Zero);
-            return (int)Math.Max(0, elapsed.TotalMilliseconds);
-        }
-
-        public void MarkSerialIoCompleted() =>
-            Interlocked.Exchange(ref _lastSerialIoCompletedUtcTicks, DateTimeOffset.UtcNow.UtcTicks);
-
-        /// <summary>
-        /// 释放串口节流信号量。仅在路由注销、传输资源已释放后调用。
-        /// </summary>
-        public void DisposeGate() {
-            try {
-                SerialIoGate.Dispose();
-            } catch (Exception) {
-                // 释放阶段的异常不影响注销流程的其余步骤。
-            }
-        }
+        public string            TransportId     { get; }
+        public RouteEntry        RouteEntry      { get; }
+        /// <summary>装配时是否为串口路由（诊断/扩展用；节流已在 RouteEntry）。</summary>
+        public bool              IsSerialRoute   { get; }
+        /// <summary>装配时采用的最小 I/O 间隔（毫秒）；实际节流在 RouteEntry.MinIoIntervalMs。</summary>
+        public int               MinIoIntervalMs { get; }
     }
 }
