@@ -227,6 +227,49 @@ public class ProtocolMetadataContractTests
     }
 
     [TestMethod]
+    public void Mewtocol_SingleByteReadOnWordAddress_StaysDataRead()
+    {
+        // 防回归：历史实现写作 (addr.IsBit || length == 1)，
+        // 读 1 字节的 DT 字寄存器会被转成 RCS 单点读，
+        // 返回完全不同数据区的位值且全程 Success = true。
+        // 与 Modbus 侧曾经的 "|| length == 1" 是同一缺陷模式。
+        var driver = new MewtocolProtocolDriverFactory()
+            .CreateDriver(new ProtocolDriverContext { Station = "1" });
+
+        var frame = driver.BuildReadFrame("DT100", 1);
+
+        Assert.IsTrue(frame.Success);
+        string text = System.Text.Encoding.ASCII.GetString(frame.Value);
+        StringAssert.Contains(text, "#RD",
+            "DT 是字地址，无论读几个字节都必须走 RD 读数据寄存器，不能因长度为 1 转成 RCS");
+        Assert.DoesNotContain("#RCS", text);
+    }
+
+    [TestMethod]
+    public void Mewtocol_BitAddress_AlwaysUsesContactRead()
+    {
+        var driver = new MewtocolProtocolDriverFactory()
+            .CreateDriver(new ProtocolDriverContext { Station = "1" });
+
+        // 位地址不论请求多少字节都走 RCS——数据区只由地址决定
+        foreach (int len in new[] { 1, 2, 8 })
+        {
+            var frame = driver.BuildReadFrame("X0", len);
+            Assert.IsTrue(frame.Success);
+            StringAssert.Contains(System.Text.Encoding.ASCII.GetString(frame.Value), "#RCS");
+        }
+    }
+
+    [TestMethod]
+    public void Mewtocol_NonPositiveLength_IsRejected()
+    {
+        var driver = new MewtocolProtocolDriverFactory().CreateDriver(null);
+
+        Assert.IsFalse(driver.BuildReadFrame("DT100", 0).Success);
+        Assert.IsFalse(driver.BuildReadFrame("DT100", -1).Success);
+    }
+
+    [TestMethod]
     public void Mewtocol_IsSingleProtocolAcrossBothTransports()
     {
         // 帧格式与介质无关，因此只应存在一个 ProtocolId，
