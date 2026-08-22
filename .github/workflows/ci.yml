@@ -1,0 +1,170 @@
+name: CI
+
+# 构建 + 测试基线。
+#
+# 建立动机：本项目经历过多轮大规模重构（Modbus 三份实现合并、传输层分帧重写、
+# 路由门控统一），全程仅靠本地人工验证。期间发生过两类「不报错的损坏」：
+#   · MEWTOCOL 与 Modbus 同类缺陷漏改——按插件排查而非按缺陷模式排查
+#   · EngineHost.csproj 插件块被批量编辑整块复制——MSBuild 对重复 Target
+#     是「后者覆盖」不报错，构建仍然绿
+# 两者都不会让构建失败，正是自动化基线才能稳定拦住的类型。
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+# 同一分支的新推送取消仍在运行的旧任务，避免排队堆积
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-and-test:
+    name: 构建与测试
+    # Windows：WPF 项目（net8.0-windows）只能在 Windows 上构建。
+    # 若将来需要在 Linux 上跑，需把解决方案拆成跨平台子集单独构建。
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 缓存 NuGet 包
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: 还原依赖
+        run: dotnet restore CommunicationKernel.slnx
+
+      # --no-incremental：避免增量构建掩盖诸如「csproj 重复项」这类
+      # 只在完整构建时才暴露的问题
+      - name: 构建
+        run: dotnet build CommunicationKernel.slnx --no-restore --no-incremental --configuration Release
+
+      - name: 测试
+        run: >
+          dotnet test CommunicationKernel.Tests
+          --no-build --configuration Release
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ${{ github.workspace }}/TestResults
+
+      - name: 上传测试结果
+        # 失败时尤其需要结果文件用于排查，因此 always()
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ${{ github.workspace }}/TestResults
+          retention-days: 14
+
+  verify-plugin-deployment:
+    name: 校验插件部署
+    # 独立作业：插件加载失败是静默的——共享契约若混进 plugins 目录，
+    # 插件会加载到自己那一份类型，IsAssignableFrom 判定失败，
+    # 所有工厂注册不上但不抛任何异常。这类问题必须显式校验。
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 构建 EngineHost
+        run: dotnet build CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj --configuration Release
+
+      - name: 校验 plugins 目录内容
+        shell: pwsh
+        run: |
+          $dir = "CommunicationKernel.EngineHost/bin/Release/net8.0/plugins"
+          if (-not (Test-Path $dir)) {
+            Write-Error "plugins 目录不存在——插件部署 Target 未执行"
+            exit 1
+          }
+
+          $dlls = Get-ChildItem $dir -Filter *.dll | Select-Object -ExpandProperty Name
+
+          # 1) 七个插件必须全部就位
+          $expected = @(
+            'CommunicationKernel.Plugins.Modbus.Tcp.dll',
+            'CommunicationKernel.Plugins.Modbus.Rtu.dll',
+            'CommunicationKernel.Plugins.Modbus.Ascii.dll',
+            'CommunicationKernel.Plugins.Panasonic.MewtocolTcp.dll',
+            'CommunicationKernel.Plugins.Siemens.S7.dll',
+            'CommunicationKernel.Plugins.Transport.Tcp.dll',
+            'CommunicationKernel.Plugins.Transport.SerialPort.dll'
+          )
+          $missing = $expected | Where-Object { $_ -notin $dlls }
+          if ($missing) {
+            Write-Error "缺少插件: $($missing -join ', ')"
+            exit 1
+          }
+
+          # 2) 插件私有共享库必须随行（否则三个 Modbus 插件加载时找不到依赖）
+          if ('CommunicationKernel.Plugins.Modbus.Core.dll' -notin $dlls) {
+            Write-Error "Modbus.Core 未部署——三个 Modbus 插件将静默加载失败"
+            exit 1
+          }
+
+          # 3) 四个共享契约绝不能出现在 plugins 目录
+          $forbidden = @(
+            'CommunicationKernel.Core.Abstractions.dll',
+            'CommunicationKernel.Communication.Protocol.dll',
+            'CommunicationKernel.Communication.Transport.dll',
+            'CommunicationKernel.Plugin.Runtime.dll'
+          )
+          $leaked = $forbidden | Where-Object { $_ -in $dlls }
+          if ($leaked) {
+            Write-Error "共享契约泄漏进 plugins 目录: $($leaked -join ', ')。插件会加载到自己那一份类型，导致所有工厂静默注册不上。"
+            exit 1
+          }
+
+          # 4) 串口插件的 RID 专属运行时资产必须存在
+          if (-not (Test-Path "$dir/runtimes/win/lib/net8.0/System.IO.Ports.dll")) {
+            Write-Error "System.IO.Ports 的 Windows RID 资产缺失——串口首次打开会抛 PlatformNotSupportedException"
+            exit 1
+          }
+
+          Write-Host "插件部署校验通过：$($dlls.Count) 个 DLL，契约无泄漏，RID 资产完整"
+
+  verify-proto-single-source:
+    name: 校验 proto 单一来源
+    # proto 曾经在三个项目各存一份副本，Web 端长期滞后于服务端且无人察觉。
+    # 现已统一到根目录，此处防止有人再把副本加回来。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 确认只有一份 proto
+        run: |
+          count=$(find . -name "*.proto" -not -path "./old/*" -not -path "*/obj/*" -not -path "*/bin/*" | wc -l)
+          find . -name "*.proto" -not -path "./old/*" -not -path "*/obj/*" -not -path "*/bin/*"
+          if [ "$count" -ne 1 ]; then
+            echo "::error::期望恰好 1 份 proto（根目录 Protos/V1/），实际 $count 份。副本会导致客户端与服务端契约漂移。"
+            exit 1
+          fi
+          echo "proto 单一来源校验通过"

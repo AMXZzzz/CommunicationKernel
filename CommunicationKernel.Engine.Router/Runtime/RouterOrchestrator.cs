@@ -27,28 +27,30 @@ public sealed class RouterOrchestrator : IRouterOrchestrator {
         IConnectionRouter connectionRouter,
         IReadCoordinator readCoordinator) {
 
-        ConnectionRouter = connectionRouter ?? throw new ArgumentNullException(nameof(connectionRouter));
-        ReadCoordinator  = readCoordinator  ?? throw new ArgumentNullException(nameof(readCoordinator));
+        _connectionRouter = connectionRouter ?? throw new ArgumentNullException(nameof(connectionRouter));
+        _readCoordinator  = readCoordinator  ?? throw new ArgumentNullException(nameof(readCoordinator));
     }
 
-    /// <inheritdoc />
-    public IConnectionRouter ConnectionRouter { get; }
+    /// <summary>路由表。作为实现细节持有，不对外暴露以免绕过编排语义。</summary>
+    private readonly IConnectionRouter _connectionRouter;
+
+    /// <summary>读取合并协调器。同为实现细节。</summary>
+    private readonly IReadCoordinator _readCoordinator;
 
     /// <inheritdoc />
-    public IReadCoordinator ReadCoordinator { get; }
+    public int RouteCount => _connectionRouter.Count;
 
     /// <inheritdoc />
-    public int RouteCount => ConnectionRouter.Count;
+    public bool TryRegister(RouteEntry entry) => _connectionRouter.TryRegister(entry);
 
     /// <inheritdoc />
-    public bool TryRegister(RouteEntry entry) => ConnectionRouter.TryRegister(entry);
-
-    /// <inheritdoc />
-    public bool TryGet(RouteKey key, out RouteEntry? entry) => ConnectionRouter.TryGet(key, out entry);
+    public bool TryGet(RouteKey key, out RouteEntry? entry) => _connectionRouter.TryGet(key, out entry);
 
     /// <inheritdoc />
     public async Task<bool> TryRemoveAndDisposeAsync(RouteKey key, CancellationToken cancellationToken) {
-        if (!ConnectionRouter.TryRemove(key, out RouteEntry? entry) || entry is null)
+        // 顺序是编排语义的核心：必须先从路由表摘除，再释放传输资源。
+        // 反过来会让并发进入的读写拿到一个已释放的 TransportClient。
+        if (!_connectionRouter.TryRemove(key, out RouteEntry? entry) || entry is null)
             return false;
 
         // 路由的 I/O 门控随 RouteEntry 一起被 GC 回收，不单独 Dispose——
@@ -63,5 +65,5 @@ public sealed class RouterOrchestrator : IRouterOrchestrator {
         ReadRequestKey requestKey,
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
         CancellationToken cancellationToken)
-        => ReadCoordinator.ExecuteAsync(requestKey, readAction, cancellationToken);
+        => _readCoordinator.ExecuteAsync(requestKey, readAction, cancellationToken);
 }
