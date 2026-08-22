@@ -122,4 +122,94 @@
           SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- ==========================================================================
+       插件部署
+       ==========================================================================
+       宿主在运行时从 $(OutDir)plugins 目录扫描 *.dll 发现协议与传输插件
+       （见 appsettings.json 的 HostRuntime:PluginDirectory）。
+       此处只建立「构建顺序」依赖，不产生编译期引用——
+       ReferenceOutputAssembly=false 保证宿主代码无法直接使用插件类型，
+       从而守住「宿主不持有任何具体协议知识」这条架构约束。
+       ========================================================================== -->
+  <ItemGroup>
+    <PluginProject Include="..\CommunicationKernel.Plugins.Modbus.Tcp\CommunicationKernel.Plugins.Modbus.Tcp.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Modbus.Rtu\CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Modbus.Ascii\CommunicationKernel.Plugins.Modbus.Ascii.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Panasonic.MewtocolTcp\CommunicationKernel.Plugins.Panasonic.MewtocolTcp.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Siemens.S7\CommunicationKernel.Plugins.Siemens.S7.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Transport.Tcp\CommunicationKernel.Plugins.Transport.Tcp.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Transport.SerialPort\CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
+
+    <ProjectReference Include="@(PluginProject)"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
+  </ItemGroup>
+
+  <!--
+    将插件程序集及其第三方私有依赖复制到 plugins 目录。
+
+    关键约束：绝不复制 CommunicationKernel.* 共享契约程序集。
+    PluginLoadContext 使用 AssemblyDependencyResolver 优先在插件目录内解析依赖；
+    若共享契约（如 Communication.Protocol.dll）也出现在 plugins 下，
+    插件会加载到自己那一份，其 IProtocolDriverFactory 与宿主的将是两个不同类型，
+    IsAssignableFrom 判定失败 → 所有插件工厂静默注册不上。
+    共享契约必须回落到默认加载上下文（即宿主主输出目录）才能保证类型标识一致。
+  -->
+  <Target Name="CopyPluginsToOutput" AfterTargets="Build">
+    <!-- 取各插件工程的主输出程序集路径（此时它们已由 ProjectReference 保证构建完成） -->
+    <MSBuild Projects="@(PluginProject)" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="_PluginAssembly" />
+    </MSBuild>
+
+    <Copy SourceFiles="@(_PluginAssembly)"
+          DestinationFolder="$(OutDir)plugins"
+          SkipUnchangedFiles="true" />
+
+    <Message Importance="high"
+             Text="已部署 @(_PluginAssembly->Count()) 个插件到 $(OutDir)plugins" />
+  </Target>
+
+  <!--
+    复制插件的第三方私有依赖（如串口插件的 System.IO.Ports）。
+    使用目标批处理（Outputs 元数据）令每批只含一个插件目录，
+    这样 ItemGroup 的 Include 通配符才能在执行期正确展开——
+    Copy 任务本身不做通配符匹配。
+    Exclude 排除 CommunicationKernel.* ：共享契约必须由默认加载上下文提供，
+    详见上方 CopyPluginsToOutput 的说明。
+  -->
+  <Target Name="CopyPluginThirdPartyDeps"
+          AfterTargets="CopyPluginsToOutput"
+          Outputs="%(_PluginAssembly.Identity)">
+    <ItemGroup>
+      <_PluginDep Remove="@(_PluginDep)" />
+      <_PluginRuntimeAsset Remove="@(_PluginRuntimeAsset)" />
+      <_PluginDepsJson Remove="@(_PluginDepsJson)" />
+
+      <!-- 第三方依赖程序集（如 System.IO.Ports 的外观程序集） -->
+      <_PluginDep Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)*.dll"
+                  Exclude="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.*.dll" />
+
+      <!-- deps.json：AssemblyDependencyResolver 据此选择 RID 专属实现，
+           缺失则只能加载到会抛 PlatformNotSupportedException 的外观程序集 -->
+      <_PluginDepsJson Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)%(_PluginAssembly.Filename).deps.json" />
+
+      <!-- RID 专属运行时资产（如 runtimes\win\lib\net8.0\System.IO.Ports.dll），
+           必须保持目录结构，解析器按 RID 路径查找 -->
+      <_PluginRuntimeAsset Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)runtimes\**\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_PluginDep)"
+          DestinationFolder="$(OutDir)plugins"
+          SkipUnchangedFiles="true" />
+
+    <Copy SourceFiles="@(_PluginDepsJson)"
+          DestinationFolder="$(OutDir)plugins"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(_PluginDepsJson.FullPath)')" />
+
+    <Copy SourceFiles="@(_PluginRuntimeAsset)"
+          DestinationFiles="@(_PluginRuntimeAsset->'$(OutDir)plugins\runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
