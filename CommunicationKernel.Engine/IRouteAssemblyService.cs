@@ -39,6 +39,24 @@ public interface IRouteAssemblyService {
     /// 空载 Host 也必须返回完整的可用协议清单。
     /// </remarks>
     IReadOnlyList<ProtocolMetadata> GetAvailableProtocols();
+
+    /// <summary>
+    /// 列出宿主本机当前可用的串口。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 串口长在跑通讯的这台机器上。宿主在树莓派、上位机在办公室 PC 时，
+    /// 上位机列自己的 COM1/COM2 毫无意义——选中后注册必然失败，
+    /// 而错误信息会指向"打不开 COM1"，把人往完全错误的方向引。
+    /// 因此枚举必须发生在宿主侧，再由上位机取用。
+    /// </para>
+    /// <para>
+    /// 实现方通过类型判断在传输工厂中寻找 <see cref="ISerialPortEnumerator"/>；
+    /// 没有任何工厂实现它（例如纯以太网部署未装串口插件）时返回空集合。
+    /// 引擎本身不持有任何串口知识。
+    /// </para>
+    /// </remarks>
+    IReadOnlyList<SerialPortDescriptor> GetAvailableSerialPorts();
 }
 
 /// <summary>

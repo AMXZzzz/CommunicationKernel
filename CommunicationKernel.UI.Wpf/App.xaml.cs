@@ -168,12 +168,22 @@ public partial class App : Application {
             new GrpcDeviceService(
                 sp.GetRequiredService<EngineHostGrpcClient>(),
                 sp.GetRequiredService<IAppLogger>()));
+        // GrpcDeviceService 同时实现 IRouteReconciler：它持有本地设备配置，
+        // 是唯一有能力在宿主重启后把路由重新推回去的组件。
+        // 解析同一个单例而非再 new 一个——两份实例会各自持有独立的
+        // 在途表与节流表，合并与限流就都失效了。
+        services.AddSingleton<IRouteReconciler>(sp =>
+            (IRouteReconciler)sp.GetRequiredService<IDeviceService>());
         // LocalVariableStore 维护内存中的变量定义，Write 通过 gRPC 下发
         services.AddSingleton<IVariableService>(sp =>
             new LocalVariableStore(sp.GetRequiredService<EngineHostGrpcClient>()));
         // GrpcProtocolResolver 返回支持的协议名称列表
         services.AddSingleton<IProtocolResolver>(sp =>
             new GrpcProtocolResolver(sp.GetRequiredService<EngineHostGrpcClient>()));
+        // 串口清单提供者：清单来自「宿主所在机器」，不是本机。
+        // 宿主跑在树莓派时，操作员要选的是 /dev/ttyUSB0，而不是本机 COM1。
+        services.AddSingleton<ISerialPortProvider>(sp =>
+            new GrpcSerialPortProvider(sp.GetRequiredService<EngineHostGrpcClient>()));
 
         // ── 页面级 ViewModel（单例）──────────────────────────────────────
         // DevicePageViewModel：设备列表、增删改查、连接/断开
@@ -205,7 +215,8 @@ public partial class App : Application {
         services.AddTransient<DevicePage>(sp =>
             new DevicePage(
                 sp.GetRequiredService<DevicePageViewModel>(),
-                sp.GetRequiredService<IProtocolResolver>()));
+                sp.GetRequiredService<IProtocolResolver>(),
+                sp.GetRequiredService<ISerialPortProvider>()));
         // VariableConfigPage：注入 VariablePageViewModel
         services.AddTransient<VariableConfigPage>(sp =>
             new VariableConfigPage(sp.GetRequiredService<VariablePageViewModel>()));
@@ -222,7 +233,8 @@ public partial class App : Application {
         services.AddSingleton<VariablePollingService>(sp =>
             new VariablePollingService(
                 sp.GetRequiredService<IVariableService>(),
-                sp.GetRequiredService<EngineHostGrpcClient>()));
+                sp.GetRequiredService<EngineHostGrpcClient>(),
+                sp.GetRequiredService<IRouteReconciler>()));
 
         // ── 主窗口（单例）────────────────────────────────────────────────
         // MainWindow 构造注入 IServiceProvider 用于懒解析各页面

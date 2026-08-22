@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Modbus 协议插件（TCP / RTU / ASCII 三种变体）
+
+    合并前是四个工程：Core 承载语义，Tcp / Rtu / Ascii 各约 50 行只做驱动装配。
+    三者永远同进同出，且都强依赖 Core——拆开唯一的效果是让 Core 必须以
+    「插件私有共享库」的身份被复制进 plugins 目录，而那正是插件部署里
+    最容易出错的一环（排除清单一刀切就会把它挡掉，三个插件随即静默加载失败）。
+    合并成单一程序集后这一整类问题不复存在。
+
+    Core/ 下是与传输介质无关的 Modbus 语义：地址模型、PDU 构建与解析、
+    异常码映射、协议上限校验、三种外层封装（MBAP / CRC16 / ASCII-LRC）。
+    根目录三个文件只声明各自的清单、元数据与工厂。
+
+    单一程序集内承载多个协议并非特例：Siemens.S7 一直如此
+    （S7-1200 与 S7-200Smart 两个工厂同处一个插件）。
+  -->
+
+  <PropertyGroup>
+    <!-- ImplicitUsings 沿用 Directory.Build.props 的 enable。
+         合并前三个 Modbus 插件工程各自 disable，与解决方案其余部分不一致，
+         而占本工程绝大多数代码的 Core 一直是按 enable 编写的。 -->
+    <RootNamespace>CommunicationKernel.Plugins.Modbus</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>CommunicationKernel.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugin.Runtime\CommunicationKernel.Plugin.Runtime.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -15,17 +15,14 @@
   <!-- 引擎：可嵌入的 SDK 核心，不依赖 ASP.NET -->
   <Project Path="CommunicationKernel.Engine/CommunicationKernel.Engine.csproj" />
 
-  <!-- 宿主进程 + 契约 -->
-  <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj" />
+  <!-- 宿主进程：引擎 + gRPC 端点的薄壳 -->
+  <Project Path="CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj" />
 
-  <!-- 协议插件：Modbus（Core 承载三种变体共用的协议语义） -->
-  <Project Path="CommunicationKernel.Plugins.Modbus.Core/CommunicationKernel.Plugins.Modbus.Core.csproj" />
-  <Project Path="CommunicationKernel.Plugins.Modbus.Tcp/CommunicationKernel.Plugins.Modbus.Tcp.csproj" />
-  <Project Path="CommunicationKernel.Plugins.Modbus.Rtu/CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
-  <Project Path="CommunicationKernel.Plugins.Modbus.Ascii/CommunicationKernel.Plugins.Modbus.Ascii.csproj" />
+  <!-- 协议插件：Modbus（单一程序集内含 TCP / RTU / ASCII 三个变体） -->
+  <Project Path="CommunicationKernel.Plugins.Modbus/CommunicationKernel.Plugins.Modbus.csproj" />
 
   <!-- 协议插件：松下 -->
-  <Project Path="CommunicationKernel.Plugins.Panasonic.MewtocolTcp/CommunicationKernel.Plugins.Panasonic.MewtocolTcp.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Panasonic/CommunicationKernel.Plugins.Panasonic.csproj" />
 
   <!-- 协议插件：西门子 -->
   <Project Path="CommunicationKernel.Plugins.Siemens.S7/CommunicationKernel.Plugins.Siemens.S7.csproj" />
@@ -33,6 +30,9 @@
   <!-- 传输介质插件 -->
   <Project Path="CommunicationKernel.Plugins.Transport.Tcp/CommunicationKernel.Plugins.Transport.Tcp.csproj" />
   <Project Path="CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
+
+  <!-- 客户端库：WPF 与 Blazor 共用的 EngineHost 访问封装 -->
+  <Project Path="CommunicationKernel.Client.Grpc/CommunicationKernel.Client.Grpc.csproj" />
 
   <!-- 测试 -->
   <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />

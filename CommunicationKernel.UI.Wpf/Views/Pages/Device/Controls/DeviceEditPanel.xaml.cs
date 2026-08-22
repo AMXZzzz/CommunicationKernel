@@ -41,11 +41,66 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// </summary>
         public IProtocolResolver ProtocolResolver { get; set; }
 
+        /// <summary>
+        /// 串口清单提供者（由 DevicePage 赋值），可为 null。
+        /// </summary>
+        /// <remarks>
+        /// 清单来自 <b>EngineHost 所在的机器</b>。宿主跑在树莓派时，
+        /// 操作员要选的是树莓派上的 /dev/ttyUSB0，而不是本机的 COM1。
+        /// 为 null、宿主不可达或现场无串口时，下拉框留空但仍可手工输入。
+        /// </remarks>
+        public ISerialPortProvider SerialPortProvider { get; set; }
+
         public DeviceEditPanel () {
             InitializeComponent();
         }
 
         public bool IsNew => string.IsNullOrEmpty(_editingId);
+
+        /// <summary>
+        /// 向宿主拉取串口清单并填入下拉框，保留调用前已有的文本值。
+        /// </summary>
+        /// <param name="currentValue">当前已选/已输入的串口名，拉取后需原样保留。</param>
+        /// <remarks>
+        /// 全程不抛异常：拿不到清单时下拉框为空，操作员仍可手工输入。
+        /// 串口配不出来会让整台设备不可用，绝不能因为一次查询失败就卡住配置流程。
+        /// </remarks>
+        private async System.Threading.Tasks.Task LoadSerialPortsAsync (string currentValue) {
+            if (cmbSerialPort == null || SerialPortProvider == null)
+                return;
+
+            IReadOnlyList<SerialPortDto> ports;
+            try {
+                ports = await SerialPortProvider
+                    .GetPortsAsync(System.Threading.CancellationToken.None)
+                    .ConfigureAwait(true);   // 需回到 UI 线程操作控件
+            } catch (Exception) {
+                return;
+            }
+
+            if (cmbSerialPort == null) return;   // 面板可能已在等待期间关闭
+
+            cmbSerialPort.Items.Clear();
+            foreach (SerialPortDto port in ports) {
+                cmbSerialPort.Items.Add(new ComboBoxItem {
+                    Content = port.Display,
+                    // Tag 存纯设备名：Content 可能带 by-id 说明，
+                    // 直接拿 Content 去注册会得到一个不存在的设备名
+                    Tag     = port.PortName
+                });
+            }
+
+            // 清单刷新会清空 Text，这里恢复原值——
+            // 编辑既有设备时它必须留在框里，哪怕宿主清单里已经没有这个口
+            //（设备暂时拔了线不代表配置该被抹掉）。
+            cmbSerialPort.Text = currentValue ?? "";
+        }
+
+        /// <summary>下拉选中某个串口时，把纯设备名写回文本框。</summary>
+        private void OnSerialPortSelected (object sender, SelectionChangedEventArgs e) {
+            if (cmbSerialPort?.SelectedItem is ComboBoxItem item && item.Tag is string portName)
+                cmbSerialPort.Text = portName;
+        }
 
         /// <summary>
         /// 填充协议下拉框。
@@ -261,8 +316,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
                 txtPort.Text = info.Port > 0 ? info.Port.ToString() : "502";
 
             // 串口参数（串口类协议使用）
-            if (txtSerialPort != null)
-                txtSerialPort.Text = info.SerialPort ?? "";
+            if (cmbSerialPort != null) {
+                // 先把已保存的值填上，再异步拉清单——顺序不能反：
+                // 拉取要走一趟 RPC，等它回来再回填的话，
+                // 面板会先空着一段时间，编辑既有设备时看起来像配置丢了。
+                cmbSerialPort.Text = info.SerialPort ?? "";
+                _ = LoadSerialPortsAsync(cmbSerialPort.Text);
+            }
             if (txtBaudRate != null)
                 txtBaudRate.Text = info.BaudRate > 0 ? info.BaudRate.ToString() : "9600";
 
@@ -305,8 +365,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             d.TransportKind = isSerial ? "Serial" : "Tcp";
 
             if (isSerial) {
-                // 串口路由：串口名走 SerialPort 字段，IP/端口留空
-                d.SerialPort = txtSerialPort != null ? txtSerialPort.Text.Trim() : "";
+                // 串口路由：串口名走 SerialPort 字段，IP/端口留空。
+                // 取 Text 而非 SelectedItem——下拉框是可编辑的，
+                // 手工输入的设备名（宿主清单里没有的）同样必须被保留。
+                d.SerialPort = cmbSerialPort != null ? (cmbSerialPort.Text ?? "").Trim() : "";
 
                 int baud;
                 d.BaudRate = (txtBaudRate != null && int.TryParse(txtBaudRate.Text.Trim(), out baud) && baud > 0)

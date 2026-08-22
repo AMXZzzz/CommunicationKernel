@@ -33,9 +33,9 @@ using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Plugin.Runtime.Abstractions;
-using CommunicationKernel.Plugins.Panasonic.MewtocolTcp.Internal;
+using CommunicationKernel.Plugins.Panasonic.Internal;
 
-namespace CommunicationKernel.Plugins.Panasonic.MewtocolTcp;
+namespace CommunicationKernel.Plugins.Panasonic;
 
 // =============================================================================
 // Manifest
@@ -131,6 +131,16 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
             : OperationResult<byte[]>.Fail(plan.ErrorMessage, plan.ErrorCode);
     }
 
+    /// <summary>
+    /// 单次 RD 读取的最大字数。
+    /// </summary>
+    /// <remarks>
+    /// MEWTOCOL 响应是 ASCII：每字 4 个十六进制字符 + 约 12 字符头尾。
+    /// 传输层单帧上限 1024 字节，约合 250 个字；取 128 字留足余量，
+    /// 也是现场常用的分块尺寸。
+    /// </remarks>
+    private const int MaxReadWords = 128;
+
     /// <summary>一次读请求的计划：帧 + 响应解析所需的判定结果。</summary>
     private readonly record struct MewtocolReadPlan(byte[] Frame, bool IsBit, int WordCount);
 
@@ -165,6 +175,22 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
 
         // length 单位为字节，向上取整到整字
         int wordCount = (length + 1) / 2;
+
+        // 上限校验必须在构帧之前。
+        //
+        // MEWTOCOL 是 ASCII 协议：每个字在响应里占 4 个十六进制字符，
+        // 加上头尾约 12 字符。传输层单帧上限 1024 字节，
+        // 因此超过约 250 个字的请求根本不可能收全，只会读到一半后超时。
+        // 取 128 字（256 字节）这一常用分块尺寸，留足余量。
+        //
+        // 没有这道校验时，超长请求会构出一个 PLC 不认或答不全的帧，
+        // 表现为莫名其妙的超时，错误信息完全指不到真实原因。
+        if (wordCount > MaxReadWords)
+            return OperationResult<MewtocolReadPlan>.Fail(
+                $"单次最多读取 {MaxReadWords} 个字（{MaxReadWords * 2} 字节），" +
+                $"请求 {length} 字节合 {wordCount} 个字",
+                KernelErrorCode.InvalidArgument);
+
         return OperationResult<MewtocolReadPlan>.Ok(
             new MewtocolReadPlan(MewtocolFrame.BuildReadData(addr, wordCount), IsBit: false, wordCount));
     }

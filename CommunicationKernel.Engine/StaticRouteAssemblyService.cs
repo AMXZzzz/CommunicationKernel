@@ -50,6 +50,9 @@ public sealed class StaticRouteAssemblyService : IRouteAssemblyService {
     private readonly RouteAssembler _assembler;
     private readonly IReadOnlyList<IProtocolDriverFactory> _protocolFactories;
 
+    /// <summary>传输工厂集合；串口枚举需要在其中寻找 ISerialPortEnumerator 实现。</summary>
+    private readonly IReadOnlyList<ITransportFactory> _transportFactories;
+
     /// <summary>
     /// 用显式提供的工厂集合构造装配服务。
     /// </summary>
@@ -67,6 +70,7 @@ public sealed class StaticRouteAssemblyService : IRouteAssemblyService {
         ArgumentNullException.ThrowIfNull(protocolFactories);
 
         IReadOnlyList<ITransportFactory> transports = transportFactories.ToList();
+        _transportFactories = transports;
         _protocolFactories = protocolFactories.ToList();
 
         if (transports.Count == 0)
@@ -89,6 +93,12 @@ public sealed class StaticRouteAssemblyService : IRouteAssemblyService {
             .Where(m => !string.IsNullOrWhiteSpace(m.ProtocolId))
             .OrderBy(m => m.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+    /// <inheritdoc />
+    public IReadOnlyList<SerialPortDescriptor> GetAvailableSerialPorts()
+        // 每次都重新枚举而非缓存：USB 转串口设备可以随时插拔，
+        // 缓存会让操作员插上线后仍然看不到新串口。
+        => SerialPortDiscovery.Enumerate(_transportFactories);
 
     /// <inheritdoc />
     public Task<OperationResult<RouteAssemblyResult>> AssembleAsync(

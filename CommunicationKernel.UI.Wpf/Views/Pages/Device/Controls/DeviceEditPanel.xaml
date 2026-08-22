@@ -185,10 +185,14 @@
                                          Foreground="{StaticResource SF.Brush.Status.Error}"
                                          FontSize="12"/>
                                 </TextBlock>
-                                <TextBox x:Name="txtSerialPort"
-                                         Style="{StaticResource SF.Style.DialogTextBox}"
-                                         FontFamily="Consolas"
-                                         ToolTip="例如 COM3"/>
+                                <!-- IsEditable：清单来自宿主机器，但仍允许手工输入。
+                                     宿主尚未连上、或设备是热插拔上来的时候，
+                                     清单可能是空的或过时的，不能因此堵死配置。 -->
+                                <ComboBox x:Name="cmbSerialPort"
+                                          IsEditable="True"
+                                          FontFamily="Consolas"
+                                          SelectionChanged="OnSerialPortSelected"
+                                          ToolTip="下拉项来自 EngineHost 所在机器（Windows 形如 COM3，树莓派形如 /dev/ttyUSB0）；也可直接输入"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Margin="0,0,0,4">

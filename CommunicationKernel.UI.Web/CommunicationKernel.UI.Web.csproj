@@ -14,30 +14,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- gRPC 客户端库 -->
-    <PackageReference Include="Grpc.Net.Client" Version="2.70.0" />
-    <!-- Grpc.Net.Client.Web：允许 gRPC-Web 穿透不支持 HTTP/2 的代理 -->
-    <PackageReference Include="Grpc.Net.Client.Web" Version="2.70.0" />
-    <!-- Protobuf 序列化 -->
-    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
-    <!-- Grpc.Tools：编译时从 .proto 生成 C# 代码 -->
-    <PackageReference Include="Grpc.Tools" Version="2.70.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- 引用解决方案根目录下的共享 proto，只生成客户端 stub。
-         此前本项目持有独立副本且长期滞后（缺 RemoveRoute / QueryProtocols）。 -->
-    <Protobuf Include="..\Protos\V1\engine_host.proto"
-              ProtoRoot=".."
-              GrpcServices="Client"
-              Link="Protos\V1\engine_host.proto" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- 契约层引用（共享错误码常量） -->
+    <!-- 共享 gRPC 客户端：proto 代码生成、通道管理、DTO、断线重连全在库内。
+         此前本项目自持一份 EngineHostWebClient，长期缺 RegisterRoute /
+         RemoveRoute / QueryProtocols，也没有断线重连。
+         proto 已收敛到单一来源，客户端封装没有理由再分裂两份。 -->
+    <ProjectReference Include="..\CommunicationKernel.Client.Grpc\CommunicationKernel.Client.Grpc.csproj" />
   </ItemGroup>
 
 </Project>

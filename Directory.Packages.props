@@ -1,0 +1,55 @@
+<Project>
+
+  <!-- ==========================================================================
+       集中包版本管理（Central Package Management）
+
+       各工程的 PackageReference 不再写 Version，版本一律在此声明。
+
+       动机：同一个包在不同工程里已经开始出现不同版本——
+       Microsoft.Extensions.Logging.Abstractions 同时存在 8.0.0 与 8.0.2。
+       NuGet 会做统一提升，构建照样通过，但「实际用的是哪个版本」
+       取决于依赖图而非任何人的决定，升级时也无从确认改全了没有。
+
+       注意：old/ 目录下另有一份 Directory.Packages.props 关掉了本机制。
+       那是上一代系统的归档，不在解决方案内，其版本不应被这里牵动。
+       ========================================================================== -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- 禁止工程内再写 Version 覆盖，否则集中管理形同虚设 -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- gRPC / Protobuf：四个包版本必须同步，
+         Grpc.Tools 生成的代码要与 Grpc.Net.Client 的运行时 API 匹配 -->
+    <PackageVersion Include="Google.Protobuf" Version="3.30.2" />
+    <PackageVersion Include="Grpc.AspNetCore" Version="2.70.0" />
+    <PackageVersion Include="Grpc.Net.Client" Version="2.70.0" />
+    <PackageVersion Include="Grpc.Tools" Version="2.70.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.Extensions.*：与 net8.0 的 LTS 保持同一补丁线 -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 串口：Linux 上还需随行原生库 libSystem.IO.Ports.Native.so，
+         见《部署-Linux与树莓派.md》 -->
+    <PackageVersion Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 测试：只钉 MSTest 这个元包。
+         Microsoft.NET.Test.Sdk 由它按需带入，没有工程直接引用，
+         在此另钉一个版本只会与 MSTest 的要求打架
+         （开启传递固定后这会直接构建失败，而非静默降级）。 -->
+    <PackageVersion Include="MSTest" Version="4.0.2" />
+  </ItemGroup>
+
+</Project>

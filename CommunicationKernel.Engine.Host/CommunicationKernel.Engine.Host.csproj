@@ -7,7 +7,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore" Version="2.70.0" />
+    <PackageReference Include="Grpc.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,10 +29,8 @@
        从而守住「宿主不持有任何具体协议知识」这条架构约束。
        ========================================================================== -->
   <ItemGroup>
-    <PluginProject Include="..\CommunicationKernel.Plugins.Modbus.Tcp\CommunicationKernel.Plugins.Modbus.Tcp.csproj" />
-    <PluginProject Include="..\CommunicationKernel.Plugins.Modbus.Rtu\CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
-    <PluginProject Include="..\CommunicationKernel.Plugins.Modbus.Ascii\CommunicationKernel.Plugins.Modbus.Ascii.csproj" />
-    <PluginProject Include="..\CommunicationKernel.Plugins.Panasonic.MewtocolTcp\CommunicationKernel.Plugins.Panasonic.MewtocolTcp.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Modbus\CommunicationKernel.Plugins.Modbus.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Panasonic\CommunicationKernel.Plugins.Panasonic.csproj" />
     <PluginProject Include="..\CommunicationKernel.Plugins.Siemens.S7\CommunicationKernel.Plugins.Siemens.S7.csproj" />
     <PluginProject Include="..\CommunicationKernel.Plugins.Transport.Tcp\CommunicationKernel.Plugins.Transport.Tcp.csproj" />
     <PluginProject Include="..\CommunicationKernel.Plugins.Transport.SerialPort\CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
@@ -93,16 +91,16 @@
       <_PluginDepsJson Remove="@(_PluginDepsJson)" />
 
       <!--
-        插件的私有依赖：第三方程序集（如 System.IO.Ports）
-        以及插件之间共享的实现库（如 Plugins.Modbus.Core）。
+        插件的私有依赖：第三方程序集（如串口插件的 System.IO.Ports）。
 
-        排除清单精确到「宿主也加载的四个共享契约」，不能按 CommunicationKernel.* 前缀
-        一刀切——那会把 Plugins.Modbus.Core 这类插件私有共享库也挡掉，
-        导致三个 Modbus 插件在加载时找不到依赖而静默失败。
+        排除清单精确到「宿主也加载的四个共享契约」而非按 CommunicationKernel.*
+        前缀一刀切。这四个契约必须由默认加载上下文提供：若它们出现在 plugins
+        目录下，插件会加载到自己那一份，其 IProtocolDriverFactory 与宿主的
+        将是两个不同类型，IsAssignableFrom 判定失败 →
+        所有插件工厂静默注册不上，且不抛任何异常。
 
-        这四个契约必须由默认加载上下文提供：若它们出现在 plugins 目录下，
-        插件会加载到自己那一份，其 IProtocolDriverFactory 与宿主的将是两个不同类型，
-        IsAssignableFrom 判定失败 → 所有插件工厂静默注册不上。
+        注：曾经还需要放行 Plugins.Modbus.Core 这类「插件私有共享库」，
+        三个 Modbus 插件合并成单一程序集后已无此类依赖。
       -->
       <_PluginDep Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)*.dll"
                   Exclude="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Core.Abstractions.dll;

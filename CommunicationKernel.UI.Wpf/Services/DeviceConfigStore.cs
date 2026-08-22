@@ -85,7 +85,7 @@ namespace CommunicationKernel.UI.Wpf.Services
             public string Name              { get; set; }
             public string Model             { get; set; }
             public bool   IsDualLane        { get; set; }
-            public string Lane              { get; set; }
+            // 注意：不存 Lane——它是从 IsDualLane 派生的只读属性，存了会与之矛盾
             public string ExtraSettingsJson { get; set; }
         }
 
@@ -146,7 +146,6 @@ namespace CommunicationKernel.UI.Wpf.Services
                     Name              = info.Name,
                     Model             = info.Model,
                     IsDualLane        = info.IsDualLane,
-                    Lane              = info.Lane,
                     ExtraSettingsJson = info.ExtraSettingsJson
                 };
 

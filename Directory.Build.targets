@@ -1,0 +1,30 @@
+<Project>
+
+  <!--
+    打包元数据。
+
+    只在 IsPackable=true 的工程上生效，避免在宿主 / 插件 / 测试工程上
+    产出一堆无人使用的 nupkg。
+
+    单独放在 .targets 而非 .props：这里的条件依赖各工程自己设置的
+    IsPackable，而 .props 在工程文件之前导入，那时该属性还没赋值。
+  -->
+
+  <PropertyGroup Condition="'$(IsPackable)' == 'true'">
+    <Authors>CommunicationKernel</Authors>
+    <PackageProjectUrl>https://github.com/AMXZzzz/CommunicationKernel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/AMXZzzz/CommunicationKernel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>plc;modbus;s7;mewtocol;industrial;scada;serial;iot</PackageTags>
+
+
+    <!-- 符号包，便于消费者单步调试进库内 -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- 源码链接：让调试器能拉到对应提交的源码 -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+</Project>

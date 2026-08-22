@@ -92,12 +92,12 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: 构建 EngineHost
-        run: dotnet build CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj --configuration Release
+        run: dotnet build CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj --configuration Release
 
       - name: 校验 plugins 目录内容
         shell: pwsh
         run: |
-          $dir = "CommunicationKernel.EngineHost/bin/Release/net8.0/plugins"
+          $dir = "CommunicationKernel.Engine.Host/bin/Release/net8.0/plugins"
           if (-not (Test-Path $dir)) {
             Write-Error "plugins 目录不存在——插件部署 Target 未执行"
             exit 1
@@ -105,12 +105,12 @@ jobs:
 
           $dlls = Get-ChildItem $dir -Filter *.dll | Select-Object -ExpandProperty Name
 
-          # 1) 七个插件必须全部就位
+          # 1) 五个插件程序集必须全部就位。
+          #    Modbus 的 TCP / RTU / ASCII 三个变体同处一个程序集，
+          #    与 Siemens.S7 内含 1200 / 200Smart 两个工厂是同一种组织方式。
           $expected = @(
-            'CommunicationKernel.Plugins.Modbus.Tcp.dll',
-            'CommunicationKernel.Plugins.Modbus.Rtu.dll',
-            'CommunicationKernel.Plugins.Modbus.Ascii.dll',
-            'CommunicationKernel.Plugins.Panasonic.MewtocolTcp.dll',
+            'CommunicationKernel.Plugins.Modbus.dll',
+            'CommunicationKernel.Plugins.Panasonic.dll',
             'CommunicationKernel.Plugins.Siemens.S7.dll',
             'CommunicationKernel.Plugins.Transport.Tcp.dll',
             'CommunicationKernel.Plugins.Transport.SerialPort.dll'
@@ -121,13 +121,7 @@ jobs:
             exit 1
           }
 
-          # 2) 插件私有共享库必须随行（否则三个 Modbus 插件加载时找不到依赖）
-          if ('CommunicationKernel.Plugins.Modbus.Core.dll' -notin $dlls) {
-            Write-Error "Modbus.Core 未部署——三个 Modbus 插件将静默加载失败"
-            exit 1
-          }
-
-          # 3) 四个共享契约绝不能出现在 plugins 目录
+          # 2) 四个共享契约绝不能出现在 plugins 目录
           $forbidden = @(
             'CommunicationKernel.Core.Abstractions.dll',
             'CommunicationKernel.Communication.Protocol.dll',
@@ -140,7 +134,7 @@ jobs:
             exit 1
           }
 
-          # 4) 串口插件的 RID 专属运行时资产必须存在
+          # 3) 串口插件的 RID 专属运行时资产必须存在
           if (-not (Test-Path "$dir/runtimes/win/lib/net8.0/System.IO.Ports.dll")) {
             Write-Error "System.IO.Ports 的 Windows RID 资产缺失——串口首次打开会抛 PlatformNotSupportedException"
             exit 1
@@ -168,7 +162,7 @@ jobs:
         run: |
           for p in \
             CommunicationKernel.Engine/CommunicationKernel.Engine.csproj \
-            CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj \
+            CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj \
             CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj
           do
             echo "::group::$p"
@@ -223,7 +217,7 @@ jobs:
 
       - name: 发布 linux-arm64
         run: >
-          dotnet publish CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj
+          dotnet publish CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj
           --configuration Release
           --runtime linux-arm64
           --self-contained true
@@ -248,11 +242,8 @@ jobs:
           #    而 publish 的输出目录不同——曾出现「构建目录有插件、
           #    发布目录 0 个」且 publish 本身不报任何错的情况。
           for dll in \
-            CommunicationKernel.Plugins.Modbus.Tcp \
-            CommunicationKernel.Plugins.Modbus.Rtu \
-            CommunicationKernel.Plugins.Modbus.Ascii \
-            CommunicationKernel.Plugins.Modbus.Core \
-            CommunicationKernel.Plugins.Panasonic.MewtocolTcp \
+            CommunicationKernel.Plugins.Modbus \
+            CommunicationKernel.Plugins.Panasonic \
             CommunicationKernel.Plugins.Siemens.S7 \
             CommunicationKernel.Plugins.Transport.Tcp \
             CommunicationKernel.Plugins.Transport.SerialPort
@@ -323,7 +314,7 @@ jobs:
       # 插件部署与 RID 资产的正确性由 publish-linux-arm64 作业负责。
       - name: 发布 linux-x64
         run: >
-          dotnet publish CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj
+          dotnet publish CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj
           --configuration Release
           --runtime linux-x64
           --self-contained true

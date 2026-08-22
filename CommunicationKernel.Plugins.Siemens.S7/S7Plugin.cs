@@ -105,6 +105,19 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildReadFrame(string address, int length) {
+        // length 的单位是字节（见 IProtocolDriver）。S7 本就按字节寻址，无需换算，
+        // 但长度必须校验：Item 的 Length 字段只有 16 位，
+        // 不校验时 100000 会被截断成 34464，帧看起来完全合法，
+        // 却读回一段与请求毫无关系的数据。
+        if (length <= 0)
+            return OperationResult<byte[]>.Fail(
+                $"读取长度必须大于 0，实际 {length}", KernelErrorCode.InvalidArgument);
+
+        if (length > S7Limits.MaxPayloadBytes)
+            return OperationResult<byte[]>.Fail(
+                $"单次最多读取 {S7Limits.MaxPayloadBytes} 字节，请求 {length} 字节",
+                KernelErrorCode.InvalidArgument);
+
         OperationResult<(S7Area area, ushort dbNumber, int byteOffset)> addrResult = S7Frame.ParseAddress(address);
         if (!addrResult.Success)
             return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
@@ -115,6 +128,16 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildWriteFrame(string address, byte[] payload) {
+        // 与读取同理：Length 字段 16 位，超长必须拒绝而不是截断
+        if (payload is null || payload.Length == 0)
+            return OperationResult<byte[]>.Fail(
+                "写入数据不能为空", KernelErrorCode.InvalidArgument);
+
+        if (payload.Length > S7Limits.MaxPayloadBytes)
+            return OperationResult<byte[]>.Fail(
+                $"单次最多写入 {S7Limits.MaxPayloadBytes} 字节，请求 {payload.Length} 字节",
+                KernelErrorCode.InvalidArgument);
+
         OperationResult<(S7Area area, ushort dbNumber, int byteOffset)> addrResult = S7Frame.ParseAddress(address);
         if (!addrResult.Success)
             return OperationResult<byte[]>.Fail(addrResult.ErrorMessage, addrResult.ErrorCode);
