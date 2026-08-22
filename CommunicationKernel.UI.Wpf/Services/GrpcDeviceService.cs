@@ -29,7 +29,7 @@ namespace CommunicationKernel.UI.Wpf.Services
     /// 通过 <see cref="EngineHostGrpcClient"/> 与 EngineHost 通信，
     /// 将路由信息映射为本地 <see cref="DeviceInfo"/> 对象。
     /// </summary>
-    public sealed class GrpcDeviceService : IDeviceService
+    public sealed class GrpcDeviceService : IDeviceService, IRouteReconciler
     {
         // -------------------------------------------------------------------------
         // 私有字段
@@ -70,24 +70,11 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly DeviceConfigStore _config;
 
         /// <summary>
-        /// 正在进行中的重注册任务，Key = RouteId。
-        /// 用于把同一路由上并发的重注册请求合并成一次实际调用。
+        /// 重注册闸门：合并同一路由上的并发请求，并施加最小重试间隔。
+        /// 时序逻辑本身与界面无关，已下沉到客户端层以便直接测试。
         /// </summary>
-        private readonly Dictionary<string, Task<bool>> _inflightReconcile
-            = new Dictionary<string, Task<bool>>(StringComparer.OrdinalIgnoreCase);
-
-        /// <summary>各路由上一次重注册尝试的时间戳，Key = RouteId。</summary>
-        private readonly Dictionary<string, DateTime> _lastReconcileAttempt
-            = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
-
-        /// <summary>保护 _inflightReconcile 与 _lastReconcileAttempt 的同步锁。</summary>
-        private readonly object _reconcileLock = new object();
-
-        /// <summary>
-        /// 同一路由两次重注册尝试之间的最小间隔。
-        /// PLC 拔线时重注册也会失败，没有这个下限就会每个轮询周期打一次。
-        /// </summary>
-        private static readonly TimeSpan ReconcileMinInterval = TimeSpan.FromSeconds(5);
+        private readonly RouteReconcileGate _reconcileGate
+            = new RouteReconcileGate(TimeSpan.FromSeconds(5));
 
         // -------------------------------------------------------------------------
         // 事件
@@ -120,6 +107,42 @@ namespace CommunicationKernel.UI.Wpf.Services
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _log    = log;
+            _config = new DeviceConfigStore(log);
+
+            // 先用本地配置把设备列表填满，再由 Load() 与服务端对账。
+            //
+            // 顺序很重要：宿主没起来时 QueryRoutes 会失败，若等它返回再填列表，
+            // 界面就会是空的，操作员看不出「设备还在、只是宿主连不上」。
+            // 此处构造发生在 DI 建容器时（UI 线程），可直接操作 ObservableCollection。
+            foreach (DeviceConfigStore.DeviceRecord record in _config.GetAll())
+                Devices.Add(ToDeviceInfo(record));
+        }
+
+        /// <summary>把持久化记录还原成界面用的设备对象（状态一律从离线起步）。</summary>
+        private static DeviceInfo ToDeviceInfo(DeviceConfigStore.DeviceRecord record)
+        {
+            return new DeviceInfo
+            {
+                Id                = record.Id,
+                Name              = string.IsNullOrWhiteSpace(record.Name) ? record.Id : record.Name,
+                Model             = record.Model ?? string.Empty,
+
+                // Lane 由 IsDualLane 派生，只读，无需也不能单独还原
+                IsDualLane        = record.IsDualLane,
+                Protocol          = record.Protocol ?? string.Empty,
+                Ip                = record.Ip ?? string.Empty,
+                Port              = record.Port,
+                Station           = record.Station ?? string.Empty,
+                StationNo         = record.StationNo,
+                SerialPort        = record.SerialPort ?? string.Empty,
+                BaudRate          = record.BaudRate,
+                TransportKind     = record.TransportKind ?? string.Empty,
+                ExtraSettingsJson = record.ExtraSettingsJson ?? string.Empty,
+
+                // 运行期状态不持久化：显示一个从未验证过的连接状态比不显示更糟
+                StatusType        = DeviceStatusType.Offline,
+                IsConnected       = false
+            };
         }
 
         // -------------------------------------------------------------------------
@@ -152,11 +175,28 @@ namespace CommunicationKernel.UI.Wpf.Services
                             routes.Select(r => r.RouteId),
                             StringComparer.OrdinalIgnoreCase);
 
-                        // 1. 移除本地有但服务端已删除的路由
+                        // 1. 处理本地有、服务端没有的路由。
+                        //
+                        //    只有「本地也没有持久化配置」的条目才真正删除——
+                        //    那是上一轮从服务端同步来的临时条目，服务端删了就该消失。
+                        //
+                        //    若本地存有配置，说明这是操作员配置过的设备，宿主重启
+                        //    丢了自己的内存路由而已。此前这里一律删除，导致宿主一重启
+                        //    界面上的设备就全部消失，只能手工重录。现在保留并标记离线，
+                        //    等下一次读写触发 EnsureRouteAsync 自动重新注册。
                         for (int i = Devices.Count - 1; i >= 0; i--)
                         {
-                            if (!serverIds.Contains(Devices[i].Id))
+                            DeviceInfo local = Devices[i];
+                            if (serverIds.Contains(local.Id)) continue;
+
+                            if (_config.Get(local.Id) == null)
+                            {
                                 Devices.RemoveAt(i);
+                                continue;
+                            }
+
+                            local.IsConnected = false;
+                            local.StatusType  = DeviceStatusType.Offline;
                         }
 
                         // 2. 对每条服务端路由执行更新或新增
@@ -178,7 +218,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                             {
                                 // 新增：从服务端同步过来的路由默认为离线。
                                 // 名称等本地元数据优先取本地留存值，避免被 RouteId 覆盖。
-                                LocalDeviceMeta meta = GetMeta(r.RouteId);
+                                DeviceConfigStore.DeviceRecord meta = _config.Get(r.RouteId);
 
                                 Devices.Add(new DeviceInfo {
                                     Id            = r.RouteId,
@@ -314,25 +354,90 @@ namespace CommunicationKernel.UI.Wpf.Services
             app.Dispatcher.InvokeAsync(() => OperationFailed?.Invoke(message));
         }
 
-        /// <summary>留存不随 gRPC 传输的本地元数据（名称 / 型号 / 轨道）。</summary>
+        /// <summary>
+        /// 把设备配置写入本地持久化存储。
+        /// </summary>
+        /// <remarks>
+        /// 存两类东西：gRPC 路由模型没有的展示元数据（名称/型号/轨道），
+        /// 以及重新注册这条路由所需的全部连接参数。后者是宿主重启后
+        /// 能自动恢复的前提——宿主侧路由是纯内存的。
+        /// </remarks>
         private void SaveMeta(string routeId, DeviceInfo info)
         {
-            lock (_metaLock)
-            {
-                _localMeta[routeId] = new LocalDeviceMeta {
-                    Name       = info.Name,
-                    Model      = info.Model,
-                    IsDualLane = info.IsDualLane
-                };
-            }
+            _config.Save(routeId, info);
         }
 
-        /// <summary>读取本地元数据；不存在返回 null。</summary>
-        private LocalDeviceMeta GetMeta(string routeId)
+        // -------------------------------------------------------------------------
+        // IRouteReconciler 实现
+        // -------------------------------------------------------------------------
+
+        /// <inheritdoc />
+        public Task<bool> EnsureRouteAsync(string routeId, CancellationToken ct)
         {
-            lock (_metaLock)
+            if (string.IsNullOrWhiteSpace(routeId))
+                return Task.FromResult(false);
+
+            // 分支1：本地没有这台设备的配置——可能是操作员刚删掉的，不要复活它
+            DeviceConfigStore.DeviceRecord record = _config.Get(routeId);
+            if (record == null)
+                return Task.FromResult(false);
+
+            // 并发合并与重试节流都由闸门负责：一台设备上挂几十个变量时，
+            // 宿主重启会让它们同时收到 RouteNotFound，逐个发起会打爆宿主。
+            return _reconcileGate.RunAsync(routeId, () => ReconcileCoreAsync(routeId, record, ct));
+        }
+
+        /// <summary>实际执行一次重新注册。</summary>
+        private async Task<bool> ReconcileCoreAsync(
+            string routeId, DeviceConfigStore.DeviceRecord record, CancellationToken ct)
+        {
+            try
             {
-                return _localMeta.TryGetValue(routeId, out LocalDeviceMeta meta) ? meta : null;
+                string transportKind = string.IsNullOrWhiteSpace(record.TransportKind)
+                    ? "Tcp"
+                    : record.TransportKind.Trim();
+
+                string station = !string.IsNullOrWhiteSpace(record.Station)
+                    ? record.Station.Trim()
+                    : (record.StationNo > 0 ? record.StationNo.ToString() : string.Empty);
+
+                (bool success, string code, string msg, string _) =
+                    await _client.RegisterRouteAsync(
+                        routeId,
+                        record.Protocol ?? string.Empty,
+                        transportKind,
+                        record.Ip ?? string.Empty,
+                        record.Port,
+                        station,
+                        record.SerialPort ?? string.Empty,
+                        record.BaudRate
+                    ).ConfigureAwait(false);
+
+                if (!success)
+                {
+                    _log?.Warn("Device", string.Format(
+                        "路由 {0} 自动重新注册失败 code={1}: {2}", routeId, code, msg));
+                    return false;
+                }
+
+                _log?.Info("Device", string.Format(
+                    "路由 {0} 已自动重新注册（宿主侧此前不存在该路由）", routeId));
+
+                // 刻意不在这里改 StatusType：重新注册只证明「路由存在」，
+                // 不证明「与 PLC 通讯正常」。连接状态一律由 WatchRouteStatus
+                // 依据实际链路事件驱动，此处越权设置会显示出未经验证的在线状态。
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+            catch (Exception ex)
+            {
+                // 宿主整个连不上时会走到这里；调用方按失败处理并继续退避即可
+                _log?.Warn("Device", string.Format(
+                    "路由 {0} 自动重新注册异常: {1}", routeId, ex.Message));
+                return false;
             }
         }
 
@@ -375,11 +480,9 @@ namespace CommunicationKernel.UI.Wpf.Services
                         Devices.Remove(target);
                 });
 
-                // 元数据随设备一并清除，避免同 RouteId 复用时残留旧名称
-                lock (_metaLock)
-                {
-                    _localMeta.Remove(id);
-                }
+                // 配置随设备一并清除：既避免同 RouteId 复用时残留旧名称，
+                // 也确保 EnsureRouteAsync 不会把操作员刚删掉的设备又注册回去
+                _config.Delete(id);
             });
         }
 

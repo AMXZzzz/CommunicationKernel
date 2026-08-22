@@ -1,12 +1,12 @@
 #nullable disable
 
 // -----------------------------------------------------------------------------
-// 文件: Services/EngineHostGrpcClient.cs
-// 层级: UI 层 — WPF 客户端服务
+// 文件: EngineHostGrpcClient.cs
+// 层级: 客户端层 — 所有 UI 共用
 // 作用: 封装所有 gRPC 调用，为 ViewModel 提供强类型异步方法。
 //       所有网络 I/O 均在此类完成，ViewModel 无需感知 Protobuf 细节。
 // 调用链:
-//   ViewModel → EngineHostGrpcClient → gRPC Channel → EngineHost gRPC Server
+//   UI（WPF / Blazor / 其他）→ EngineHostGrpcClient → gRPC Channel → EngineHost
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.EngineHost.Grpc.V1;   // 由 Grpc.Tools 从 .proto 生成
@@ -14,7 +14,7 @@ using Grpc.Core;                                  // RpcException, Metadata
 using Grpc.Net.Client;                            // GrpcChannel
 using Microsoft.Extensions.Logging;              // ILogger<T>
 
-namespace CommunicationKernel.UI.Wpf.Services;
+namespace CommunicationKernel.Client.Grpc;
 
 // =============================================================================
 // 数据传输对象 — 用于隔离 ViewModel 与 Protobuf 消息类型
@@ -70,6 +70,23 @@ public sealed record ProtocolDescriptorDto(
         SupportedTransports is { Count: > 0 } ? SupportedTransports[0] : "Tcp";
 }
 
+/// <summary>
+/// 宿主机器上的一个可用串口。
+/// </summary>
+/// <param name="PortName">
+/// 直接回填到注册请求的设备名。Windows 形如 "COM3"，Linux 形如 "/dev/ttyUSB0"。
+/// </param>
+/// <param name="Description">
+/// 面向操作员的补充说明，可为空。Linux 上通常是 by-id 稳定路径——
+/// 多个 USB 串口同时插着时 ttyUSB 编号会随枚举顺序在重启后对调。
+/// </param>
+public sealed record SerialPortDto(string PortName, string Description) {
+
+    /// <summary>下拉框里显示的文本：有说明时一并给出，便于分辨同类设备。</summary>
+    public string Display =>
+        string.IsNullOrWhiteSpace(Description) ? PortName : $"{PortName}  ({Description})";
+}
+
 /// <summary>读取结果 DTO。</summary>
 public sealed record ReadResultDto(bool Success, string ErrorCode, string ErrorMessage, byte[] Data);
 
@@ -84,7 +101,7 @@ public sealed record WriteResultDto(bool Success, string ErrorCode, string Error
 /// 封装所有 EngineHostApi gRPC 调用。
 /// 单例生命周期：应用启动时由 DI 容器创建，应用退出时 Dispose。
 /// </summary>
-public sealed class EngineHostGrpcClient : IAsyncDisposable {
+public sealed class EngineHostGrpcClient : IEngineHostClient {
 
     // -------------------------------------------------------------------------
     // 常量
@@ -178,8 +195,30 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
     /// 注册一条路由。
     /// </summary>
     /// <returns>(success, errorCode, errorMessage, assignedRouteId)</returns>
-    /// <param name="serialPort">串口名（如 "COM3"）；TCP 路由传空字符串。</param>
+    /// <param name="routeId">路由 ID，由调用方指定并在后续读写中原样使用。</param>
+    /// <param name="protocolId">
+    /// 协议标识，必须取自 <see cref="QueryProtocolsAsync"/> 返回的
+    /// <see cref="ProtocolDescriptorDto.ProtocolId"/>；
+    /// 传展示名会导致服务端匹配不到协议工厂。
+    /// </param>
+    /// <param name="transportKind">传输介质，"Tcp" 或 "Serial"。</param>
+    /// <param name="address">TCP 路由的 IP 地址；串口路由传空字符串。</param>
+    /// <param name="port">TCP 端口；串口路由传 0。</param>
+    /// <param name="station">
+    /// 站号 / 从站地址。设备级配置，因此变量地址可保持干净（DT100 而非 01:DT100）。
+    /// 协议不需要站号时传空字符串。
+    /// </param>
+    /// <param name="serialPort">
+    /// 串口名；TCP 路由传空字符串。
+    /// 取值应来自 <see cref="QuerySerialPortsAsync"/>——那是宿主机器上的串口，
+    /// 不是本机的（Windows 形如 "COM3"，树莓派形如 "/dev/ttyUSB0"）。
+    /// </param>
     /// <param name="baudRate">波特率；TCP 路由传 0。</param>
+    /// <param name="minIoIntervalMs">
+    /// 同一路由两次 I/O 之间的最小间隔（毫秒）。
+    /// 串口共享总线时需要它来满足从站的帧间静默要求。
+    /// </param>
+    /// <param name="ct">取消令牌。</param>
     public async Task<(bool Success, string ErrorCode, string ErrorMessage, string RouteId)>
         RegisterRouteAsync(
             string routeId,
@@ -335,6 +374,41 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
     }
 
     // -------------------------------------------------------------------------
+    // QuerySerialPorts — 查询宿主机器上的串口
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// 查询<b>宿主所在机器</b>上可用的串口。
+    /// </summary>
+    /// <remarks>
+    /// 不是本机串口：宿主跑在树莓派时，操作员要选的是树莓派上的
+    /// /dev/ttyUSB0，而不是自己 PC 上的 COM1。
+    /// 返回空列表在多种情况下都属正常——现场是纯以太网、宿主未装串口插件、
+    /// 或服务端版本较旧尚无此接口——UI 一律保留手工输入即可。
+    /// </remarks>
+    public async Task<IReadOnlyList<SerialPortDto>> QuerySerialPortsAsync(
+        CancellationToken ct = default) {
+        try {
+            QuerySerialPortsResponse resp = await _stub.QuerySerialPortsAsync(
+                new QuerySerialPortsRequest(),
+                deadline: DateTime.UtcNow.AddSeconds(QueryDeadlineSeconds),
+                cancellationToken: ct).ConfigureAwait(false);
+
+            return resp.Ports
+                .Select(p => new SerialPortDto(p.PortName, p.Description))
+                .ToList();
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented) {
+            _logger.LogDebug("QuerySerialPorts 服务端未实现，串口需手工输入");
+            return Array.Empty<SerialPortDto>();
+        }
+        catch (RpcException ex) {
+            _logger.LogWarning("QuerySerialPorts RPC 异常: {Status}", ex.Status.StatusCode);
+            return Array.Empty<SerialPortDto>();
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Read — 读取 PLC 数据
     // -------------------------------------------------------------------------
 
@@ -343,7 +417,11 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
     /// </summary>
     /// <param name="routeId">路由标识。</param>
     /// <param name="dataAddress">协议地址字符串（例如 "DB10.DBW0"）。</param>
-    /// <param name="length">读取字节数。</param>
+    /// <param name="length">
+    /// 读取的<b>字节</b>数。协议插件自行换算到本协议的计数单位——
+    /// Modbus 寄存器区按 (length+1)/2 个寄存器，位区按 length*8 位。
+    /// </param>
+    /// <param name="ct">取消令牌。</param>
     public async Task<ReadResultDto> ReadAsync(
         string routeId,
         string dataAddress,
@@ -522,6 +600,13 @@ public sealed class EngineHostGrpcClient : IAsyncDisposable {
     // IAsyncDisposable — 释放 gRPC 通道
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// 关闭 gRPC 通道并释放连接池。
+    /// </summary>
+    /// <remarks>
+    /// 应用退出时调用一次。ShutdownAsync 会等待在途请求完成，
+    /// 直接 Dispose 会让正在进行的读写以连接中断告终。
+    /// </remarks>
     public async ValueTask DisposeAsync() {
         // 关闭 HTTP/2 连接池，等待现有请求完成
         await _channel.ShutdownAsync().ConfigureAwait(false);

@@ -13,14 +13,14 @@ using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Plugins.Siemens.S7.Internal;
 
 // ---- Panasonic Mewtocol internals
-using CommunicationKernel.Plugins.Panasonic.MewtocolTcp.Internal;
+using CommunicationKernel.Plugins.Panasonic.Internal;
 
 // ---- Public plugins (Manifest + Factory)
 using CommunicationKernel.Plugins.Modbus.Tcp;
 using CommunicationKernel.Plugins.Modbus.Rtu;
 using CommunicationKernel.Plugins.Modbus.Ascii;
 using CommunicationKernel.Plugins.Siemens.S7;
-using CommunicationKernel.Plugins.Panasonic.MewtocolTcp;
+using CommunicationKernel.Plugins.Panasonic;
 
 namespace CommunicationKernel.Tests;
 

@@ -1,6 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    松下 MEWTOCOL-COM 协议插件
+
+    原名 Plugins.Panasonic.MewtocolTcp。改名是因为那个 Tcp 后缀是错的：
+    MEWTOCOL-COM 本就是串口协议，既跑 RS-232/485，也经 TCP 转串口透传网关
+    跑以太网——SupportedTransports 声明的正是 [Serial, Tcp]。
+    名字里钉死 Tcp 会让人以为串口不受支持。
+  -->
   <PropertyGroup>
-    <RootNamespace>CommunicationKernel.Plugins.Panasonic.MewtocolTcp</RootNamespace>
+    <RootNamespace>CommunicationKernel.Plugins.Panasonic</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">

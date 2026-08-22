@@ -328,6 +328,41 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
     }
 
     /// <summary>
+    /// 列出<b>本机</b>（服务端所在机器）当前可用的串口。
+    /// </summary>
+    /// <remarks>
+    /// 串口长在跑通讯的这台机器上。宿主在树莓派、上位机在办公室 PC 时，
+    /// 上位机列出的 COM1/COM2 是它自己的，与 PLC 毫无关系——
+    /// 选中后注册必然失败，而错误信息指向"打不开 COM1"，完全误导。
+    /// 因此枚举必须发生在这里。
+    ///
+    /// 服务端不持有任何串口知识：具体怎么枚举由串口传输插件实现，
+    /// 引擎只是在传输工厂里找有没有人实现了枚举接口。
+    /// </remarks>
+    public override Task<QuerySerialPortsResponse> QuerySerialPorts(
+        QuerySerialPortsRequest request, ServerCallContext context) {
+
+        _ = request;
+        _ = context;
+
+        var response = new QuerySerialPortsResponse();
+
+        // 没有串口是正常状态（纯以太网现场未装串口插件），返回空列表即可，
+        // 不是错误，UI 据此提示"未发现串口"并保留手工输入。
+        // 传输层的 SerialPortDescriptor 与 Protobuf 生成的同名类型重名，
+        // 用别名区分：左边是引擎侧模型，右边是线上契约。
+        foreach (CommunicationKernel.Communication.Transport.Abstractions.SerialPortDescriptor port
+                 in _routeAssemblyService.GetAvailableSerialPorts()) {
+            response.Ports.Add(new Grpc.V1.SerialPortDescriptor {
+                PortName    = port.PortName ?? string.Empty,
+                Description = port.Description ?? string.Empty
+            });
+        }
+
+        return Task.FromResult(response);
+    }
+
+    /// <summary>
     /// 将 RouteStatusSnapshot 转换为 gRPC RouteStatusEvent。
     /// </summary>
     /// <param name="snapshot"></param>

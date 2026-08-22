@@ -19,4 +19,8 @@
 @using CommunicationKernel.UI.Web.Components
 @using CommunicationKernel.UI.Web.Components.Layout
 @using CommunicationKernel.UI.Web.Components.Pages
-@using CommunicationKernel.UI.Web.Services
+
+@* 共享 gRPC 客户端：EngineHostGrpcClient 与各 DTO。
+   此前本项目自持一份 EngineHostWebClient，长期缺 RegisterRoute /
+   RemoveRoute / QueryProtocols，且没有断线重连。 *@
+@using CommunicationKernel.Client.Grpc

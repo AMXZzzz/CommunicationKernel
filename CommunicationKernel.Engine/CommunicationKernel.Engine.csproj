@@ -17,6 +17,14 @@
   <PropertyGroup>
     <!-- 类库不指定 RuntimeIdentifier：RID 只在最终发布应用时指定 -->
     <IsPackable>true</IsPackable>
+
+    <!-- 打包库必须生成 XML 文档：消费者只能通过 IntelliSense 了解这些 API，
+         没有文档时连 length 的单位是字节还是寄存器都无从得知。
+         必须写在工程内而非 Directory.Build.targets——后者导入得太晚，
+         SDK 那时已经决定不生成文档了。 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>CommunicationKernel.Engine</PackageId>
+    <Description>工业 PLC 通讯内核。可嵌入上位机进程直连 PLC（Modbus TCP/RTU/ASCII、松下 MEWTOCOL、西门子 S7），不依赖 ASP.NET，可在 Linux 与树莓派上运行。</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,7 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
 </Project>

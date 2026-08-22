@@ -127,13 +127,4 @@ public sealed class PluginCatalog {
         }
     }
 
-    /// <summary>
-    /// 创建一个失败的插件验证结果对象。
-    /// </summary>
-    /// <param name="path"></param>
-    /// <param name="code"></param>
-    /// <param name="msg"></param>
-    /// <returns></returns>
-    private static PluginValidationResult Fail(string path, KernelErrorCode code, string msg) =>
-        new PluginValidationResult { AssemblyPath = path, IsValid = false, ErrorCode = code, Message = msg };
 }

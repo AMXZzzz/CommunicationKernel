@@ -26,10 +26,14 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         private readonly DevicePageViewModel _vm;
         private readonly IProtocolResolver _protocols;
 
+        /// <summary>串口清单提供者；清单来自宿主机器而非本机。</summary>
+        private readonly ISerialPortProvider _serialPorts;
+
         /// <summary>是否已订阅单例 ViewModel 的事件，保证订阅/退订幂等。</summary>
         private bool _vmWired;
 
-        public DevicePage (DevicePageViewModel vm, IProtocolResolver protocols) {
+        public DevicePage (DevicePageViewModel vm, IProtocolResolver protocols, ISerialPortProvider serialPorts = null) {
+            _serialPorts = serialPorts;
             if (vm == null)
                 throw new ArgumentNullException(nameof(vm));
 
@@ -54,7 +58,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             // 页面重新进入可视树时恢复订阅，离开时立即退订，杜绝重复处理器累积。
             Loaded   += DevicePage_Loaded;
             Unloaded += DevicePage_Unloaded;
-            editPanel.ProtocolResolver = _protocols;
+
+            // 面板依赖的注入统一在 WireEditPanel 内完成（上面已调用），
+            // 此处不再重复赋值。
         }
 
         private void DisplayList_CollectionChanged (object sender, NotifyCollectionChangedEventArgs e) {
@@ -159,7 +165,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         private void WireEditPanel () {
             if (editPanel == null) return;
 
-            editPanel.ProtocolResolver = _protocols;
+            editPanel.ProtocolResolver  = _protocols;
+            editPanel.SerialPortProvider = _serialPorts;
 
             editPanel.CloseRequested += CloseEditPanel;
             editPanel.SaveRequested += () => {
@@ -214,10 +221,6 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
         private void ShowWarning (string title, string message) {
             ShowMessage(AppMessageKind.Warning, title, message);
-        }
-
-        private void ShowInfo (string title, string message) {
-            ShowMessage(AppMessageKind.Info, title, message);
         }
 
         private void ShowMessage (AppMessageKind kind, string title, string message) {

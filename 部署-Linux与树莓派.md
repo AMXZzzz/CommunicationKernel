@@ -22,7 +22,7 @@
 ```xml
 <ItemGroup>
   <ProjectReference Include="../CommunicationKernel.Engine/CommunicationKernel.Engine.csproj" />
-  <ProjectReference Include="../CommunicationKernel.Plugins.Modbus.Rtu/CommunicationKernel.Plugins.Modbus.Rtu.csproj" />
+  <ProjectReference Include="../CommunicationKernel.Plugins.Modbus/CommunicationKernel.Plugins.Modbus.csproj" />
   <ProjectReference Include="../CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
 </ItemGroup>
 ```
@@ -70,7 +70,7 @@ dotnet publish YourApp.csproj -c Release -r linux-arm64 --self-contained true -o
 ## 形态 B：独立宿主 EngineHost
 
 ```bash
-dotnet publish CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj \
+dotnet publish CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj \
   -c Release -r linux-arm64 --self-contained true -o ./publish/linux-arm64
 ```
 
@@ -88,7 +88,7 @@ publish/linux-arm64/
 ├── CommunicationKernel.Communication.Transport.dll  │ 必须在这一层
 ├── CommunicationKernel.Plugin.Runtime.dll           ┘
 └── plugins/
-    ├── CommunicationKernel.Plugins.Modbus.*.dll
+    ├── CommunicationKernel.Plugins.Modbus.dll        # TCP / RTU / ASCII 三个变体同处一个程序集
     ├── CommunicationKernel.Plugins.Transport.*.dll
     └── runtimes/linux-arm64/native/libSystem.IO.Ports.Native.so
 ```

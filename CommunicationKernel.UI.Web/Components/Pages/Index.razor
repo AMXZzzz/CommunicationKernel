@@ -10,8 +10,7 @@
 @page "/"
 @rendermode InteractiveServer
 
-@using CommunicationKernel.UI.Web.Services
-@inject EngineHostWebClient Client
+@inject EngineHostGrpcClient Client
 @inject ILogger<Index> Logger
 @implements IAsyncDisposable
 
@@ -129,22 +128,34 @@
         foreach (DeviceCard card in Cards) {
             string routeId = card.RouteId;
 
-            // 每个路由一个独立后台任务
+            // 每个路由一个独立后台任务。
+            //
+            // 共享客户端的 WatchRouteStatusAsync 自带断线重连：流断掉后按退避重连，
+            // 并在断开瞬间回调 onDisconnected。本项目此前那份客户端没有这一层——
+            // 流一断卡片就永远停在最后一次已知状态，界面显示"在线"而实际早已断开，
+            // 这比显示离线危险得多。
             _ = Task.Run(async () => {
                 try {
-                    // 异步枚举状态事件流
-                    await foreach (RouteStatusDto dto in Client.WatchRouteStatusAsync(routeId, ct)) {
-                        // 更新对应卡片的在线状态
-                        DeviceCard? target = Cards.FirstOrDefault(c => c.RouteId == dto.RouteId);
-                        if (target is not null)
-                            target.Online = dto.Online;
+                    await Client.WatchRouteStatusAsync(
+                        routeId,
+                        onStatus: async dto => {
+                            DeviceCard? target = Cards.FirstOrDefault(c => c.RouteId == dto.RouteId);
+                            if (target is not null)
+                                target.Online = dto.Online;
 
-                        // 标记报警（有错误码时）
-                        HasAlarm = Cards.Any(c => !c.Online);
+                            HasAlarm = Cards.Any(c => !c.Online);
+                            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+                        },
+                        onDisconnected: async () => {
+                            // 流已断：必须立刻置为离线，不能留着旧的"在线"
+                            DeviceCard? target = Cards.FirstOrDefault(c => c.RouteId == routeId);
+                            if (target is not null)
+                                target.Online = false;
 
-                        // 通知 Blazor 在 UI 线程重新渲染
-                        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
-                    }
+                            HasAlarm = Cards.Any(c => !c.Online);
+                            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+                        },
+                        ct: ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) {
                     // 正常取消，静默退出

@@ -20,6 +20,7 @@ service EngineHostApi {
   rpc QueryRoutes   (QueryRoutesRequest)   returns (QueryRoutesResponse);
 
   rpc QueryProtocols (QueryProtocolsRequest) returns (QueryProtocolsResponse);
+  rpc QuerySerialPorts (QuerySerialPortsRequest) returns (QuerySerialPortsResponse);
 
   rpc Read  (ReadRequest)  returns (ReadResponse);
   rpc Write (WriteRequest) returns (WriteResponse);
@@ -160,6 +161,31 @@ message ProtocolDescriptor {
 
 message QueryProtocolsResponse {
   repeated ProtocolDescriptor protocols = 1;
+}
+
+// QuerySerialPorts — 查询「服务端所在机器」上可用的串口
+//
+// 为什么必须由服务端枚举：串口长在跑通讯的那台机器上。
+// 宿主部署在树莓派、上位机在办公室 PC 时，上位机列出的 COM1/COM2
+// 是它自己的，与 PLC 毫无关系——选中后注册必然失败，
+// 而错误信息会指向"打不开 COM1"，把人往完全错误的方向引。
+message QuerySerialPortsRequest {}
+
+// 一个可用串口
+message SerialPortDescriptor {
+  // 直接回填到 RegisterRouteRequest.serial_port 的设备名。
+  // Windows 形如 "COM3"，Linux 形如 "/dev/ttyUSB0"
+  string port_name = 1;
+  // 面向操作员的补充说明，可为空。
+  //
+  // Linux 上通常是 /dev/serial/by-id/... 稳定路径：多个 USB 串口同时插着时，
+  // ttyUSB 的编号取决于枚举顺序，重启后可能对调，
+  // 而接错 PLC 的代价远大于读不到数据。
+  string description = 2;
+}
+
+message QuerySerialPortsResponse {
+  repeated SerialPortDescriptor ports = 1;
 }
 
 message WatchRouteStatusRequest {

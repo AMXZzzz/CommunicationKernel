@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: MewtocolFrame.cs
-// 层级: Plugins / Panasonic.MewtocolTcp / Internal
+// 层级: Plugins / Panasonic / Internal
 // 作用: 松下 MEWTOCOL-COM 帧构建与响应解析工具。
 // 协议帧格式（ASCII over TCP）:
 //   请求：% + SS + # + CommandBody + BCC + CR
@@ -21,7 +21,7 @@ using System.Text;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 
-namespace CommunicationKernel.Plugins.Panasonic.MewtocolTcp.Internal;
+namespace CommunicationKernel.Plugins.Panasonic.Internal;
 
 /// <summary>
 /// MEWTOCOL 帧工具，构建 ASCII 请求并解析 ASCII 响应。

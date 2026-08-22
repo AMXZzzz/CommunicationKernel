@@ -11,7 +11,7 @@ using CommunicationKernel.Plugins.Modbus.Tcp;
 using CommunicationKernel.Plugins.Modbus.Rtu;
 using CommunicationKernel.Plugins.Modbus.Ascii;
 using CommunicationKernel.Plugins.Siemens.S7;
-using CommunicationKernel.Plugins.Panasonic.MewtocolTcp;
+using CommunicationKernel.Plugins.Panasonic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CommunicationKernel.Tests;

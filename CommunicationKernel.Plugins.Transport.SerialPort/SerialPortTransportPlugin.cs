@@ -30,6 +30,8 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.IO;
 using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,7 +70,7 @@ public sealed class SerialPortTransportPluginManifest : IPluginManifest
 /// <summary>
 /// 串口传输工厂，创建 <see cref="SerialPortTransportClient"/> 实例。
 /// </summary>
-public sealed class SerialPortTransportFactory : ITransportFactory
+public sealed class SerialPortTransportFactory : ITransportFactory, ISerialPortEnumerator
 {
     /// <inheritdoc />
     public string TransportId     => "transport-serial";
@@ -81,6 +83,63 @@ public sealed class SerialPortTransportFactory : ITransportFactory
 
     /// <inheritdoc />
     public ITransportClient CreateClient() => new SerialPortTransportClient();
+
+    /// <inheritdoc />
+    public IReadOnlyList<SerialPortDescriptor> ListPorts()
+    {
+        // GetPortNames 在各平台的行为：
+        //   Windows → 注册表里的 COMx
+        //   Linux   → /dev/ttyS*、/dev/ttyUSB*、/dev/ttyACM* 等
+        // 权限不足或平台不支持时抛异常；没有串口是正常状态而非错误，
+        // 因此一律降级为空集合，让上层显示"未发现串口"而不是弹一个异常。
+        string[] names;
+        try
+        {
+            names = System.IO.Ports.SerialPort.GetPortNames();
+        }
+        catch (Exception)
+        {
+            return Array.Empty<SerialPortDescriptor>();
+        }
+
+        Array.Sort(names, StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<SerialPortDescriptor>(names.Length);
+        foreach (string name in names)
+            result.Add(new SerialPortDescriptor(name, DescribePort(name)));
+
+        return result;
+    }
+
+    /// <summary>为串口补一条面向操作员的说明。</summary>
+    private static string DescribePort(string portName)
+    {
+        // Linux 上尽量给出 by-id 稳定路径：多个 USB 串口同时插着时，
+        // /dev/ttyUSB0 与 ttyUSB1 的编号取决于枚举顺序，重启后可能对调。
+        // 接错 PLC 的后果远比读不到数据严重，因此把稳定路径直接摆给操作员。
+        if (!portName.StartsWith("/dev/", StringComparison.Ordinal))
+            return string.Empty;
+
+        try
+        {
+            const string byIdDir = "/dev/serial/by-id";
+            if (!Directory.Exists(byIdDir)) return string.Empty;
+
+            foreach (string link in Directory.GetFiles(byIdDir))
+            {
+                // 符号链接指向 ../../ttyUSB0 之类的相对路径
+                string? target = File.ResolveLinkTarget(link, returnFinalTarget: true)?.FullName;
+                if (string.Equals(target, portName, StringComparison.Ordinal))
+                    return link;
+            }
+        }
+        catch (Exception)
+        {
+            // 枚举 by-id 失败不影响主功能，返回空说明即可
+        }
+
+        return string.Empty;
+    }
 }
 
 // =============================================================================
@@ -112,11 +171,15 @@ public sealed class SerialPortTransportClient : ITransportClient
     private System.IO.Ports.SerialPort? _port;
     private bool _disposed;
 
-    /// <summary>上一次读取中超出该帧的字节，下次读取优先消费。</summary>
-    private byte[]? _residual;
-
-    /// <summary><see cref="_residual"/> 中的有效字节数。</summary>
-    private int _residualLength;
+    /// <summary>
+    /// 分帧读取器：残留处理、两级超时、上限保护、取消与超时的区分全在其中。
+    /// </summary>
+    /// <remarks>
+    /// 与 TCP 插件共用同一实现。此前两边各有一份逐行雷同的读循环，
+    /// 同一处缺陷要改两遍——本项目已经栽过一次「同类缺陷只改了一个插件」的跟头。
+    /// </remarks>
+    private readonly FrameReader _frameReader = new(
+        MaxResponseBytes, FirstByteTimeoutMs, SubsequentByteTimeoutMs, "串口");
 
     // -------------------------------------------------------------------------
     // ITransportClient
@@ -196,13 +259,15 @@ public sealed class SerialPortTransportClient : ITransportClient
         {
             // 分支1：清空接收缓冲与上一帧残留，写入请求
             _port.DiscardInBuffer();
-            _residualLength = 0;
+            _frameReader.DiscardResidual();
             await _port.BaseStream.WriteAsync(request, 0, request.Length, cancellationToken)
                 .ConfigureAwait(false);
             await _port.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
             // 分支2：按协议帧长读取恰好一帧
-            return await ReadFrameAsync(tryGetFrameLength, cancellationToken).ConfigureAwait(false);
+            return await _frameReader
+                .ReadFrameAsync(_port.BaseStream, tryGetFrameLength, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -232,114 +297,6 @@ public sealed class SerialPortTransportClient : ITransportClient
         return ValueTask.CompletedTask;
     }
 
-    // -------------------------------------------------------------------------
-    // 响应读取
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// 读取恰好一个完整帧，帧边界由协议提供的 <paramref name="tryGetFrameLength"/> 判定。
-    /// </summary>
-    /// <remarks>
-    /// 串口原本可用 3.5 字符帧间静默分帧，但该策略在低波特率下会误判
-    /// （9600 bps 下单字节传输就要约 1 ms，固定 20 ms 阈值容易把帧切断），
-    /// 且经 TCP 转串口透传装置时静默根本不被保留。统一改为按协议帧长读取。
-    /// </remarks>
-    private async Task<OperationResult<byte[]>> ReadFrameAsync(
-        TryGetFrameLength tryGetFrameLength, CancellationToken cancellationToken)
-    {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxResponseBytes);
-        int    total  = 0;
-
-        try
-        {
-            // 先消费上一次多读到的残留字节
-            if (_residualLength > 0)
-            {
-                Buffer.BlockCopy(_residual!, 0, buffer, 0, _residualLength);
-                total = _residualLength;
-                _residualLength = 0;
-            }
-
-            while (true)
-            {
-                if (total > 0 && tryGetFrameLength(buffer.AsSpan(0, total), out int frameLength))
-                {
-                    if (frameLength <= 0)
-                        return OperationResult<byte[]>.Fail(
-                            "协议判定响应帧非法（无法识别的帧头）", KernelErrorCode.ProtocolError);
-
-                    if (frameLength > MaxResponseBytes)
-                        return OperationResult<byte[]>.Fail(
-                            $"响应帧声明 {frameLength} 字节，超出单帧上限 {MaxResponseBytes}",
-                            KernelErrorCode.ProtocolError);
-
-                    if (total >= frameLength)
-                    {
-                        byte[] frame = new byte[frameLength];
-                        Buffer.BlockCopy(buffer, 0, frame, 0, frameLength);
-                        SaveResidual(buffer, frameLength, total - frameLength);
-                        return OperationResult<byte[]>.Ok(frame);
-                    }
-                }
-
-                if (total >= MaxResponseBytes)
-                    return OperationResult<byte[]>.Fail(
-                        $"响应超过单帧上限 {MaxResponseBytes} 字节仍未成帧",
-                        KernelErrorCode.ProtocolError);
-
-                int timeoutMs = total == 0 ? FirstByteTimeoutMs : SubsequentByteTimeoutMs;
-                using CancellationTokenSource readCts =
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                readCts.CancelAfter(timeoutMs);
-
-                int read;
-                try
-                {
-                    read = await _port!.BaseStream
-                        .ReadAsync(buffer, total, MaxResponseBytes - total, readCts.Token)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                        return OperationResult<byte[]>.Fail(
-                            "串口读取被取消", KernelErrorCode.Cancelled);
-
-                    return OperationResult<byte[]>.Fail(
-                        total == 0
-                            ? $"等待响应首字节超时（{FirstByteTimeoutMs} ms）"
-                            : $"响应帧不完整：已收 {total} 字节，后续字节等待超时（{SubsequentByteTimeoutMs} ms）",
-                        KernelErrorCode.Timeout);
-                }
-
-                if (read == 0)
-                    return OperationResult<byte[]>.Fail(
-                        "串口流已关闭", KernelErrorCode.TransportIoError);
-
-                total += read;
-            }
-        }
-        finally
-        {
-            // 归还前清零，避免残留报文经共享池泄漏给其他消费方
-            Array.Clear(buffer, 0, Math.Min(total, buffer.Length));
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
-
-    /// <summary>保存超出本帧的字节，供下次读取优先消费。</summary>
-    private void SaveResidual(byte[] source, int offset, int length)
-    {
-        if (length <= 0)
-        {
-            _residualLength = 0;
-            return;
-        }
-
-        _residual ??= new byte[MaxResponseBytes];
-        Buffer.BlockCopy(source, offset, _residual, 0, length);
-        _residualLength = length;
-    }
 
     // -------------------------------------------------------------------------
     // 参数解析辅助

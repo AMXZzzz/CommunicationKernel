@@ -24,34 +24,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- gRPC 客户端核心库 -->
-    <PackageReference Include="Grpc.Net.Client" Version="2.70.0" />
-    <!-- Protobuf 序列化库 -->
-    <PackageReference Include="Google.Protobuf" Version="3.30.2" />
-    <!-- Grpc.Tools 负责在编译时从 .proto 生成 C# 代码 -->
-    <PackageReference Include="Grpc.Tools" Version="2.70.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
     <!-- Microsoft.Extensions.Logging — ILogger / ILoggerFactory -->
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
     <!-- Microsoft.Extensions.DependencyInjection — IoC 容器 -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <!-- Microsoft.Extensions.Hosting — 宿主生命周期管理 -->
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 引用解决方案根目录下的共享 proto，GrpcServices=Client 只生成客户端 stub。
-         共享单一文件可杜绝客户端与服务端契约不同步。 -->
-    <Protobuf Include="..\Protos\V1\engine_host.proto"
-              ProtoRoot=".."
-              GrpcServices="Client"
-              Link="Protos\V1\engine_host.proto" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- 引用契约层（共享错误码等常量） -->
+    <!-- 共享 gRPC 客户端。
+         proto 代码生成、通道管理、DTO 全部在该库内完成，
+         本项目不再自行引用 Grpc.Tools 生成一份 stub——
+         两份生成代码会产生同名类型，且与 Blazor 端各自漂移。 -->
+    <ProjectReference Include="..\CommunicationKernel.Client.Grpc\CommunicationKernel.Client.Grpc.csproj" />
   </ItemGroup>
 
 </Project>

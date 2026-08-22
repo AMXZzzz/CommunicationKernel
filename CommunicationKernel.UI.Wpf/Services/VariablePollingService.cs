@@ -60,6 +60,22 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly EngineHostGrpcClient _client;
 
         /// <summary>
+        /// 路由对账器：宿主重启导致路由消失时，据本地配置把它重新注册回去。
+        /// 可为 null（此时退化为原有行为：一直退避重试）。
+        /// </summary>
+        private readonly IRouteReconciler _reconciler;
+
+        /// <summary>
+        /// EngineHost 在路由不存在时返回的错误码字面量。
+        /// </summary>
+        /// <remarks>
+        /// 服务端以 <c>KernelErrorCode.RouteNotFound.ToString()</c> 填充 error_code，
+        /// 因此这里必须与枚举成员名逐字一致。用常量而非散落的字面量，
+        /// 是为了让枚举改名时至少有一处集中可查。
+        /// </remarks>
+        private const string RouteNotFoundCode = "RouteNotFound";
+
+        /// <summary>
         /// 正在运行的轮询任务，键为 VariableItem.Id。
         /// 保存扫描周期以便识别「周期被改动」从而只重启该变量。
         /// </summary>
@@ -91,12 +107,20 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         /// <param name="variableService">变量服务（必须非 null）。</param>
         /// <param name="client">gRPC 客户端（必须非 null）。</param>
-        public VariablePollingService(IVariableService variableService, EngineHostGrpcClient client)
+        /// <param name="reconciler">
+        /// 路由对账器，可为 null。为 null 时宿主重启后轮询将永远收到 RouteNotFound，
+        /// 需要操作员手工重新注册设备。
+        /// </param>
+        public VariablePollingService(
+            IVariableService variableService,
+            EngineHostGrpcClient client,
+            IRouteReconciler reconciler = null)
         {
             _variableService = variableService
                 ?? throw new ArgumentNullException(nameof(variableService));
             _client = client
                 ?? throw new ArgumentNullException(nameof(client));
+            _reconciler = reconciler;
         }
 
         // =========================================================================
@@ -309,6 +333,33 @@ namespace CommunicationKernel.UI.Wpf.Services
                             });
                         }
                     }
+                    else if (string.Equals(result.ErrorCode, RouteNotFoundCode, StringComparison.Ordinal)
+                             && _reconciler != null)
+                    {
+                        // 路由在宿主侧不存在——几乎总是宿主重启导致的（其路由是纯内存的）。
+                        //
+                        // 这一类失败与「PLC 拒绝读取」性质完全不同：单纯退避重试
+                        // 永远好不了，因为请求本身发往一条已经不存在的路由。
+                        // 用本地留存的设备配置把它重新注册回去，才可能恢复。
+                        //
+                        // 对账器内部做并发合并与最小间隔节流，这里可以放心每轮都调。
+                        bool restored = await _reconciler
+                            .EnsureRouteAsync(item.DeviceId, ct)
+                            .ConfigureAwait(false);
+
+                        if (restored)
+                        {
+                            // 路由已恢复：清零退避，下一轮立刻按正常周期重试
+                            consecutiveFails = 0;
+                            await SetErrorAsync(item, "路由已重新注册，正在恢复读取").ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            // 仍未恢复（宿主没起来 / PLC 不可达 / 处于节流窗口）：照常退避
+                            consecutiveFails++;
+                            await SetErrorAsync(item, "路由不存在，正在尝试重新注册").ConfigureAwait(false);
+                        }
+                    }
                     else
                     {
                         // 读取业务失败（PLC 拒绝）：累计失败次数，触发退避
@@ -317,14 +368,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                             ? result.ErrorMessage
                             : string.Format("{0}: {1}", result.ErrorCode, result.ErrorMessage);
 
-                        Application app = Application.Current;
-                        if (app != null)
-                        {
-                            await app.Dispatcher.InvokeAsync(() =>
-                            {
-                                item.LastError = errText;
-                            });
-                        }
+                        await SetErrorAsync(item, errText).ConfigureAwait(false);
                     }
                 }
                 catch (OperationCanceledException)
@@ -346,6 +390,22 @@ namespace CommunicationKernel.UI.Wpf.Services
                     }
                 }
             }
+        }
+
+        /// <summary>切回 UI 线程写入变量的错误文本。</summary>
+        /// <remarks>
+        /// VariableItem 绑定在界面上，属性变更通知必须发生在 UI 线程；
+        /// 三处失败分支都要做同一件事，收敛到一处以免其中一处漏掉线程切换。
+        /// </remarks>
+        private static async Task SetErrorAsync(VariableItem item, string message)
+        {
+            Application app = Application.Current;
+            if (app == null) return;
+
+            await app.Dispatcher.InvokeAsync(() =>
+            {
+                item.LastError = message;
+            });
         }
 
         /// <summary>

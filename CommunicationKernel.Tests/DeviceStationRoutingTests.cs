@@ -20,11 +20,11 @@ using CommunicationKernel.Plugins.Modbus.Tcp;
 using CommunicationKernel.Plugins.Modbus.Rtu;
 using CommunicationKernel.Plugins.Modbus.Ascii;
 using CommunicationKernel.Plugins.Siemens.S7;
-using CommunicationKernel.Plugins.Panasonic.MewtocolTcp;
+using CommunicationKernel.Plugins.Panasonic;
 
 // Modbus 三种变体的地址语义已收敛到共享 Core，不再各持一份
 using ModbusSharedAddress = CommunicationKernel.Plugins.Modbus.Core.ModbusAddress;
-using MewtocolAddress     = CommunicationKernel.Plugins.Panasonic.MewtocolTcp.Internal.MewtocolAddress;
+using MewtocolAddress     = CommunicationKernel.Plugins.Panasonic.Internal.MewtocolAddress;
 
 namespace CommunicationKernel.Tests;
 

@@ -1,0 +1,103 @@
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient..ctor(System.String serverAddress, Microsoft.Extensions.Logging.ILogger<CommunicationKernel.Client.Grpc.EngineHostGrpcClient> logger)
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.DisposeAsync() -> System.Threading.Tasks.ValueTask
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.HealthAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.ValueTuple<System.Boolean, System.String, System.Int32>>
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.QueryProtocolsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.Client.Grpc.ProtocolDescriptorDto>>
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.QueryRoutesAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.Client.Grpc.RouteDto>>
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.QuerySerialPortsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.Client.Grpc.SerialPortDto>>
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.ReadAsync(System.String routeId, System.String dataAddress, System.Int32 length, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.Client.Grpc.ReadResultDto>
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.RegisterRouteAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Int32 port, System.String station, System.String serialPort, System.Int32 baudRate, System.Int32 minIoIntervalMs, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.ValueTuple<System.Boolean, System.String, System.String, System.String>>
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.RemoveRouteAsync(System.String routeId, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.ValueTuple<System.Boolean, System.String, System.String>>
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.WatchRouteStatusAsync(System.String routeId, System.Func<CommunicationKernel.Client.Grpc.RouteStatusDto, System.Threading.Tasks.Task> onStatus, System.Func<System.Threading.Tasks.Task> onDisconnected, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task
+    CommunicationKernel.Client.Grpc.EngineHostGrpcClient.WriteAsync(System.String routeId, System.String dataAddress, System.Byte[] data, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.Client.Grpc.WriteResultDto>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.HealthAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.ValueTuple<System.Boolean, System.String, System.Int32>>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.QueryProtocolsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.Client.Grpc.ProtocolDescriptorDto>>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.QueryRoutesAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.Client.Grpc.RouteDto>>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.QuerySerialPortsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.Client.Grpc.SerialPortDto>>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.ReadAsync(System.String routeId, System.String address, System.Int32 length, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.Client.Grpc.ReadResultDto>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.RegisterRouteAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Int32 port, System.String station, System.String serialPort, System.Int32 baudRate, System.Int32 minIoIntervalMs, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.ValueTuple<System.Boolean, System.String, System.String, System.String>>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.RemoveRouteAsync(System.String routeId, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.ValueTuple<System.Boolean, System.String, System.String>>
+    CommunicationKernel.Client.Grpc.IEngineHostClient.WatchRouteStatusAsync(System.String routeId, System.Func<CommunicationKernel.Client.Grpc.RouteStatusDto, System.Threading.Tasks.Task> onStatus, System.Func<System.Threading.Tasks.Task> onDisconnected, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task
+    CommunicationKernel.Client.Grpc.IEngineHostClient.WriteAsync(System.String routeId, System.String address, System.Byte[] data, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.Client.Grpc.WriteResultDto>
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto..ctor(System.String ProtocolId, System.String DisplayName, System.Collections.Generic.IReadOnlyList<System.String> SupportedTransports, System.Boolean RequiresStation, System.String StationHint)
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.<Clone>$() -> CommunicationKernel.Client.Grpc.ProtocolDescriptorDto
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.Deconstruct(System.String& ProtocolId, System.String& DisplayName, System.Collections.Generic.IReadOnlyList`1[[System.String, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]& SupportedTransports, System.Boolean& RequiresStation, System.String& StationHint) -> System.Void
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.DefaultTransport { get; } -> System.String
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.DisplayName { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.Equals(CommunicationKernel.Client.Grpc.ProtocolDescriptorDto other) -> System.Boolean
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.GetHashCode() -> System.Int32
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.ProtocolId { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.RequiresStation { get; set; } -> System.Boolean
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.StationHint { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.SupportedTransports { get; set; } -> System.Collections.Generic.IReadOnlyList<System.String>
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.Supports(System.String transportKind) -> System.Boolean
+    CommunicationKernel.Client.Grpc.ProtocolDescriptorDto.ToString() -> System.String
+    CommunicationKernel.Client.Grpc.ReadResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage, System.Byte[] Data)
+    CommunicationKernel.Client.Grpc.ReadResultDto.<Clone>$() -> CommunicationKernel.Client.Grpc.ReadResultDto
+    CommunicationKernel.Client.Grpc.ReadResultDto.Data { get; set; } -> System.Byte[]
+    CommunicationKernel.Client.Grpc.ReadResultDto.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage, System.Byte[]& Data) -> System.Void
+    CommunicationKernel.Client.Grpc.ReadResultDto.Equals(CommunicationKernel.Client.Grpc.ReadResultDto other) -> System.Boolean
+    CommunicationKernel.Client.Grpc.ReadResultDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Client.Grpc.ReadResultDto.ErrorCode { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.ReadResultDto.ErrorMessage { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.ReadResultDto.GetHashCode() -> System.Int32
+    CommunicationKernel.Client.Grpc.ReadResultDto.Success { get; set; } -> System.Boolean
+    CommunicationKernel.Client.Grpc.ReadResultDto.ToString() -> System.String
+    CommunicationKernel.Client.Grpc.RouteDto..ctor(System.String RouteId, System.String ProtocolId, System.String TransportKind, System.String Address, System.Int32 Port, System.String Station, System.String SerialPort, System.Int32 BaudRate)
+    CommunicationKernel.Client.Grpc.RouteDto.<Clone>$() -> CommunicationKernel.Client.Grpc.RouteDto
+    CommunicationKernel.Client.Grpc.RouteDto.Address { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteDto.BaudRate { get; set; } -> System.Int32
+    CommunicationKernel.Client.Grpc.RouteDto.Deconstruct(System.String& RouteId, System.String& ProtocolId, System.String& TransportKind, System.String& Address, System.Int32& Port, System.String& Station, System.String& SerialPort, System.Int32& BaudRate) -> System.Void
+    CommunicationKernel.Client.Grpc.RouteDto.Equals(CommunicationKernel.Client.Grpc.RouteDto other) -> System.Boolean
+    CommunicationKernel.Client.Grpc.RouteDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Client.Grpc.RouteDto.GetHashCode() -> System.Int32
+    CommunicationKernel.Client.Grpc.RouteDto.Port { get; set; } -> System.Int32
+    CommunicationKernel.Client.Grpc.RouteDto.ProtocolId { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteDto.RouteId { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteDto.SerialPort { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteDto.Station { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteDto.ToString() -> System.String
+    CommunicationKernel.Client.Grpc.RouteDto.TransportKind { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteReconcileGate..ctor(System.TimeSpan minInterval, System.Func<System.DateTime> clock)
+    CommunicationKernel.Client.Grpc.RouteReconcileGate.RunAsync(System.String routeId, System.Func<System.Threading.Tasks.Task<System.Boolean>> operation) -> System.Threading.Tasks.Task<System.Boolean>
+    CommunicationKernel.Client.Grpc.RouteStatusDto..ctor(System.String RouteId, System.Boolean Online, System.String ErrorCode, System.String ErrorMessage, System.DateTime Timestamp)
+    CommunicationKernel.Client.Grpc.RouteStatusDto.<Clone>$() -> CommunicationKernel.Client.Grpc.RouteStatusDto
+    CommunicationKernel.Client.Grpc.RouteStatusDto.Deconstruct(System.String& RouteId, System.Boolean& Online, System.String& ErrorCode, System.String& ErrorMessage, System.DateTime& Timestamp) -> System.Void
+    CommunicationKernel.Client.Grpc.RouteStatusDto.Equals(CommunicationKernel.Client.Grpc.RouteStatusDto other) -> System.Boolean
+    CommunicationKernel.Client.Grpc.RouteStatusDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Client.Grpc.RouteStatusDto.ErrorCode { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteStatusDto.ErrorMessage { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteStatusDto.GetHashCode() -> System.Int32
+    CommunicationKernel.Client.Grpc.RouteStatusDto.Online { get; set; } -> System.Boolean
+    CommunicationKernel.Client.Grpc.RouteStatusDto.RouteId { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.RouteStatusDto.Timestamp { get; set; } -> System.DateTime
+    CommunicationKernel.Client.Grpc.RouteStatusDto.ToString() -> System.String
+    CommunicationKernel.Client.Grpc.SerialPortDto..ctor(System.String PortName, System.String Description)
+    CommunicationKernel.Client.Grpc.SerialPortDto.<Clone>$() -> CommunicationKernel.Client.Grpc.SerialPortDto
+    CommunicationKernel.Client.Grpc.SerialPortDto.Deconstruct(System.String& PortName, System.String& Description) -> System.Void
+    CommunicationKernel.Client.Grpc.SerialPortDto.Description { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.SerialPortDto.Display { get; } -> System.String
+    CommunicationKernel.Client.Grpc.SerialPortDto.Equals(CommunicationKernel.Client.Grpc.SerialPortDto other) -> System.Boolean
+    CommunicationKernel.Client.Grpc.SerialPortDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Client.Grpc.SerialPortDto.GetHashCode() -> System.Int32
+    CommunicationKernel.Client.Grpc.SerialPortDto.PortName { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.SerialPortDto.ToString() -> System.String
+    CommunicationKernel.Client.Grpc.WriteResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage)
+    CommunicationKernel.Client.Grpc.WriteResultDto.<Clone>$() -> CommunicationKernel.Client.Grpc.WriteResultDto
+    CommunicationKernel.Client.Grpc.WriteResultDto.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage) -> System.Void
+    CommunicationKernel.Client.Grpc.WriteResultDto.Equals(CommunicationKernel.Client.Grpc.WriteResultDto other) -> System.Boolean
+    CommunicationKernel.Client.Grpc.WriteResultDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Client.Grpc.WriteResultDto.ErrorCode { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.WriteResultDto.ErrorMessage { get; set; } -> System.String
+    CommunicationKernel.Client.Grpc.WriteResultDto.GetHashCode() -> System.Int32
+    CommunicationKernel.Client.Grpc.WriteResultDto.Success { get; set; } -> System.Boolean
+    CommunicationKernel.Client.Grpc.WriteResultDto.ToString() -> System.String
+class sealed CommunicationKernel.Client.Grpc.EngineHostGrpcClient
+class sealed CommunicationKernel.Client.Grpc.ProtocolDescriptorDto
+class sealed CommunicationKernel.Client.Grpc.ReadResultDto
+class sealed CommunicationKernel.Client.Grpc.RouteDto
+class sealed CommunicationKernel.Client.Grpc.RouteReconcileGate
+class sealed CommunicationKernel.Client.Grpc.RouteStatusDto
+class sealed CommunicationKernel.Client.Grpc.SerialPortDto
+class sealed CommunicationKernel.Client.Grpc.WriteResultDto
+interface CommunicationKernel.Client.Grpc.IEngineHostClient

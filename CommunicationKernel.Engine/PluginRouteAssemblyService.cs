@@ -26,6 +26,9 @@ public sealed class PluginRouteAssemblyService : IRouteAssemblyService {
     private readonly RouteAssembler _assembler;
     private readonly IReadOnlyList<IProtocolDriverFactory> _protocolFactories;
 
+    /// <summary>传输工厂集合；串口枚举需要在其中寻找 ISerialPortEnumerator 实现。</summary>
+    private readonly IReadOnlyList<ITransportFactory> _transportFactories;
+
     /// <param name="pluginDirectory">插件目录，扫描其中的 *.dll。</param>
     /// <param name="defaultSerialMinIoIntervalMs">串口默认最小 I/O 间隔（毫秒）。</param>
     /// <param name="loggerFactory">可选日志工厂。</param>
@@ -40,7 +43,8 @@ public sealed class PluginRouteAssemblyService : IRouteAssemblyService {
         (IReadOnlyList<ITransportFactory> transports, IReadOnlyList<IProtocolDriverFactory> protocols)
             = LoadFactories(pluginDirectory, loggerFactory);
 
-        _protocolFactories = protocols;
+        _protocolFactories  = protocols;
+        _transportFactories = transports;
         _assembler = new RouteAssembler(transports, protocols, defaultSerialMinIoIntervalMs, logger);
 
         logger.LogInformation(
@@ -58,15 +62,22 @@ public sealed class PluginRouteAssemblyService : IRouteAssemblyService {
             .ToList();
 
     /// <inheritdoc />
+    public IReadOnlyList<SerialPortDescriptor> GetAvailableSerialPorts()
+        // 每次都重新枚举而非缓存：USB 转串口设备可以随时插拔，
+        // 缓存会让操作员插上线后仍然看不到新串口。
+        => SerialPortDiscovery.Enumerate(_transportFactories);
+
+    /// <inheritdoc />
     public Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
         RegisterRouteCommand command, CancellationToken cancellationToken)
         => _assembler.AssembleAsync(command, cancellationToken);
 
+    /// <summary>
     /// 加载插件工厂：扫描插件目录，发现、校验并实例化所有合法的传输与协议工厂。
     /// </summary>
-    /// <param name="pluginDirectory"></param>
-    /// <param name="loggerFactory"></param>
-    /// <returns></returns>
+    /// <param name="pluginDirectory">插件目录绝对路径。</param>
+    /// <param name="loggerFactory">可选日志工厂。</param>
+    /// <returns>(传输工厂集合, 协议工厂集合)；目录不存在时两者均为空。</returns>
     private static (IReadOnlyList<ITransportFactory>, IReadOnlyList<IProtocolDriverFactory>) LoadFactories (
         string pluginDirectory, ILoggerFactory? loggerFactory) {
 

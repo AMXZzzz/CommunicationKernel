@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: MewtocolAddress.cs
-// 层级: Plugins / Panasonic.MewtocolTcp / Internal
+// 层级: Plugins / Panasonic / Internal
 // 作用: 松下 MEWTOCOL 地址字符串解析。
 // 支持格式:
 //   [SS:]area_address
@@ -21,7 +21,7 @@ using System.Globalization;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 
-namespace CommunicationKernel.Plugins.Panasonic.MewtocolTcp.Internal;
+namespace CommunicationKernel.Plugins.Panasonic.Internal;
 
 /// <summary>松下 MEWTOCOL 数据区分类。</summary>
 internal enum MewtocolArea { X, Y, R, DT, WR }
