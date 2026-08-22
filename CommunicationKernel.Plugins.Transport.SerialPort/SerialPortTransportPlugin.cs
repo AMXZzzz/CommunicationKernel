@@ -85,7 +85,7 @@ public sealed class SerialPortTransportFactory : ITransportFactory, ISerialPortE
     public ITransportClient CreateClient() => new SerialPortTransportClient();
 
     /// <inheritdoc />
-    public IReadOnlyList<SerialPortDescriptor> ListPorts()
+    public IReadOnlyList<SerialPortInfo> ListPorts()
     {
         // GetPortNames 在各平台的行为：
         //   Windows → 注册表里的 COMx
@@ -99,15 +99,15 @@ public sealed class SerialPortTransportFactory : ITransportFactory, ISerialPortE
         }
         catch (Exception)
         {
-            return Array.Empty<SerialPortDescriptor>();
+            return Array.Empty<SerialPortInfo>();
         }
 
         Array.Sort(names, StringComparer.OrdinalIgnoreCase);
 
-        var result = new List<SerialPortDescriptor>(names.Length);
+        var result = new List<SerialPortInfo>(names.Length);
         // 为每个口附带 by-id 说明，方便操作员区分 USB 串口
         foreach (string name in names)
-            result.Add(new SerialPortDescriptor(name, DescribePort(name)));
+            result.Add(new SerialPortInfo(name, DescribePort(name)));
 
         return result;
     }

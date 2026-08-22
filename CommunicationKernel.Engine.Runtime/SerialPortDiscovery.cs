@@ -26,10 +26,10 @@ internal static class SerialPortDiscovery {
     /// 去重后的串口清单；没有工厂实现该接口（如纯以太网部署未装串口插件）
     /// 时返回空集合。
     /// </returns>
-    internal static IReadOnlyList<SerialPortDescriptor> Enumerate(
+    internal static IReadOnlyList<SerialPortInfo> Enumerate(
         IReadOnlyList<ITransportFactory> transportFactories) {
 
-        List<SerialPortDescriptor>? result = null;
+        List<SerialPortInfo>? result = null;
         HashSet<string>? seen = null;
 
         foreach (ITransportFactory factory in transportFactories) {
@@ -37,7 +37,7 @@ internal static class SerialPortDiscovery {
             if (factory is not ISerialPortEnumerator enumerator) continue;
 
             // 单个插件枚举失败不应让整份清单变空——纯以太网现场照样要能配设备。
-            IReadOnlyList<SerialPortDescriptor> ports;
+            IReadOnlyList<SerialPortInfo> ports;
             try {
                 ports = enumerator.ListPorts();
             } catch (Exception) {
@@ -48,11 +48,11 @@ internal static class SerialPortDiscovery {
             if (ports is null || ports.Count == 0) continue;
 
             // 惰性分配：现场一个串口都没有时避免无意义的 List/HashSet
-            result ??= new List<SerialPortDescriptor>();
+            result ??= new List<SerialPortInfo>();
             seen   ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 去重：同一物理串口可能被多个工厂各报一次
-            foreach (SerialPortDescriptor port in ports) {
+            foreach (SerialPortInfo port in ports) {
                 // 空端口名无法回填到注册命令，丢弃
                 if (string.IsNullOrWhiteSpace(port.PortName)) continue;
                 if (seen.Add(port.PortName)) result.Add(port);
@@ -60,6 +60,6 @@ internal static class SerialPortDiscovery {
         }
 
         // 没有任何工厂实现枚举接口时返回空数组，UI 串口下拉框显示为空
-        return (IReadOnlyList<SerialPortDescriptor>?)result ?? Array.Empty<SerialPortDescriptor>();
+        return (IReadOnlyList<SerialPortInfo>?)result ?? Array.Empty<SerialPortInfo>();
     }
 }

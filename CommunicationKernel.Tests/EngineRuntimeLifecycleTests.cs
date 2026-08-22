@@ -342,8 +342,8 @@ public sealed class EngineRuntimeLifecycleTests
             new[] { new ProtocolMetadata { ProtocolId = "fake-protocol", DisplayName = "Fake" } };
 
         /// <summary>本替身不涉及串口，返回空清单（这也是纯以太网现场的真实取值）。</summary>
-        public IReadOnlyList<SerialPortDescriptor> GetAvailableSerialPorts() =>
-            Array.Empty<SerialPortDescriptor>();
+        public IReadOnlyList<SerialPortInfo> GetAvailableSerialPorts() =>
+            Array.Empty<SerialPortInfo>();
 
         public async Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
             RegisterRouteCommand command, CancellationToken cancellationToken)

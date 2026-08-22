@@ -237,7 +237,9 @@ message QueryProtocolsResponse {
 // 而错误信息会指向"打不开 COM1"，把人往完全错误的方向引。
 message QuerySerialPortsRequest {}
 
-// 一个可用串口
+// 一个可用串口（gRPC 线上契约）。
+// 引擎侧对应类型是 SerialPortInfo，UI SDK 是 SerialPortDto。
+// 禁止再在引擎 / 传输层使用本消息名。
 message SerialPortDescriptor {
   // 直接回填到 RegisterRouteRequest.serial_port 的设备名。
   // Windows 形如 "COM3"，Linux 形如 "/dev/ttyUSB0"

@@ -75,8 +75,13 @@ public sealed record ProtocolDescriptorDto(
 }
 
 /// <summary>
-/// 宿主机器上的一个可用串口。
+/// 宿主机器上的一个可用串口（UI SDK DTO）。
 /// </summary>
+/// <remarks>
+/// 三层命名必须分开：引擎 <c>SerialPortInfo</c>、
+/// gRPC <c>SerialPortDescriptor</c>、本类型 <see cref="SerialPortDto"/>。
+/// 禁止把本类型命名为 SerialPortDescriptor / SerialPortInfo。
+/// </remarks>
 /// <param name="PortName">
 /// 直接回填到注册请求的设备名。Windows 形如 "COM3"，Linux 形如 "/dev/ttyUSB0"。
 /// </param>
