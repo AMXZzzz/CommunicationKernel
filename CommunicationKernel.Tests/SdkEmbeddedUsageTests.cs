@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: SdkEmbeddedUsageTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 验证内核可作为 SDK 嵌入使用——不经 gRPC、不依赖插件目录。
 //
 // 对应场景：树莓派 / Linux 上的上位机程序直连 PLC。
@@ -25,24 +25,39 @@ using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 
 namespace CommunicationKernel.Tests;
 
+// 嵌入式 SDK：编译期注入工厂，走完整注册-读-写-注销闭环
 [TestClass]
 public class SdkEmbeddedUsageTests {
 
+    // 静态装配不得触碰文件系统，协议清单来自编译期注入的工厂
     [TestMethod]
     public void StaticAssembly_ExposesProtocols_WithoutPluginDirectory() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 关键：全程不触碰文件系统
         var assembly = new StaticRouteAssemblyService(
             transportFactories: new ITransportFactory[] { new FakeTransportFactory() },
             protocolFactories:  new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         IReadOnlyList<ProtocolMetadata> protocols = assembly.GetAvailableProtocols();
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.HasCount(1, protocols);
         Assert.AreEqual("modbus-tcp", protocols[0].ProtocolId);
     }
 
+    // 完整嵌入式流程：构造 → 注册 → 读 → 写 → 注销
     [TestMethod]
     public async Task EmbeddedEngine_CompletesRegisterReadWriteCycle() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 完整的嵌入式使用流程：构造 → 注册 → 读 → 写 → 注销
         var transport = new FakeTransportFactory();
         var assembly = new StaticRouteAssemblyService(
@@ -53,6 +68,9 @@ public class SdkEmbeddedUsageTests {
             assembly,
             new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator()));
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         OperationResult<string> registered = await engine.RegisterRouteAsync(
             new RegisterRouteCommand {
                 RouteId       = "plc-1",
@@ -86,8 +104,12 @@ public class SdkEmbeddedUsageTests {
         Assert.AreEqual(0, engine.RouteCount);
     }
 
+    // 协议与介质不匹配必须在注册期拒绝，而不是等到首次读写
     [TestMethod]
     public async Task EmbeddedEngine_RejectsProtocolTransportMismatch() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // Modbus TCP 的 MBAP 封装依赖 TCP，配到串口上应在注册期即被拒绝，
         // 而不是等到首次读写才以无关的错误暴露
         var assembly = new StaticRouteAssemblyService(
@@ -98,6 +120,9 @@ public class SdkEmbeddedUsageTests {
             assembly,
             new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator()));
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         OperationResult<string> result = await engine.RegisterRouteAsync(
             new RegisterRouteCommand {
                 RouteId       = "bad",
@@ -108,12 +133,19 @@ public class SdkEmbeddedUsageTests {
             },
             CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(result.Success);
         StringAssert.Contains(result.ErrorMessage, "不支持");
     }
 
+    // 传输或协议工厂列表为空必须立刻抛错，空引擎没有任何用处
     [TestMethod]
     public void StaticAssembly_RejectsEmptyFactoryLists() {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.ThrowsExactly<ArgumentException>(() => new StaticRouteAssemblyService(
             Array.Empty<ITransportFactory>(),
             new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() }));

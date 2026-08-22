@@ -1,1 +1,8 @@
-﻿[assembly: Parallelize(Scope = ExecutionScope.MethodLevel)]
+// -----------------------------------------------------------------------------
+// 文件: MSTestSettings.cs
+// 层级: 测试
+// 作用: MSTest 程序集级设置。按方法并行执行以缩短套件时间；
+//       各测试必须自洽，不得共享可变静态状态。
+// -----------------------------------------------------------------------------
+
+[assembly: Parallelize(Scope = ExecutionScope.MethodLevel)]

@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ConnectionRouter.cs
+// 层级: Engine.Router / Runtime
+// 作用: 维护 RouteKey → RouteEntry 的线程安全路由表，不执行读写。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -22,13 +28,16 @@ namespace CommunicationKernel.Engine.Router;
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class ConnectionRouter : IConnectionRouter {
+    // RouteKey → 活跃 RouteEntry；无锁字典以支撑多 UI 并发登记/查询
     private readonly ConcurrentDictionary<RouteKey, RouteEntry> _routes = new();
     private readonly ILogger<ConnectionRouter> _logger;
 
     public ConnectionRouter(ILogger<ConnectionRouter>? logger = null) {
+        // 未注入日志时退化为空实现，避免嵌入/测试场景强制依赖日志组件
         _logger = logger ?? NullLogger<ConnectionRouter>.Instance;
     }
 
+    // 当前活跃路由条数，供 Health / Diagnostics 使用
     public int Count => _routes.Count;
 
     /// <summary>
@@ -36,10 +45,13 @@ public sealed class ConnectionRouter : IConnectionRouter {
     /// 注意：返回的 RouteEntry 持有活跃 TransportClient，禁止在路由层外部直接操作。
     /// </summary>
     public IReadOnlyList<RouteEntry> Snapshot()
+        // ToArray 复制一份，避免调用方遍历时与并发登记/摘除冲突
         => _routes.Values.ToArray();
 
     public bool TryRegister(RouteEntry entry) {
+        // 拒绝空条目：空 RouteEntry 无法提供 TransportClient / 协议驱动
         ArgumentNullException.ThrowIfNull(entry);
+        // 原子插入：同一物理设备（RouteKey）已存在时拒绝覆盖，避免两套 I/O 争用同一连接
         bool added = _routes.TryAdd(entry.Key, entry);
         if (added)
             _logger.LogInformation("ConnectionRouter: registered route {RouteKey}", entry.Key);
@@ -49,9 +61,11 @@ public sealed class ConnectionRouter : IConnectionRouter {
     }
 
     public bool TryGet(RouteKey key, out RouteEntry? entry)
+        // 按物理连接键查找；未命中时读写路径应返回 RouteNotFound
         => _routes.TryGetValue(key, out entry);
 
     public bool TryRemove(RouteKey key, out RouteEntry? removed) {
+        // 仅从字典摘除，不释放 socket/串口——释放由编排器在摘表之后调用 DisposeAsync
         bool result = _routes.TryRemove(key, out removed);
         if (result)
             _logger.LogInformation("ConnectionRouter: removed route {RouteKey}", key);

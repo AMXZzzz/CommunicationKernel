@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ModbusPdu.cs
+// 层级: 插件层 / 协议
+// 作用: 与介质无关的 Modbus PDU 构建、写校验与响应解析。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 
@@ -43,6 +49,7 @@ public static class ModbusPdu {
     public static OperationResult<(byte[] Pdu, ushort Quantity)> BuildReadRequest(
         ModbusDataArea area, ushort startAddress, int byteCount) {
 
+        // 0 或负数无法构成合法 Quantity 字段
         if (byteCount <= 0)
             return FailTuple($"读取长度必须大于 0，实际 {byteCount}");
 
@@ -56,7 +63,7 @@ public static class ModbusPdu {
                     $"{area.DisplayName()} 单次最多读取 {ModbusLimits.MaxReadBits} 位，" +
                     $"请求 {byteCount} 字节合 {quantity} 位");
         } else {
-            // 向上取整到整寄存器
+            // 向上取整到整寄存器（奇数字节多读一个寄存器再裁剪）
             quantity = (byteCount + 1) / 2;
             if (quantity > ModbusLimits.MaxReadRegisters)
                 return FailTuple(
@@ -64,9 +71,11 @@ public static class ModbusPdu {
                     $"请求 {byteCount} 字节合 {quantity} 个");
         }
 
+        // 起始地址 + 数量不能越过 65535，否则 PDU 的 16 位地址字段溢出
         if (startAddress + quantity - 1 > ushort.MaxValue)
             return FailTuple($"起始地址 {startAddress} 加数量 {quantity} 超出 65535 地址空间");
 
+        // PDU：[FC][起始地址 2B 大端][数量 2B 大端]
         byte[] pdu = new byte[5];
         pdu[0] = area.ReadFunctionCode();
         WriteUInt16(pdu, 1, startAddress);
@@ -87,6 +96,7 @@ public static class ModbusPdu {
     /// "写 0 个寄存器" 的畸形 FC10 帧并真实发送到设备。
     /// </remarks>
     public static OperationResult ValidateRegisterPayload(byte[]? payload) {
+        // 空 payload 会构出“写 0 个寄存器”的畸形 FC10
         if (payload is null || payload.Length == 0)
             return OperationResult.Fail("写入数据为空", KernelErrorCode.InvalidArgument);
 
@@ -97,6 +107,7 @@ public static class ModbusPdu {
             return OperationResult.Fail(
                 $"寄存器写入长度必须为偶数字节，实际 {payload.Length} 字节", KernelErrorCode.InvalidArgument);
 
+        // FC10 的字节数字段只有 1 字节，超 246 会静默截断
         if (payload.Length > ModbusLimits.MaxWriteBytes)
             return OperationResult.Fail(
                 $"单次最多写入 {ModbusLimits.MaxWriteBytes} 字节（{ModbusLimits.MaxWriteRegisters} 个寄存器），" +
@@ -110,6 +121,7 @@ public static class ModbusPdu {
         byte[] pdu = new byte[5];
         pdu[0] = ModbusFunctionCode.WriteSingleCoil;
         WriteUInt16(pdu, 1, address);
+        // 规范规定 ON=0xFF00、OFF=0x0000，其他值设备行为未定义
         pdu[3] = value ? (byte)0xFF : (byte)0x00;
         pdu[4] = 0x00;
         return pdu;
@@ -131,6 +143,7 @@ public static class ModbusPdu {
     public static byte[] BuildWriteMultipleRegisters(ushort address, byte[] payload) {
         int registerCount = payload.Length / 2;
 
+        // [FC][地址 2B][数量 2B][字节数 1B][数据...]
         byte[] pdu = new byte[6 + payload.Length];
         pdu[0] = ModbusFunctionCode.WriteMultipleRegisters;
         WriteUInt16(pdu, 1, address);
@@ -146,6 +159,7 @@ public static class ModbusPdu {
     public static OperationResult<byte[]> BuildWriteRequest(
         ModbusDataArea area, ushort address, byte[]? payload) {
 
+        // 离散输入 / 输入寄存器是只读区，设备会回 Illegal Function
         if (!area.IsWritable())
             return OperationResult<byte[]>.Fail(
                 $"{area.DisplayName()} 为只读数据区，不支持写入", KernelErrorCode.InvalidArgument);
@@ -184,6 +198,7 @@ public static class ModbusPdu {
     /// "Illegal Data Address" 永远看不到——对调试工具而言这恰好抹掉了最关键的诊断信息。
     /// </remarks>
     public static OperationResult ValidateResponsePdu(byte[]? pdu, ModbusRequestContext request) {
+        // 异常 PDU 也至少 2 字节：功能码 + 异常码
         if (pdu is null || pdu.Length < 2)
             return OperationResult.Fail("Modbus 响应过短，不足以构成 PDU", KernelErrorCode.ProtocolError);
 
@@ -194,6 +209,7 @@ public static class ModbusPdu {
             byte baseFc = (byte)(responseFc & ~ModbusFunctionCode.ExceptionMask);
             byte exCode = pdu[1];
 
+            // 异常功能码去掉 0x80 后必须等于请求功能码，否则是错位帧
             if (baseFc != request.FunctionCode)
                 return OperationResult.Fail(
                     $"响应功能码不匹配：请求 0x{request.FunctionCode:X2}，异常响应指向 0x{baseFc:X2}",

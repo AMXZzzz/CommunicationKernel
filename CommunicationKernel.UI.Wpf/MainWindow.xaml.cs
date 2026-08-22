@@ -3,8 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: MainWindow.xaml.cs
 // 层级: UI 层 — WPF 主窗口 code-behind
-// 作用: 管理 NavSidebar → Frame 导航；实现无边框窗口拖动/最大化/关闭；
-//       订阅 GrpcDeviceService 连接状态更新顶栏指示灯。
+// 作用: 管理 NavSidebar → Frame 导航；无边框窗口拖动/最大化/关闭；顶栏 Host.App 状态灯。
 // 调用链:
 //   navSidebar.NavigateRequested → NavigateTo(pageType)
 //     → DI.GetRequiredService(pageType) → MainFrame.Navigate(page)
@@ -29,9 +28,9 @@ namespace CommunicationKernel.UI.Wpf;
 /// </summary>
 public partial class MainWindow : Window {
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 私有字段
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>DI 服务提供者，用于懒解析页面实例。</summary>
     private readonly IServiceProvider _services;
@@ -42,12 +41,13 @@ public partial class MainWindow : Window {
     /// <summary>健康轮询任务的取消源，窗口关闭时触发取消。</summary>
     private readonly CancellationTokenSource _healthCts = new CancellationTokenSource();
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 构造函数
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <param name="services">从 App DI 容器注入，用于获取 Page 实例。</param>
     public MainWindow(IServiceProvider services) {
+        // DI 容器必填，页面均从中解析
         _services = services ?? throw new ArgumentNullException(nameof(services));
 
         // 日志器为可选依赖：取不到时降级为不记录，不阻断窗口构造
@@ -66,6 +66,7 @@ public partial class MainWindow : Window {
     /// <summary>窗口关闭：取消健康轮询，避免后台任务在应用退出后继续运行。</summary>
     private void MainWindow_Closed(object sender, EventArgs e) {
         try {
+            // 取消并释放健康检查令牌，后台 Task 随即退出
             _healthCts.Cancel();
             _healthCts.Dispose();
         } catch {
@@ -73,9 +74,9 @@ public partial class MainWindow : Window {
         }
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 初始化
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>窗口加载完成后：导航到默认首页，并启动 Host.App 健康轮询。</summary>
     private void MainWindow_Loaded(object sender, RoutedEventArgs e) {
@@ -88,9 +89,9 @@ public partial class MainWindow : Window {
             StartHealthPolling(client);
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 健康检查轮询
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>
     /// 在后台循环调用 HealthAsync，每 10 秒一次，结果更新顶栏指示灯。
@@ -136,9 +137,9 @@ public partial class MainWindow : Window {
         }, ct);
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 导航
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>
     /// 从 DI 容器解析 Page 实例并让 Frame 导航到该页。
@@ -146,7 +147,7 @@ public partial class MainWindow : Window {
     /// </summary>
     /// <param name="pageType">目标页面 Type，必须继承 Page 并在 DI 中注册。</param>
     private void NavigateTo(Type pageType) {
-        // 防空检查
+        // Frame 未就绪或类型为空则无法导航
         if (MainFrame == null || pageType == null) return;
 
         // 只接受 Page 子类
@@ -179,15 +180,15 @@ public partial class MainWindow : Window {
             MainFrame.RemoveBackEntry();
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 顶栏状态更新（公开，供外部服务调用）
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>更新顶栏连接指示灯和状态文字。</summary>
     /// <param name="connected">是否在线。</param>
     /// <param name="info">状态补充文字（版本号或离线原因）。</param>
     public void UpdateConnectionStatus(bool connected, string info = "") {
-        // 必须在 UI 线程执行，允许从后台线程调用
+        // 必须在 UI 线程执行，允许从后台健康轮询调用
         Dispatcher.InvokeAsync(() => {
             if (connected) {
                 // 在线：绿色指示灯
@@ -203,9 +204,9 @@ public partial class MainWindow : Window {
         });
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 无边框窗口控制
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>标题栏拖动：鼠标左键拖拽移动无边框窗口。</summary>
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {

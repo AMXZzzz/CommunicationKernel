@@ -1,9 +1,10 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: Core/Models/OperationResult.cs
-// 层级: UI层 — 核心模型
-// 作用: 统一的操作结果封装，避免在服务接口中抛出异常来表示业务失败。
-//       使用工厂方法 Ok() / Fail() 构造，确保字段不可变。
+// 层级: UI 层 — WPF 核心模型
+// 作用: 统一操作结果封装，避免服务接口用异常表示业务失败。
+// -----------------------------------------------------------------------------
 
 namespace CommunicationKernel.UI.Wpf.Core.Models
 {
@@ -41,7 +42,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         /// <returns>失败的 OperationResult 实例。</returns>
         public static OperationResult Fail(string code, string msg)
         {
-            // 返回失败结果，携带错误码和描述
+            // 返回失败结果，携带错误码和描述供变量写入页弹出
             return new OperationResult(false, code, msg);
         }
 

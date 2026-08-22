@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ModbusAddress.cs
+// 层级: 插件层 / 协议
+// 作用: 解析 Modbus 地址字符串，得到从站号、数据区与区内 0 基偏移。
+// -----------------------------------------------------------------------------
+
 using System.Globalization;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
@@ -44,9 +50,11 @@ public static class ModbusAddress {
     /// </summary>
     /// <param name="station">RegisterRoute.station 原文，可为 null 或空。</param>
     public static byte ResolveDefaultUnitId(string? station) {
+        // 空站号回落到协议缺省值 1，避免整条路由因未填站号而不可用
         if (string.IsNullOrWhiteSpace(station))
             return FallbackUnitId;
 
+        // 仅接受 1-247（0 为广播、248-255 为保留）；解析失败同样回落
         return byte.TryParse(station.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out byte parsed)
                && parsed is >= ModbusLimits.MinUnitId and <= ModbusLimits.MaxUnitId
             ? parsed
@@ -61,23 +69,30 @@ public static class ModbusAddress {
     public static OperationResult<ModbusAddressInfo> Parse(
         string? address, byte defaultUnitId = FallbackUnitId) {
 
+        // 空地址无法映射到任何线圈/寄存器
         if (string.IsNullOrWhiteSpace(address))
             return Fail("地址为空");
 
+        // 去掉首尾空白；站号缺省取设备级配置，后面的 "N:" 前缀可覆盖
         string text = address.Trim();
         byte unitId = defaultUnitId;
 
         // ── 可选站号前缀 "N:"，仅当冒号前是纯数字时才认定为站号 ──
         // （必须与 "coil:5" 这类区号前缀区分开）
         int colon = text.IndexOf(':');
+        // 冒号落在第 1-3 位才可能是 "1:" / "12:" / "247:"，排除 "coil:5"
         if (colon > 0 && colon <= 3) {
             string head = text[..colon];
+            // 冒号前必须是纯数字才认定为站号，否则留给后面的区号前缀解析
             if (byte.TryParse(head, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte parsedUnit)) {
+                // 从站号必须落在 1-247：0 是广播（本实现不支持），248+ 为保留
                 if (parsedUnit is < ModbusLimits.MinUnitId or > ModbusLimits.MaxUnitId)
                     return Fail($"从站地址 {parsedUnit} 越界，有效范围 {ModbusLimits.MinUnitId}-{ModbusLimits.MaxUnitId}");
 
+                // 剥掉站号前缀，后续只解析数据区与偏移
                 unitId = parsedUnit;
                 text   = text[(colon + 1)..].Trim();
+                // "1:" 这种只有站号没有地址，无法定位寄存器
                 if (text.Length == 0)
                     return Fail("站号前缀之后缺少地址");
             }
@@ -85,9 +100,11 @@ public static class ModbusAddress {
 
         // ── 显式区号前缀 ──
         foreach ((string prefix, ModbusDataArea area) in NamedPrefixes) {
+            // 前缀按长度降序排列，避免 holding: 被更短前缀遮蔽
             if (!text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            // coil:N 的 N 是区内 0 基偏移，不是传统 1 起算编号
             string body = text[prefix.Length..];
             return TryParseOffset(body, out ushort namedOffset)
                 ? Ok(unitId, area, namedOffset)
@@ -100,6 +117,7 @@ public static class ModbusAddress {
             && TryMapAreaDigit(text[0], out ModbusDataArea xArea)) {
 
             string body = text[2..];
+            // 4x 后面必须是十进制序号（1-65535）
             if (!TryParseOffset(body, out ushort xOffset))
                 return Fail($"'{body}' 不是有效的区内偏移（0-65535）");
 
@@ -113,17 +131,21 @@ public static class ModbusAddress {
         if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numeric))
             return Fail($"'{text}' 不是有效的 Modbus 地址");
 
+        // 负数无法映射到 ushort 区内偏移
         if (numeric < 0)
             return Fail("地址不能为负数");
 
+        // 按字符串长度区分 5/6 位传统编号与裸偏移
         return MapNumeric(unitId, numeric, text);
     }
 
     /// <summary>该文本是否为全数字（用于识别传统定长编号）。</summary>
     private static bool IsAllDigits(string text) {
+        // 逐字符检查，避免 "40001 " 这类夹杂空白被当成传统编号
         foreach (char c in text) {
             if (c is < '0' or > '9') return false;
         }
+        // 空串不是数字地址
         return text.Length > 0;
     }
 
@@ -141,6 +163,7 @@ public static class ModbusAddress {
 
     /// <summary>将 5 位传统编号的首位数字映射到数据区。</summary>
     private static bool TryMapAreaDigit(char digit, out ModbusDataArea area) {
+        // 0=线圈 1=离散输入 3=输入寄存器 4=保持寄存器；2 不是标准区号
         switch (digit) {
             case '0': area = ModbusDataArea.Coil;            return true;
             case '1': area = ModbusDataArea.DiscreteInput;   return true;
@@ -163,16 +186,20 @@ public static class ModbusAddress {
     private static OperationResult<ModbusAddressInfo> MapNumeric(byte unitId, int numeric, string original) {
         // 定长传统编号：5 位（如 40001）或 6 位（如 400001）
         if (IsAllDigits(original) && original.Length is 5 or 6) {
+            // 5 位除 10000、6 位除 100000，分离区号与从 1 起算的序号
             int divisor   = original.Length == 5 ? 10000 : 100000;
             int areaDigit = numeric / divisor;
             int ordinal   = numeric % divisor;
 
+            // 区号只认 0/1/3/4，2xxxx 不是标准 Modbus 数据区
             if (!TryMapAreaDigit((char)('0' + areaDigit), out ModbusDataArea area))
                 return Fail($"'{original}' 的区号 {areaDigit} 无效，有效区号为 0/1/3/4");
 
+            // 传统编号从 1 起算，40000 这种序号 0 无效
             if (ordinal == 0)
                 return Fail($"'{original}' 的序号从 1 起算，0 无效");
 
+            // 转成区内 0 基偏移交给 PDU 使用
             return Ok(unitId, area, (ushort)(ordinal - 1));
         }
 
@@ -184,8 +211,10 @@ public static class ModbusAddress {
 
     private static bool TryParseOffset(string body, out ushort offset) {
         offset = 0;
+        // 区内偏移必须是十进制整数
         if (!int.TryParse(body.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
             return false;
+        // 负值或超过 65535 都无法放入 PDU 的 16 位地址字段
         if (value is < 0 or > ushort.MaxValue)
             return false;
 

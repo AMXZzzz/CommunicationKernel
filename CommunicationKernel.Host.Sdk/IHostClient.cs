@@ -29,8 +29,16 @@ namespace CommunicationKernel.Host.Sdk
     /// </remarks>
     public interface IHostClient : IAsyncDisposable
     {
+        // ============================================================================
+        // 健康检查
+        // ============================================================================
+
         /// <summary>健康检查。网络异常时返回 (false, "", 0) 而非抛出。</summary>
         Task<(bool Ok, string HostVersion, int RouteCount)> HealthAsync(CancellationToken ct = default);
+
+        // ============================================================================
+        // 路由生命周期
+        // ============================================================================
 
         /// <summary>注册一条路由。</summary>
         Task<(bool Success, string ErrorCode, string ErrorMessage, string RouteId)> RegisterRouteAsync(
@@ -57,6 +65,10 @@ namespace CommunicationKernel.Host.Sdk
             string address       = "",
             CancellationToken ct = default);
 
+        // ============================================================================
+        // 插件与宿主侧发现
+        // ============================================================================
+
         /// <summary>
         /// 查询宿主当前加载的协议清单。
         /// </summary>
@@ -76,6 +88,10 @@ namespace CommunicationKernel.Host.Sdk
         /// </remarks>
         Task<IReadOnlyList<SerialPortDto>> QuerySerialPortsAsync(CancellationToken ct = default);
 
+        // ============================================================================
+        // 读写
+        // ============================================================================
+
         /// <summary>按路由读取。<paramref name="length"/> 单位为字节。</summary>
         Task<ReadResultDto> ReadAsync(
             string routeId, string address, int length, CancellationToken ct = default);
@@ -83,6 +99,10 @@ namespace CommunicationKernel.Host.Sdk
         /// <summary>按路由写入。</summary>
         Task<WriteResultDto> WriteAsync(
             string routeId, string address, byte[] data, CancellationToken ct = default);
+
+        // ============================================================================
+        // 状态推流
+        // ============================================================================
 
         /// <summary>
         /// 订阅路由状态流，断线自动重连，直到 <paramref name="ct"/> 取消。

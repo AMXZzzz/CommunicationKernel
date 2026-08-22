@@ -1,10 +1,10 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: Core/Logging/MemoryAppLogger.cs
-// 层级: UI层 — 核心日志实现
-// 作用: IAppLogger 的内存循环缓冲区实现。
-//       最多保留 MaxCapacity 条（默认 500）日志条目，超出时丢弃最旧的。
-//       所有写入操作均在 lock(_entries) 内执行，保证多线程安全。
+// 层级: UI 层 — WPF 核心日志实现
+// 作用: IAppLogger 的内存循环缓冲区实现，最多保留 500 条，超出丢弃最旧条目。
+// -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -18,9 +18,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
     /// </summary>
     public sealed class MemoryAppLogger : IAppLogger
     {
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 常量与字段
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>循环缓冲区最大容量，超出后移除最旧的条目。</summary>
         private const int MaxCapacity = 500;
@@ -31,9 +31,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
         /// <summary>用于保护 _entries 的同步锁对象。</summary>
         private readonly object _lock = new object();
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 事件
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 每写入一条日志条目后触发。
@@ -41,16 +41,16 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
         /// </summary>
         public event Action<LogEntry> EntryAdded;
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // IAppLogger 实现
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>写入 INFO 级别日志。</summary>
         /// <param name="category">日志类别。</param>
         /// <param name="message">消息正文。</param>
         public void Info(string category, string message)
         {
-            // 构造条目并追加到缓冲区
+            // 构造 INFO 条目并追加到循环缓冲区
             Append(new LogEntry("INFO", category, message));
         }
 
@@ -59,7 +59,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
         /// <param name="message">消息正文。</param>
         public void Warn(string category, string message)
         {
-            // 构造条目并追加到缓冲区
+            // 构造 WARN 条目并追加到循环缓冲区
             Append(new LogEntry("WARN", category, message));
         }
 
@@ -71,12 +71,12 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
         /// <param name="ex">可选异常对象；非 null 时将异常类型和消息附加到正文后。</param>
         public void Error(string category, string message, Exception ex = null)
         {
-            // 如果提供了异常，将异常类型和消息追加到正文
+            // 有异常时把类型和消息拼进正文，便于日志页直接阅读
             string fullMessage = ex != null
                 ? string.Format("{0} [{1}: {2}]", message, ex.GetType().Name, ex.Message)
                 : message;
 
-            // 构造条目并追加到缓冲区
+            // 构造 ERROR 条目并追加到循环缓冲区
             Append(new LogEntry("ERROR", category, fullMessage));
         }
 
@@ -85,7 +85,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
         /// <param name="message">消息正文。</param>
         public void Debug(string category, string message)
         {
-            // 构造条目并追加到缓冲区
+            // 构造 DEBUG 条目并追加到循环缓冲区
             Append(new LogEntry("DEBUG", category, message));
         }
 
@@ -109,14 +109,14 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
         {
             lock (_lock)
             {
-                // 清空内部列表
+                // 清空内部列表（日志页会同步清空自己的显示集合）
                 _entries.Clear();
             }
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 私有辅助方法
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 将条目写入循环缓冲区并触发 EntryAdded 事件。
@@ -130,7 +130,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
                 // 追加到列表末尾
                 _entries.Add(entry);
 
-                // 若超出最大容量，则移除最旧的条目（循环缓冲区语义）
+                // 超出容量时丢掉最旧条目，保持循环缓冲区语义
                 if (_entries.Count > MaxCapacity)
                     _entries.RemoveAt(0);
             }

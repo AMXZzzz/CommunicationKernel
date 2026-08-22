@@ -2,12 +2,8 @@
 
 // -----------------------------------------------------------------------------
 // 文件: Services/ValueParser.cs
-// 层级: UI 层 — 值解析工具
-// 作用:
-//   TryParse     — 将界面字符串解析为对应数据类型的值对象，供变量写入使用。
-//   TryParseBytes — 将 gRPC 读取的字节数组（大端序）解析为可读字符串，
-//                  供 VariablePollingService 更新 VariableItem.LastValue 使用。
-//       支持所有 VariableDataType 枚举值，解析失败返回错误描述。
+// 层级: UI 层 — WPF 值解析工具
+// 作用: TryParse 把界面字符串解析为写入值；TryParseBytes 把 gRPC 大端字节解析为显示字符串。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -58,6 +54,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.Int16:
+                // 有符号 16 位整数
                 if (short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out short i16)) {
                     value = i16;
                     return true;
@@ -66,6 +63,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.UInt16:
+                // 无符号 16 位整数
                 if (ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort u16)) {
                     value = u16;
                     return true;
@@ -74,6 +72,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.Int32:
+                // 有符号 32 位整数
                 if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i32)) {
                     value = i32;
                     return true;
@@ -82,6 +81,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.UInt32:
+                // 无符号 32 位整数
                 if (uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint u32)) {
                     value = u32;
                     return true;
@@ -90,6 +90,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.Int64:
+                // 有符号 64 位整数
                 if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long i64)) {
                     value = i64;
                     return true;
@@ -98,6 +99,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.UInt64:
+                // 无符号 64 位整数
                 if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong u64)) {
                     value = u64;
                     return true;
@@ -106,6 +108,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.Float:
+                // 单精度，允许千分位
                 if (float.TryParse(text,
                         NumberStyles.Float | NumberStyles.AllowThousands,
                         CultureInfo.InvariantCulture, out float f)) {
@@ -116,6 +119,7 @@ public static class ValueParser {
                 return false;
 
             case VariableDataType.Double:
+                // 双精度，允许千分位
                 if (double.TryParse(text,
                         NumberStyles.Float | NumberStyles.AllowThousands,
                         CultureInfo.InvariantCulture, out double d)) {

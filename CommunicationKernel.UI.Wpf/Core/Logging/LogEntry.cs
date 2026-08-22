@@ -1,9 +1,10 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: Core/Logging/LogEntry.cs
-// 层级: UI层 — 核心日志
-// 作用: 表示应用内一条日志记录，包含时间戳、级别、类别和消息正文。
-//       不可变对象，由 IAppLogger 实现类创建后放入循环缓冲区。
+// 层级: UI 层 — WPF 核心日志模型
+// 作用: 一条不可变日志记录，由 IAppLogger 写入循环缓冲区后供日志页绑定。
+// -----------------------------------------------------------------------------
 
 using System;
 
@@ -43,6 +44,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Logging
         {
             // 捕获当前时间作为不可变时间戳
             Timestamp = DateTime.Now;
+            // 空入参归一为空串，避免后续格式化出现 null
             Level     = level    ?? string.Empty;
             Category  = category ?? string.Empty;
             Message   = message  ?? string.Empty;

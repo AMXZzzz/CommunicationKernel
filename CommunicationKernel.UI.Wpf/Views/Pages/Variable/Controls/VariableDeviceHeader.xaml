@@ -1,4 +1,9 @@
-﻿<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls.VariableDeviceHeader"
+﻿<!--
+  文件: VariableDeviceHeader.xaml
+  层级: UI 层 — WPF Views
+  作用: 当前设备标题栏：名称、元信息、批量添加、添加变量。
+-->
+<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls.VariableDeviceHeader"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border Padding="0,0,0,14"
@@ -10,6 +15,7 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
+            <!-- 设备名称与元信息 -->
             <StackPanel>
                 <TextBlock x:Name="txtTitle" Text="请选择设备" FontSize="18" FontWeight="SemiBold"
                            Foreground="{StaticResource SF.Brush.Text.Primary}"/>
@@ -17,6 +23,7 @@
                            Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
             </StackPanel>
 
+            <!-- 复制 / 批量添加 / 添加变量 -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Content="复制到其他设备"
                         Style="{StaticResource SF.Style.DarkButton}"

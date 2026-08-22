@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: IRouterOrchestrator.cs
+// 层级: Engine.Router / Abstractions
+// 作用: 路由编排器接口——管理路由表并协调读取合并，是路由层唯一对外入口。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Threading;
 using System.Threading.Tasks;

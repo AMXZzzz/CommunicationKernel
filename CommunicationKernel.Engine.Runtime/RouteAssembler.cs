@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteAssembler.cs
-// 层级: Engine
+// 层级: Engine.Runtime
+// 作用: 从工厂集合装配一条路由：选工厂 → 建连接 → 造驱动 → 组装 RouteEntry。
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
@@ -39,6 +40,7 @@ internal sealed class RouteAssembler {
 
         _transportFactories           = transportFactories;
         _protocolFactories            = protocolFactories;
+        // 负间隔无物理含义；串口默认静默窗口至少为 0
         _defaultSerialMinIoIntervalMs = Math.Max(0, defaultSerialMinIoIntervalMs);
         _logger                       = logger;
     }
@@ -47,8 +49,10 @@ internal sealed class RouteAssembler {
     internal async Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
         RegisterRouteCommand command, CancellationToken cancellationToken) {
 
+        // 命令体缺失无法选工厂/建链
         ArgumentNullException.ThrowIfNull(command);
 
+        // ProtocolId 是插件匹配键，空值无法定位协议工厂
         if (string.IsNullOrWhiteSpace(command.ProtocolId))
             return Fail("必须指定 protocol_id", KernelErrorCode.InvalidArgument);
 
@@ -56,6 +60,7 @@ internal sealed class RouteAssembler {
         IProtocolDriverFactory? protocolFactory = _protocolFactories.FirstOrDefault(f =>
             string.Equals(f.Metadata.ProtocolId, command.ProtocolId, StringComparison.OrdinalIgnoreCase));
 
+        // 未装对应插件（或 ProtocolId 填成了展示名）：尽快失败，避免后续误连
         if (protocolFactory is null) {
             _logger.LogError("装配路由失败：找不到协议插件 '{ProtocolId}'。", command.ProtocolId);
             return Fail($"找不到协议插件：{command.ProtocolId}", KernelErrorCode.ProtocolNotFound);
@@ -83,6 +88,7 @@ internal sealed class RouteAssembler {
             && (string.IsNullOrWhiteSpace(command.TransportId)
                 || string.Equals(f.TransportId, command.TransportId, StringComparison.OrdinalIgnoreCase)));
 
+        // 介质插件未装（例如纯以太网部署却选了 Serial）或 TransportId 不匹配
         if (transportFactory is null) {
             _logger.LogError("装配路由失败：找不到传输插件 kind={Kind}, id={Id}。", transportKind, command.TransportId);
             return Fail(
@@ -90,6 +96,7 @@ internal sealed class RouteAssembler {
                 KernelErrorCode.TransportUnavailable);
         }
 
+        // 组装路由唯一键；Station 空白视为无站号，避免 " " 与 null 被当成两条路由
         var routeKey = new RouteKey(
             command.ProtocolId.Trim(),
             transportKind,
@@ -97,10 +104,12 @@ internal sealed class RouteAssembler {
             command.Port,
             string.IsNullOrWhiteSpace(command.Station) ? null : command.Station.Trim());
 
+        // 把注册命令投影为传输层端点（TCP 地址端口或串口名/波特率）
         TransportEndpoint endpoint = BuildEndpoint(transportKind, command);
 
         // ── 建立连接 ──
         ITransportClient transportClient = transportFactory.CreateClient();
+        // 真正打开 TCP 或串口；失败必须立刻 Dispose，否则句柄泄漏
         OperationResult connect = await transportClient.ConnectAsync(endpoint, cancellationToken)
             .ConfigureAwait(false);
 
@@ -117,10 +126,12 @@ internal sealed class RouteAssembler {
         IProtocolDriver protocolDriver = protocolFactory.CreateDriver(
             new ProtocolDriverContext { Station = command.Station ?? string.Empty });
 
+        // 调用方指定了间隔则用指定值；否则串口走默认静默窗口，TCP 不节流
         int minIoInterval = command.MinIoIntervalMs > 0
             ? command.MinIoIntervalMs
             : (transportKind == TransportKind.Serial ? _defaultSerialMinIoIntervalMs : 0);
 
+        // 把连接、驱动、节流参数打成 RouteEntry，后续读写经其独占门控串行化
         var routeEntry = new RouteEntry {
             Key             = routeKey,
             TransportClient = transportClient,
@@ -128,6 +139,7 @@ internal sealed class RouteAssembler {
             MinIoIntervalMs = minIoInterval
         };
 
+        // 落表失败时由 EngineRuntime 调用：断开并释放刚建立的物理连接
         async Task RollbackAsync(CancellationToken ct) {
             await transportClient.DisconnectAsync(ct).ConfigureAwait(false);
             await transportClient.DisposeAsync().ConfigureAwait(false);

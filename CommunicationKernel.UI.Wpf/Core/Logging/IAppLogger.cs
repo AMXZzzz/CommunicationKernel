@@ -1,9 +1,10 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: Core/Logging/IAppLogger.cs
-// 层级: UI层 — 核心日志接口
-// 作用: 定义应用日志记录器的抽象接口，供 ViewModel 和服务层依赖注入使用。
-//       实现类（MemoryAppLogger）将条目存入循环缓冲区并触发 EntryAdded 事件。
+// 层级: UI 层 — WPF 核心日志接口
+// 作用: 应用内日志抽象，供 ViewModel / 服务写入，LogPageViewModel 订阅展示。
+// -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;

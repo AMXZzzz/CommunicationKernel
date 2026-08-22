@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/Device/DevicePage.xaml.cs
+// 层级: UI 层 — WPF Views
+// 作用: 设备管理页 UI 路由；业务在 DevicePageViewModel，本页只做弹层与卡片注入。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -41,6 +47,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             _protocols = protocols;
             _vmWired = false;
 
+            // 解析 XAML 并把 DisplayList 绑到卡片列表
             InitializeComponent();
 
             DataContext = _vm;
@@ -63,6 +70,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             // 此处不再重复赋值。
         }
 
+        // ============================================================================
+        // 卡片注入
+        // ============================================================================
+
         private void DisplayList_CollectionChanged (object sender, NotifyCollectionChangedEventArgs e) {
             Dispatcher.BeginInvoke(
                 new Action(InjectServicesToCards),
@@ -80,6 +91,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
                 card.SetSelectionMode(_vm.IsSelectMode);
             }
         }
+
+        // ============================================================================
+        // ViewModel 订阅（单例必须成对退订）
+        // ============================================================================
 
         /// <summary>
         /// 订阅 ViewModel 事件。幂等：重复调用不会造成重复订阅。
@@ -128,6 +143,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
                 ApplySelectModeToCards(_vm.IsSelectMode);
             }
         }
+
+        // ============================================================================
+        // 工具栏 / 编辑面板 / 消息框
+        // ============================================================================
 
         private void WireToolbar () {
             if (toolBar == null) return;
@@ -191,7 +210,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             msgDialog.SecondaryRequested += CloseMessageDialog;
         }
 
-        // ── 编辑面板 ──────────────────────────────────
+        // ============================================================================
+        // 编辑面板
+        // ============================================================================
 
         public void OpenAddDevice () => _vm.OpenAdd();
 
@@ -217,7 +238,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             HideOverlayIfIdle();
         }
 
-        // ── 主题消息框────────────────
+        // ============================================================================
+        // 主题消息框
+        // ============================================================================
 
         private void ShowWarning (string title, string message) {
             ShowMessage(AppMessageKind.Warning, title, message);
@@ -274,7 +297,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             e.Handled = true; // 点击面板本身不关闭遮罩
         }
 
-        // ── 多选 ──────────────────────────────────────
+        // ============================================================================
+        // 多选
+        // ============================================================================
 
         private void ApplySelectModeToCards (bool selectMode) {
             foreach (DeviceCard card in FindVisualChildren<DeviceCard>(deviceList)) {

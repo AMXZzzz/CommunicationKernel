@@ -142,6 +142,7 @@
     }
 
     private void SetFilter(string level) {
+        // 切换级别过滤，FilteredEntries 计算属性会自动生效
         FilterLevel = level;
     }
 
@@ -176,6 +177,7 @@
         public bool IsEnabled(LogLevel l) => l >= LogLevel.Information;
         public void Log<T>(LogLevel level, EventId id, T state, Exception? ex,
             Func<T, Exception?, string> fmt) {
+            // Information 以下直接丢弃
             if (!IsEnabled(level)) return;
             string msg = fmt(state, ex);
             if (ex is not null) msg += $" [{ex.GetType().Name}]";

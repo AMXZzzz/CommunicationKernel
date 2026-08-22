@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: GlobalUsings.cs
 // 层级: UI 层 — WPF
-// 作用: 全局引入共享 gRPC 客户端命名空间。
+// 作用: 全局引入共享 gRPC 客户端命名空间，避免每个文件重复 using Host.Sdk。
 //
 // HostClient 及各 DTO（RouteDto / ReadResultDto 等）原本定义在本项目的
 // Services 命名空间下，与 Blazor 端各持一份。现已下沉到

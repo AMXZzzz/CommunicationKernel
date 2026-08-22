@@ -2,14 +2,8 @@
 
 // -----------------------------------------------------------------------------
 // 文件: Services/LocalVariableStore.cs
-// 层级: UI层 — 服务实现
-// 作用: IVariableService 的内存实现，变量列表在内存中维护，并持久化到本地 JSON 文件。
-//       每次 Add / Update / Remove 后：
-//         1) 触发 VariablesChanged 事件，通知 VariablePollingService 重建轮询集合；
-//         2) 异步将最新列表写入 %AppData%\CommunicationKernel\variables.json，
-//            下次启动时自动加载恢复。
-//       WriteAsync 根据变量的 DataType 将值序列化为字节数组，然后调用 gRPC WriteAsync。
-//       字节序均使用大端（Big-Endian），与 PLC 通信规范一致。
+// 层级: UI 层 — WPF 服务实现
+// 作用: IVariableService 的内存+磁盘实现；CRUD 后触发轮询重建，写入经 gRPC WriteAsync。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -34,9 +28,9 @@ namespace CommunicationKernel.UI.Wpf.Services
     /// </summary>
     public sealed class LocalVariableStore : IVariableService
     {
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 持久化路径
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>变量定义持久化文件路径，与 settings.json 同目录。</summary>
         private static readonly string PersistPath = Path.Combine(
@@ -50,9 +44,9 @@ namespace CommunicationKernel.UI.Wpf.Services
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 私有字段
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>gRPC 客户端，用于执行 WriteAsync。</summary>
         private readonly HostClient _client;
@@ -63,9 +57,9 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>保护 _items 列表的同步锁（支持多线程访问）。</summary>
         private readonly object _lock = new object();
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // IVariableService — 事件
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 变量列表发生变化（Add / Update / Remove）时触发。
@@ -74,9 +68,9 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// </summary>
         public event Action VariablesChanged;
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 构造函数
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 初始化 LocalVariableStore，并从磁盘加载上次保存的变量列表。
@@ -84,14 +78,15 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <param name="client">已初始化的 gRPC 客户端，用于写入操作。</param>
         public LocalVariableStore(HostClient client)
         {
+            // gRPC 客户端必填，写入走 WriteAsync
             _client = client ?? throw new ArgumentNullException(nameof(client));
             // 启动时从磁盘恢复，恢复失败则静默忽略（内存列表为空，用户可重新导入）
             LoadFromDisk();
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // IVariableService 实现
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 返回当前变量列表的只读快照。
@@ -116,10 +111,11 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <param name="item">要添加的变量定义。</param>
         public void Add(VariableItem item)
         {
+            // 空对象无法入库
             if (item == null)
                 throw new ArgumentNullException(nameof(item));
 
-            // 若 Id 未设置，自动生成
+            // 若 Id 未设置，自动生成 Guid
             if (string.IsNullOrWhiteSpace(item.Id))
                 item.Id = Guid.NewGuid().ToString();
 
@@ -140,6 +136,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <param name="item">已修改的变量定义。</param>
         public void Update(VariableItem item)
         {
+            // 空对象无法更新
             if (item == null)
                 throw new ArgumentNullException(nameof(item));
 
@@ -150,7 +147,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 {
                     if (_items[i].Id == item.Id)
                     {
-                        // Update 可能修改了 IsPollingEnabled / ScanRateMs
+                        // 整对象替换，可能改了轮询开关或扫描周期
                         _items[i] = item;
                         found = true;
                         break;
@@ -180,6 +177,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 {
                     if (_items[i].Id == id)
                     {
+                        // 按 Id 移除，随后通知轮询停止该任务
                         _items.RemoveAt(i);
                         found = true;
                         break;
@@ -219,33 +217,38 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
             }
 
+            // 变量已被删除或 Id 错误
             if (variable == null)
                 return OperationResult.Fail("NOT_FOUND", string.Format("变量 {0} 不存在", id));
 
             byte[] bytes;
             try
             {
+                // 按 DataType 把界面值编成大端字节
                 bytes = SerializeValue(variable.DataType, value);
             }
             catch (Exception ex)
             {
+                // 类型转换失败（例如把 "abc" 当 Int16）
                 return OperationResult.Fail("PARSE_ERROR", ex.Message);
             }
 
+            // 经 gRPC 下发到指定路由的地址
             WriteResultDto result = await _client.WriteAsync(
                 variable.DeviceId,
                 variable.Address,
                 bytes,
                 ct).ConfigureAwait(false);
 
+            // 映射 Host.App 的成功/错误码给变量页弹框
             return result.Success
                 ? OperationResult.Ok()
                 : OperationResult.Fail(result.ErrorCode, result.ErrorMessage);
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 持久化
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 从磁盘加载变量列表。文件不存在或解析失败时静默忽略（内存列表保持为空）。
@@ -255,9 +258,11 @@ namespace CommunicationKernel.UI.Wpf.Services
         {
             try
             {
+                // 首次启动尚无文件，保持空列表
                 if (!File.Exists(PersistPath))
                     return;
 
+                // 读取并反序列化变量定义（含轮询配置）
                 string json = File.ReadAllText(PersistPath, Encoding.UTF8);
                 List<VariableItem> loaded = JsonSerializer.Deserialize<List<VariableItem>>(json, JsonOpts);
                 if (loaded == null || loaded.Count == 0)
@@ -319,9 +324,9 @@ namespace CommunicationKernel.UI.Wpf.Services
             }
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 私有辅助方法
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 根据 DataType 枚举将值对象序列化为字节数组（大端序）。
@@ -332,21 +337,25 @@ namespace CommunicationKernel.UI.Wpf.Services
             {
                 case VariableDataType.Bool:
                 {
+                    // 1 字节：非零为 true
                     bool b = Convert.ToBoolean(value);
                     return new byte[] { b ? (byte)0x01 : (byte)0x00 };
                 }
                 case VariableDataType.Int16:
                 {
+                    // 2 字节大端
                     short s = Convert.ToInt16(value);
                     return new byte[] { (byte)(s >> 8), (byte)(s & 0xFF) };
                 }
                 case VariableDataType.UInt16:
                 {
+                    // 2 字节大端
                     ushort u = Convert.ToUInt16(value);
                     return new byte[] { (byte)(u >> 8), (byte)(u & 0xFF) };
                 }
                 case VariableDataType.Int32:
                 {
+                    // 4 字节大端
                     int n = Convert.ToInt32(value);
                     return new byte[] {
                         (byte)((n >> 24) & 0xFF), (byte)((n >> 16) & 0xFF),
@@ -355,6 +364,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.UInt32:
                 {
+                    // 4 字节大端
                     uint u = Convert.ToUInt32(value);
                     return new byte[] {
                         (byte)((u >> 24) & 0xFF), (byte)((u >> 16) & 0xFF),
@@ -363,6 +373,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.Int64:
                 {
+                    // 先按小端填再翻转成大端
                     long l = Convert.ToInt64(value);
                     byte[] buf = new byte[8];
                     for (int i = 7; i >= 0; i--) { buf[i] = (byte)(l & 0xFF); l >>= 8; }
@@ -371,6 +382,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.UInt64:
                 {
+                    // 先按小端填再翻转成大端
                     ulong u = Convert.ToUInt64(value);
                     byte[] buf = new byte[8];
                     for (int i = 7; i >= 0; i--) { buf[i] = (byte)(u & 0xFF); u >>= 8; }
@@ -379,12 +391,14 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.Float:
                 {
+                    // BitConverter 为小端，翻转后按大端下发
                     float f = Convert.ToSingle(value);
                     byte[] le = BitConverter.GetBytes(f);
                     return new byte[] { le[3], le[2], le[1], le[0] };
                 }
                 case VariableDataType.Double:
                 {
+                    // 8 字节 IEEE 754，翻转成大端
                     double d = Convert.ToDouble(value);
                     byte[] le = BitConverter.GetBytes(d);
                     Array.Reverse(le);
@@ -392,6 +406,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 }
                 case VariableDataType.String:
                 {
+                    // UTF-8 字节，长度由调用方 Length 约束
                     string str = value != null ? value.ToString() : string.Empty;
                     return Encoding.UTF8.GetBytes(str);
                 }

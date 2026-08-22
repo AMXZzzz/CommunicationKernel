@@ -138,12 +138,14 @@ public sealed class TcpTransportClient : ITransportClient
     {
         ThrowIfDisposed();
 
+        // 地址与端口缺一不可，否则 TcpClient.ConnectAsync 会抛含义不清的异常
         if (string.IsNullOrWhiteSpace(endpoint.Address) || endpoint.Port <= 0)
             return OperationResult.Fail(
                 $"invalid TCP endpoint: {endpoint}", KernelErrorCode.InvalidArgument);
 
         try
         {
+            // NoDelay=true 关闭 Nagle，避免小帧（如 Modbus 请求）被延迟合并
             _tcp = new TcpClient { NoDelay = true };
             await _tcp.ConnectAsync(endpoint.Address, endpoint.Port, cancellationToken)
                 .ConfigureAwait(false);
@@ -152,11 +154,13 @@ public sealed class TcpTransportClient : ITransportClient
         }
         catch (OperationCanceledException)
         {
+            // 连接超时/取消后必须释放半开的 TcpClient，否则套接字泄漏
             DisposeInternals();
             return OperationResult.Fail("TCP connect cancelled", KernelErrorCode.TransportIoError);
         }
         catch (Exception ex)
         {
+            // 连接失败（拒连、DNS、网络不可达）同样释放半开套接字
             DisposeInternals();
             return OperationResult.Fail(
                 $"TCP connect failed ({endpoint}): {ex.Message}", KernelErrorCode.TransportIoError);
@@ -169,6 +173,7 @@ public sealed class TcpTransportClient : ITransportClient
     {
         ThrowIfDisposed();
 
+        // 帧边界必须由协议给出，传输层绝不自行猜测
         if (tryGetFrameLength is null)
             return OperationResult<byte[]>.Fail(
                 "tryGetFrameLength is required", KernelErrorCode.InvalidArgument);
@@ -248,6 +253,7 @@ public sealed class TcpTransportClient : ITransportClient
 
     private void ThrowIfDisposed()
     {
+        // 已 Dispose 后禁止再 Connect/Send，避免对已关闭套接字操作
         if (_disposed) throw new ObjectDisposedException(nameof(TcpTransportClient));
     }
 }

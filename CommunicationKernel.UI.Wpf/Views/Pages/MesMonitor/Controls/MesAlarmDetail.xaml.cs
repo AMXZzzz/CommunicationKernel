@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/MesMonitor/Controls/MesAlarmDetail.xaml.cs
+// 层级: UI 层 — MES 监控页子控件
+// 作用: 告警详情子面板；关闭/返回列表通过事件交给宿主处理。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -17,8 +23,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls {
         public event Action BackRequested;
 
         public MesAlarmDetail () {
+            // 解析 XAML，构建视觉树
             InitializeComponent();
         }
+
+        // ============================================================================
+        // 按钮
+        // ============================================================================
 
         /// <summary>关闭图标点击：转发 CloseRequested 事件。</summary>
         private void BtnX_Click (object sender, MouseButtonEventArgs e) {

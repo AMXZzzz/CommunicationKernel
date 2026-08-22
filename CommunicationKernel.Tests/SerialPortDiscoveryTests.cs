@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: SerialPortDiscoveryTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 验证「串口清单由宿主枚举」这条链路的引擎侧行为。
 //
 // 背景：串口长在跑通讯的那台机器上。宿主在树莓派、上位机在办公室 PC 时，
@@ -22,34 +22,56 @@ using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 
 namespace CommunicationKernel.Tests;
 
+// 引擎只汇总各传输工厂报上来的串口，自己不持有任何串口知识
 [TestClass]
 public class SerialPortDiscoveryTests {
 
+    // 实现了枚举接口的工厂，其端口必须出现在汇总清单里
     [TestMethod]
     public void Enumerate_ReturnsPorts_FromFactoryImplementingEnumerator() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var assembly = BuildAssembly(
             new EnumeratingTransportFactory(TransportKind.Serial,
                 new SerialPortDescriptor("/dev/ttyUSB0", "usb-FTDI_FT232R-if00-port0"),
                 new SerialPortDescriptor("/dev/ttyAMA0", "")));
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.HasCount(2, ports);
         Assert.AreEqual("/dev/ttyUSB0", ports[0].PortName);
         Assert.AreEqual("usb-FTDI_FT232R-if00-port0", ports[0].Description);
     }
 
+    // 纯以太网现场没装串口插件：空清单是正常状态，不是错误
     [TestMethod]
     public void Enumerate_ReturnsEmpty_WhenNoFactoryImplementsEnumerator() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 纯以太网现场：没装串口插件。空清单是正常状态而非错误，
         // 界面据此提示"未发现串口"并保留手工输入。
         var assembly = BuildAssembly(new PlainTransportFactory(TransportKind.Tcp));
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         Assert.IsEmpty(assembly.GetAvailableSerialPorts());
     }
 
+    // 单个插件枚举失败不能让整份清单变空
     [TestMethod]
     public void Enumerate_IsolatesThrowingFactory_AndKeepsOthers() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 单个插件枚举失败（权限不足、平台不支持）不能让整份清单变空——
         // 否则一个坏插件会让所有串口都配不出来。
         var assembly = BuildAssembly(
@@ -57,14 +79,24 @@ public class SerialPortDiscoveryTests {
             new EnumeratingTransportFactory(TransportKind.Serial,
                 new SerialPortDescriptor("COM3", "")));
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.HasCount(1, ports);
         Assert.AreEqual("COM3", ports[0].PortName);
     }
 
+    // 同一物理串口被多个工厂各报一次时必须去重
     [TestMethod]
     public void Enumerate_DeduplicatesSamePort_ReportedByMultipleFactories() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 同一物理串口可能被多个工厂各报一次；下拉框里出现两个 COM3
         // 会让操作员以为有两个设备。
         var assembly = BuildAssembly(
@@ -74,15 +106,25 @@ public class SerialPortDiscoveryTests {
                 new SerialPortDescriptor("com3", ""),
                 new SerialPortDescriptor("COM5", "")));
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.HasCount(2, ports);
         CollectionAssert.AreEquivalent(
             new[] { "COM3", "COM5" }, ports.Select(p => p.PortName).ToArray());
     }
 
+    // 空设备名不得进下拉框，否则会出现一个选不中也用不了的空项
     [TestMethod]
     public void Enumerate_SkipsBlankPortNames() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 空设备名进了下拉框就是一个选不中也用不了的空项
         var assembly = BuildAssembly(
             new EnumeratingTransportFactory(TransportKind.Serial,
@@ -90,20 +132,36 @@ public class SerialPortDiscoveryTests {
                 new SerialPortDescriptor("   ", ""),
                 new SerialPortDescriptor("COM7", "")));
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         IReadOnlyList<SerialPortDescriptor> ports = assembly.GetAvailableSerialPorts();
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.HasCount(1, ports);
         Assert.AreEqual("COM7", ports[0].PortName);
     }
 
+    // 真实插件：本机有没有串口都不该抛异常（CI 运行器上就没有）
     [TestMethod]
     public void RealSerialPlugin_ListPorts_NeverThrows() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 真实插件：本机有没有串口都不该抛异常。
         // 没有串口是正常状态（CI 运行器上就没有），不是错误。
         var factory = new CommunicationKernel.Plugins.Transport.SerialPort.SerialPortTransportFactory();
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         IReadOnlyList<SerialPortDescriptor> ports = factory.ListPorts();
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsNotNull(ports);
         foreach (SerialPortDescriptor port in ports)
             Assert.IsFalse(string.IsNullOrWhiteSpace(port.PortName));

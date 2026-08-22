@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/Device/Controls/AddDeviceCard.xaml.cs
+// 层级: UI 层 — WPF Views
+// 作用: “添加新 PLC”占位卡片；点击后定位所属 DevicePage 并打开新增面板。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.UI.Wpf.Views.Tools;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,9 +20,14 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
     public partial class AddDeviceCard : UserControl {
         /// <summary>构造卡片并将鼠标样式设为手形，提示用户可点击。</summary>
         public AddDeviceCard () {
+            // 解析 XAML，构建视觉树
             InitializeComponent();
             Cursor = Cursors.Hand;
         }
+
+        // ============================================================================
+        // 点击：定位页面并打开新增
+        // ============================================================================
 
         /// <summary>
         /// 处理添加设备卡片的点击事件。

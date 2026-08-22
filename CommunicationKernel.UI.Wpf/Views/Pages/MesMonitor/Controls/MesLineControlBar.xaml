@@ -1,4 +1,9 @@
-﻿<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls.MesLineControlBar"
+﻿<!--
+  文件: MesLineControlBar.xaml
+  层级: UI 层 — WPF Views
+  作用: 整线控制栏：状态、启停复位、报警摘要入口。
+-->
+<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls.MesLineControlBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 

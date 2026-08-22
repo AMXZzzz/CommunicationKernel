@@ -14,6 +14,10 @@ using CommunicationKernel.Plugins.Protocol.Modbus.Core;
 
 namespace CommunicationKernel.Plugins.Protocol.Modbus.Ascii;
 
+// ============================================================================
+// Manifest
+// ============================================================================
+
 /// <summary>Modbus ASCII 插件清单。</summary>
 public sealed class ModbusAsciiPluginManifest : IPluginManifest {
     /// <inheritdoc />
@@ -26,6 +30,10 @@ public sealed class ModbusAsciiPluginManifest : IPluginManifest {
         EntryType   = typeof(ModbusAsciiPluginManifest).FullName
     };
 }
+
+// ============================================================================
+// Factory
+// ============================================================================
 
 /// <summary>Modbus ASCII 协议驱动工厂。</summary>
 public sealed class ModbusAsciiProtocolDriverFactory : IProtocolDriverFactory {
@@ -45,6 +53,7 @@ public sealed class ModbusAsciiProtocolDriverFactory : IProtocolDriverFactory {
 
     /// <inheritdoc />
     public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        // 选定 ASCII-LRC 封装；站号从设备级配置解析，空则回落 1
         new ModbusProtocolDriver(
             Metadata,
             new ModbusAsciiEnvelope(),

@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: RouterOrchestrator.cs
+// 层级: Engine.Router / Runtime
+// 作用: 聚合路由表与读合并的编排门面，是路由层唯一对外入口。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,6 +33,7 @@ public sealed class RouterOrchestrator : IRouterOrchestrator {
         IConnectionRouter connectionRouter,
         IReadCoordinator readCoordinator) {
 
+        // 两个子组件均为必填：缺路由表无法登记，缺读合并则同地址并发会重复打点 PLC
         _connectionRouter = connectionRouter ?? throw new ArgumentNullException(nameof(connectionRouter));
         _readCoordinator  = readCoordinator  ?? throw new ArgumentNullException(nameof(readCoordinator));
     }
@@ -65,5 +72,6 @@ public sealed class RouterOrchestrator : IRouterOrchestrator {
         ReadRequestKey requestKey,
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
         CancellationToken cancellationToken)
+        // 同 (路由, 地址, 长度) 的并发读合成一次设备 I/O，各自用自己的令牌等待
         => _readCoordinator.ExecuteAsync(requestKey, readAction, cancellationToken);
 }

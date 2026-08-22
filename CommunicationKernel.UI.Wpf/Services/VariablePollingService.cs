@@ -2,23 +2,8 @@
 
 // -----------------------------------------------------------------------------
 // 文件: Services/VariablePollingService.cs
-// 层级: UI 层 — 变量轮询服务
-// 作用: 管理所有启用了轮询（IsPollingEnabled = true）的变量的后台读取任务。
-//       订阅 IVariableService.VariablesChanged 事件，在变量列表发生变化时
-//       自动重建轮询任务集合（停止已删除/禁用的，启动新增/启用的）。
-//       每次轮询调用 HostClient.ReadAsync，将读取结果通过
-//       ValueParser.TryParseBytes 转为可读字符串，写入 VariableItem.LastValue。
-// 生命周期:
-//   App.xaml.cs 在 host.StartAsync() 后调用 Start()；
-//   应用退出时 Dispose() 取消所有后台任务。
-// 线程模型:
-//   VariablesChanged 回调可能来自任意线程 → OnVariablesChanged 内部持锁操作字典；
-//   每个变量独立一个 Task.Run 轮询循环；
-//   写入 VariableItem 属性时切回 UI 线程（Application.Current.Dispatcher.InvokeAsync）。
-// 调用链:
-//   IVariableService.VariablesChanged
-//     → OnVariablesChanged → 重建 _polls 字典
-//       → Task.Run(PollLoop) → ReadAsync → TryParseBytes → item.LastValue / item.LastError
+// 层级: UI 层 — WPF 变量轮询服务
+// 作用: 为启用轮询的变量跑后台 ReadAsync，结果写入 LastValue；遇 RouteNotFound 则对账重注册。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -116,6 +101,7 @@ namespace CommunicationKernel.UI.Wpf.Services
             HostClient client,
             IRouteReconciler reconciler = null)
         {
+            // 变量服务与 gRPC 客户端必填；对账器可空（空则 RouteNotFound 只能退避）
             _variableService = variableService
                 ?? throw new ArgumentNullException(nameof(variableService));
             _client = client
@@ -133,6 +119,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// </summary>
         public void Start()
         {
+            // 防止重复订阅 VariablesChanged
             if (_started) return;
             _started = true;
 
@@ -206,6 +193,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 List<string> toStop = new List<string>();
                 foreach (KeyValuePair<string, PollHandle> running in _polls)
                 {
+                    // 仍在期望集合且周期未变才保留
                     bool stillWanted = desired.TryGetValue(running.Key, out int wantedRate)
                                        && wantedRate == running.Value.ScanRateMs;
                     if (!stillWanted)
@@ -214,6 +202,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
                 foreach (string id in toStop)
                 {
+                    // 取消后台循环并释放令牌
                     PollHandle handle = _polls[id];
                     handle.Cts.Cancel();
                     handle.Cts.Dispose();
@@ -399,6 +388,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// </remarks>
         private static async Task SetErrorAsync(VariableItem item, string message)
         {
+            // 应用退出时 Dispatcher 可能已空
             Application app = Application.Current;
             if (app == null) return;
 
@@ -418,6 +408,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 if (v != null && v.Id == id)
                     return v;
             }
+            // 变量已被删除
             return null;
         }
     }

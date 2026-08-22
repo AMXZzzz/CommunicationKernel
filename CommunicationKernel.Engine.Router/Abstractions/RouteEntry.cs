@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: RouteEntry.cs
+// 层级: Engine.Router / Abstractions
+// 作用: 路由条目，持有传输客户端、协议驱动，以及读写共用的独占 I/O 门控。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -77,20 +83,26 @@ public sealed class RouteEntry : IAsyncDisposable {
         Func<CancellationToken, Task<TResult>> ioAction,
         CancellationToken cancellationToken) {
 
+        // 拒绝空委托：否则拿到门控后无法执行，会空占物理连接
         ArgumentNullException.ThrowIfNull(ioAction);
 
+        // 抢占本路由的独占门控：同一 NetworkStream / 串口上读写必须串行
         await _ioGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try {
-            // 补足最小 I/O 间隔（串口帧间静默）
+            // 串口从站需要帧间静默窗口；TCP 的 MinIoIntervalMs 通常为 0，跳过
             if (MinIoIntervalMs > 0) {
+                // 距上次 I/O 完成已过多久；从未执行过则视为间隔已足够
                 int elapsed = GetElapsedSinceLastIoMs();
                 int delay   = MinIoIntervalMs - elapsed;
+                // 静默窗口尚未结束：补足剩余毫秒，避免从站把连续帧当粘包
                 if (delay > 0)
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             }
 
+            // 在独占期内执行真正的协议读写（SendAndReceive）
             return await ioAction(cancellationToken).ConfigureAwait(false);
         } finally {
+            // 无论成功、失败还是取消，都记下完成时刻并归还门控，避免后续 I/O 永久阻塞
             Interlocked.Exchange(ref _lastIoCompletedUtcTicks, DateTimeOffset.UtcNow.UtcTicks);
             _ioGate.Release();
         }
@@ -98,10 +110,13 @@ public sealed class RouteEntry : IAsyncDisposable {
 
     /// <summary>距上一次 I/O 完成经过的毫秒数；从未执行过时返回 <see cref="int.MaxValue"/>。</summary>
     private int GetElapsedSinceLastIoMs() {
+        // 无锁读取上次完成时刻，避免与 finally 中的写入竞争
         long ticks = Interlocked.Read(ref _lastIoCompletedUtcTicks);
+        // 哨兵值：本路由尚未做过任何 I/O，无需等待静默窗口
         if (ticks == DateTimeOffset.MinValue.UtcTicks)
             return int.MaxValue;
 
+        // 把 UTC ticks 转成已过毫秒，并钳位到 int 范围供 Delay 使用
         TimeSpan elapsed = DateTimeOffset.UtcNow - new DateTimeOffset(ticks, TimeSpan.Zero);
         return (int)Math.Clamp(elapsed.TotalMilliseconds, 0, int.MaxValue);
     }
@@ -112,6 +127,7 @@ public sealed class RouteEntry : IAsyncDisposable {
     /// </summary>
     public async ValueTask DisposeAsync() {
         try {
+            // 关闭 TCP socket / 串口句柄；必须在摘表之后，避免并发读写拿到已释放的客户端
             await TransportClient.DisposeAsync().ConfigureAwait(false);
         } catch (Exception) {
             // 释放阶段异常不应传播：已移除的路由资源最大努力释放即可。

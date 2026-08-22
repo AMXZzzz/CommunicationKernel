@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/Device/Controls/DeviceCard.xaml.cs
+// 层级: UI 层 — WPF Views
+// 作用: PLC 设备卡片；文本走 XAML 绑定，状态灯/主按钮由 ApplyStatusVisual 更新。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.ComponentModel;
 using System.Threading;
@@ -60,6 +66,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         public DeviceCard () {
+            // 解析 XAML，构建视觉树
             InitializeComponent();
 
             if (btnEdit != null)
@@ -70,6 +77,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
             Unloaded += DeviceCard_Unloaded;
         }
+
+        // ============================================================================
+        // 多选
+        // ============================================================================
 
         /// <summary>
         /// 多选模式：显示或隐藏勾选框；退出时清空勾选。
@@ -101,6 +112,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
             Unloaded -= DeviceCard_Unloaded;
         }
+
+        // ============================================================================
+        // 数据绑定
+        // ============================================================================
 
         /// <summary>Device 变更：设置 DataContext 并订阅状态。</summary>
         private static void OnDeviceChanged (DependencyObject d, DependencyPropertyChangedEventArgs e) {
@@ -136,6 +151,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         public void RefreshFromDevice () {
             ApplyDevice(Device);
         }
+
+        // ============================================================================
+        // 状态外观
+        // ============================================================================
 
         /// <summary>StatusType → 状态 Key，再交给 SetStatus。</summary>
         private void ApplyStatusVisual (DeviceStatusType type) {
@@ -204,6 +223,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (AccentBar != null)
                 AccentBar.Background = brush;
         }
+
+        // ============================================================================
+        // 连接 / 编辑
+        // ============================================================================
 
         /// <summary>打开编辑弹窗。</summary>
         private void BtnEdit_Click (object sender, RoutedEventArgs e) {

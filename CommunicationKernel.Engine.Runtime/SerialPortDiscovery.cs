@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: SerialPortDiscovery.cs
-// 层级: Engine
+// 层级: Engine.Runtime
+// 作用: 在传输工厂中寻找能枚举串口的插件，汇总宿主本机可用串口清单。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Communication.Transport.Abstractions;
@@ -32,6 +33,7 @@ internal static class SerialPortDiscovery {
         HashSet<string>? seen = null;
 
         foreach (ITransportFactory factory in transportFactories) {
+            // 只有实现了枚举接口的工厂（通常是串口插件）才参与；TCP 工厂直接跳过
             if (factory is not ISerialPortEnumerator enumerator) continue;
 
             // 单个插件枚举失败不应让整份清单变空——纯以太网现场照样要能配设备。
@@ -42,18 +44,22 @@ internal static class SerialPortDiscovery {
                 continue;
             }
 
+            // 该工厂当前没有可用串口（未插 USB 转串口等），不分配去重集合
             if (ports is null || ports.Count == 0) continue;
 
+            // 惰性分配：现场一个串口都没有时避免无意义的 List/HashSet
             result ??= new List<SerialPortDescriptor>();
             seen   ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 去重：同一物理串口可能被多个工厂各报一次
             foreach (SerialPortDescriptor port in ports) {
+                // 空端口名无法回填到注册命令，丢弃
                 if (string.IsNullOrWhiteSpace(port.PortName)) continue;
                 if (seen.Add(port.PortName)) result.Add(port);
             }
         }
 
+        // 没有任何工厂实现枚举接口时返回空数组，UI 串口下拉框显示为空
         return (IReadOnlyList<SerialPortDescriptor>?)result ?? Array.Empty<SerialPortDescriptor>();
     }
 }

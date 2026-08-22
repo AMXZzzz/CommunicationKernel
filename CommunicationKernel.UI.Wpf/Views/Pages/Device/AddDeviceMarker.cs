@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/Device/AddDeviceMarker.cs
+// 层级: UI 层 — WPF Views
+// 作用: 设备列表末尾的“添加”占位对象；DataTemplate 据此匹配 AddDeviceCard。
+// -----------------------------------------------------------------------------
+
 namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
     /// <summary>
     /// 设备列表末尾的“添加”占位对象（非真实设备）。

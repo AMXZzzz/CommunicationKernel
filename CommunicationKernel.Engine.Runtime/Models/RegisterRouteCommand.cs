@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: RegisterRouteCommand.cs
-// 层级: Engine / Models
+// 层级: Engine.Runtime / Models
+// 作用: 注册一条 PLC 路由所需的全部参数（协议、介质、地址、串口、站号）。
 // -----------------------------------------------------------------------------
 
 namespace CommunicationKernel.Engine.Runtime.Models;

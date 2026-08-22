@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: CrossPluginLengthSemanticsTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 对所有协议插件统一验证 IProtocolDriver.length 的语义。
 //
 // 为什么必须跨插件参数化，而不是每个插件各写一份：
@@ -27,6 +27,7 @@ using CommunicationKernel.Plugins.Protocol.Siemens.S7;
 
 namespace CommunicationKernel.Tests;
 
+// 跨插件 length 契约：新增协议只要漏登记，就会在覆盖守卫处显性失败
 [TestClass]
 public class CrossPluginLengthSemanticsTests {
 
@@ -51,13 +52,20 @@ public class CrossPluginLengthSemanticsTests {
     // length <= 0
     // =========================================================================
 
+    // length<=0 必须被拒绝，否则会向 PLC 发出「读 0 个单位」的畸形帧
     [TestMethod]
     [DynamicData(nameof(ProtocolCases))]
     public void BuildReadFrame_RejectsNonPositiveLength(
         IProtocolDriverFactory factory, string address) {
 
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         IProtocolDriver driver = factory.CreateDriver(new ProtocolDriverContext { Station = "1" });
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         foreach (int length in new[] { 0, -1 }) {
             OperationResult<byte[]> result = driver.BuildReadFrame(address, length);
 
@@ -71,17 +79,27 @@ public class CrossPluginLengthSemanticsTests {
     // 奇数 length：不得静默向下取整
     // =========================================================================
 
+    // length=1 是历史缺陷触发点：按字组织的协议会把它算成 0 个字
     [TestMethod]
     [DynamicData(nameof(ProtocolCases))]
     public void BuildReadFrame_HandlesOddLength_WithoutSilentTruncation(
         IProtocolDriverFactory factory, string address) {
 
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         IProtocolDriver driver = factory.CreateDriver(new ProtocolDriverContext { Station = "1" });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         // length=1 是历史缺陷的触发点：按字区组织的协议会把它算成 0 个字，
         // 于是构出一个「读 0 个」的帧，PLC 要么报错要么返回空。
         OperationResult<byte[]> result = driver.BuildReadFrame(address, 1);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // 两种做法都合规：向上对齐到 1 个字（读 2 字节后裁剪），或明确报错。
         // 不合规的只有一种：成功返回、但帧里写的是 0 个单位。
         if (result.Success) {
@@ -94,13 +112,20 @@ public class CrossPluginLengthSemanticsTests {
         }
     }
 
+    // 2/4/8 字节对应 UInt16、UInt32/Float、Double，任一种失败都会让对应数据类型不可用
     [TestMethod]
     [DynamicData(nameof(ProtocolCases))]
     public void BuildReadFrame_AcceptsTypicalByteLengths(
         IProtocolDriverFactory factory, string address) {
 
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         IProtocolDriver driver = factory.CreateDriver(new ProtocolDriverContext { Station = "1" });
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         // 2 / 4 / 8 字节分别对应 UInt16、UInt32/Float、Double——
         // 这是上层最常见的三种读取宽度，任何一个失败都会让相应数据类型不可用。
         foreach (int length in new[] { 2, 4, 8 }) {
@@ -116,17 +141,27 @@ public class CrossPluginLengthSemanticsTests {
     // 超大 length：必须报错，不得溢出成小数值
     // =========================================================================
 
+    // 远超单帧上限必须报错，不得让数量字段回绕成看起来合法的小值
     [TestMethod]
     [DynamicData(nameof(ProtocolCases))]
     public void BuildReadFrame_RejectsAbsurdlyLargeLength(
         IProtocolDriverFactory factory, string address) {
 
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         IProtocolDriver driver = factory.CreateDriver(new ProtocolDriverContext { Station = "1" });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         // 各协议的单帧上限都远小于此。关键在于必须「报错」而不是
         // 让数量字段回绕成一个看起来合法的小数值——那会读回一段错位的数据。
         OperationResult<byte[]> result = driver.BuildReadFrame(address, 100_000);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(result.Success,
             $"{factory.Metadata.ProtocolId}: 100000 字节远超单帧上限，必须被拒绝");
     }
@@ -135,13 +170,20 @@ public class CrossPluginLengthSemanticsTests {
     // 元数据一致性
     // =========================================================================
 
+    // SupportedTransports 为空时会跳过介质校验，不兼容组合只会在首次读写才暴露
     [TestMethod]
     [DynamicData(nameof(ProtocolCases))]
     public void Metadata_DeclaresAtLeastOneSupportedTransport(
         IProtocolDriverFactory factory, string address) {
 
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         _ = address;
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // SupportedTransports 为空时 RouteAssembler 会跳过介质校验，
         // 于是把协议配到不兼容的介质上只会在首次读写才以无关错误暴露。
         Assert.IsNotNull(factory.Metadata.SupportedTransports);
@@ -149,8 +191,12 @@ public class CrossPluginLengthSemanticsTests {
             $"{factory.Metadata.ProtocolId}: 必须声明至少一种支持的传输介质");
     }
 
+    // 覆盖缺口守卫：新增协议却忘了登记到 ProtocolCases，这条会直接指出该补哪里
     [TestMethod]
     public void AllFactories_AreCoveredByThisTest() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 覆盖缺口守卫：新增协议插件却忘了登记到 ProtocolCases 时，
         // 这条会失败并直接指出该补哪里。
         //
@@ -158,9 +204,15 @@ public class CrossPluginLengthSemanticsTests {
         // 该数字随插件增减而变，改动时必须同步更新 ProtocolCases。
         const int knownProtocolFactoryCount = 6;
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         int registered = 0;
         foreach (object[] _ in ProtocolCases()) registered++;
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual(knownProtocolFactoryCount, registered,
             "协议工厂数量与本测试登记的不一致：新增插件后请在 ProtocolCases 中补齐，" +
             "否则该插件不受 length 语义约束（历史上 MEWTOCOL 正是这样漏掉的）");

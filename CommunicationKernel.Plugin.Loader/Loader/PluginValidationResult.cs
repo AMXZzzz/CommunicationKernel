@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// 文件: PluginValidationResult.cs
+// 层级: Plugin.Loader / Loader
+// 作用: 表示单个插件程序集在“发现/校验”阶段的结果。
+// 说明:
+// - IsValid=true 表示可参与加载。
+// - ErrorCode/Message 用于诊断失败原因。
+// - Descriptor 在校验成功或部分失败（如版本不匹配）时可携带上下文。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Plugin.Loader.Abstractions;
 

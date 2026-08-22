@@ -14,6 +14,10 @@ using CommunicationKernel.Plugins.Protocol.Modbus.Core;
 
 namespace CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 
+// ============================================================================
+// Manifest
+// ============================================================================
+
 /// <summary>Modbus TCP 插件清单。</summary>
 public sealed class ModbusTcpPluginManifest : IPluginManifest {
     /// <inheritdoc />
@@ -26,6 +30,10 @@ public sealed class ModbusTcpPluginManifest : IPluginManifest {
         EntryType   = typeof(ModbusTcpPluginManifest).FullName
     };
 }
+
+// ============================================================================
+// Factory
+// ============================================================================
 
 /// <summary>Modbus TCP 协议驱动工厂。</summary>
 public sealed class ModbusTcpProtocolDriverFactory : IProtocolDriverFactory {
@@ -42,6 +50,7 @@ public sealed class ModbusTcpProtocolDriverFactory : IProtocolDriverFactory {
 
     /// <inheritdoc />
     public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        // 选定 MBAP 封装；站号从设备级配置解析，空则回落 1
         new ModbusProtocolDriver(
             Metadata,
             new ModbusTcpEnvelope(),
