@@ -1,3 +1,4 @@
+using CommunicationKernel.Engine.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -8,7 +9,7 @@ using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Engine.Router.Abstractions;
 using CommunicationKernel.Engine.Router.Models;
 
-namespace CommunicationKernel.EngineHost.Host;
+namespace CommunicationKernel.Engine;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
@@ -25,7 +26,7 @@ public interface IRouteAssemblyService {
     /// 按注册命令构建并连接路由运行时对象。
     /// </summary>
     Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
-        HostRuntime.RegisterRouteCommand command,
+        RegisterRouteCommand command,
         CancellationToken cancellationToken);
 
     /// <summary>

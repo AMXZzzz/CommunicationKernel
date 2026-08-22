@@ -52,23 +52,42 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly object _watchLock = new object();
 
         /// <summary>
-        /// 设备显示名等本地元数据，Key = RouteId。
-        /// EngineHost 的路由模型没有 Name / Model 字段，若不在本地留存，
-        /// 注册成功后 Load() 回填时名称会被 RouteId 覆盖。
+        /// 设备配置的本地持久化存储，Key = RouteId。
         /// </summary>
-        private readonly Dictionary<string, LocalDeviceMeta> _localMeta
-            = new Dictionary<string, LocalDeviceMeta>(StringComparer.OrdinalIgnoreCase);
+        /// <remarks>
+        /// 它同时承担两个职责：
+        /// <list type="number">
+        ///   <item>
+        ///     留存 gRPC 路由模型里没有的展示元数据（Name / Model / 轨道）。
+        ///     不留存的话，注册成功后 Load() 回填时名称会被 RouteId 覆盖。
+        ///   </item>
+        ///   <item>
+        ///     作为重新注册的依据。宿主重启后其内存路由全部消失，
+        ///     只有这份配置能把设备重新推回去。
+        ///   </item>
+        /// </list>
+        /// </remarks>
+        private readonly DeviceConfigStore _config;
 
-        /// <summary>保护 _localMeta 的同步锁。</summary>
-        private readonly object _metaLock = new object();
+        /// <summary>
+        /// 正在进行中的重注册任务，Key = RouteId。
+        /// 用于把同一路由上并发的重注册请求合并成一次实际调用。
+        /// </summary>
+        private readonly Dictionary<string, Task<bool>> _inflightReconcile
+            = new Dictionary<string, Task<bool>>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>不随 gRPC 传输的本地设备元数据。</summary>
-        private sealed class LocalDeviceMeta
-        {
-            public string Name  { get; set; }
-            public string Model { get; set; }
-            public bool   IsDualLane { get; set; }
-        }
+        /// <summary>各路由上一次重注册尝试的时间戳，Key = RouteId。</summary>
+        private readonly Dictionary<string, DateTime> _lastReconcileAttempt
+            = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>保护 _inflightReconcile 与 _lastReconcileAttempt 的同步锁。</summary>
+        private readonly object _reconcileLock = new object();
+
+        /// <summary>
+        /// 同一路由两次重注册尝试之间的最小间隔。
+        /// PLC 拔线时重注册也会失败，没有这个下限就会每个轮询周期打一次。
+        /// </summary>
+        private static readonly TimeSpan ReconcileMinInterval = TimeSpan.FromSeconds(5);
 
         // -------------------------------------------------------------------------
         // 事件

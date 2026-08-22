@@ -22,7 +22,8 @@ using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Engine.Router;
 using CommunicationKernel.Engine.Router.Abstractions;
 using CommunicationKernel.Engine.Router.Models;
-using CommunicationKernel.EngineHost.Host;
+using CommunicationKernel.Engine;
+using CommunicationKernel.Engine.Models;
 
 namespace CommunicationKernel.Tests;
 
@@ -154,7 +155,7 @@ public sealed class HostRuntimeLifecycleTests
     public async Task UnregisterRoute_BroadcastsFinalOfflineEvent()
     {
         var runtime = new HostRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
-        var events  = new List<HostRuntime.RouteStatusSnapshot>();
+        var events  = new List<RouteStatusSnapshot>();
 
         await runtime.RegisterRouteAsync(NewCommand("route-A"), CancellationToken.None);
         runtime.RouteStatusChanged += s => { lock (events) events.Add(s); };
@@ -214,7 +215,7 @@ public sealed class HostRuntimeLifecycleTests
     private static IRouterOrchestrator NewOrchestrator()
         => new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator());
 
-    private static HostRuntime.RegisterRouteCommand NewCommand(
+    private static RegisterRouteCommand NewCommand(
         string routeId, string address = "127.0.0.1") =>
         new() {
             RouteId       = routeId,
@@ -250,7 +251,7 @@ public sealed class HostRuntimeLifecycleTests
             new[] { new ProtocolMetadata { ProtocolId = "fake-protocol", DisplayName = "Fake" } };
 
         public async Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
-            HostRuntime.RegisterRouteCommand command, CancellationToken cancellationToken)
+            RegisterRouteCommand command, CancellationToken cancellationToken)
         {
             if (_assembleDelayMs > 0)
                 await Task.Delay(_assembleDelayMs, cancellationToken).ConfigureAwait(false);

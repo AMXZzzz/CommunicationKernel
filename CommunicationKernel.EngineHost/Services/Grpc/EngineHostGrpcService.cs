@@ -7,7 +7,8 @@ using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.EngineHost.Grpc.V1;
-using CommunicationKernel.EngineHost.Host;
+using CommunicationKernel.Engine;
+using CommunicationKernel.Engine.Models;
 using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
@@ -102,7 +103,7 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
     /// <param name="context"></param>
     /// <returns></returns>
     public override async Task<RegisterRouteResponse> RegisterRoute(RegisterRouteRequest request, ServerCallContext context) {
-        var command = new HostRuntime.RegisterRouteCommand {
+        var command = new RegisterRouteCommand {
             RouteId       = request.RouteId,
             ProtocolId    = request.ProtocolId,
             TransportId   = request.TransportId,
@@ -147,7 +148,7 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
             && (string.IsNullOrWhiteSpace(request.Address)    || string.Equals(r.RouteKey.Address,           request.Address,      StringComparison.OrdinalIgnoreCase)));
 
         var response = new QueryRoutesResponse();
-        foreach (HostRuntime.RouteRuntimeInfo r in filtered) {
+        foreach (RouteRuntimeInfo r in filtered) {
             response.Routes.Add(new RouteItem {
                 RouteId       = r.RouteId,
                 ProtocolId    = r.RouteKey.ProtocolId,
@@ -232,12 +233,12 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
         ServerCallContext context) {
 
         // 有界 Channel（容量 256，溢出丢最旧）：防止慢客户端导致内存无限增长。
-        var channel = Channel.CreateBounded<HostRuntime.RouteStatusSnapshot>(
+        var channel = Channel.CreateBounded<RouteStatusSnapshot>(
             new BoundedChannelOptions(StatusChannelCapacity) {
                 FullMode = BoundedChannelFullMode.DropOldest
             });
 
-        void OnStatus(HostRuntime.RouteStatusSnapshot snapshot) {
+        void OnStatus(RouteStatusSnapshot snapshot) {
             if (!string.IsNullOrWhiteSpace(request.RouteId)
                 && !string.Equals(request.RouteId, snapshot.RouteId, StringComparison.OrdinalIgnoreCase))
                 return;
@@ -252,12 +253,12 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
         // 先订阅可能导致快照与首批事件重复，但状态是最终一致模型，重复无害。
         _hostRuntime.RouteStatusChanged += OnStatus;
         try {
-            foreach (HostRuntime.RouteStatusSnapshot snapshot in _hostRuntime.SnapshotStatuses(request.RouteId)) {
+            foreach (RouteStatusSnapshot snapshot in _hostRuntime.SnapshotStatuses(request.RouteId)) {
                 await responseStream.WriteAsync(ToStatusEvent(snapshot)).ConfigureAwait(false);
             }
 
             while (!context.CancellationToken.IsCancellationRequested) {
-                HostRuntime.RouteStatusSnapshot snapshot =
+                RouteStatusSnapshot snapshot =
                     await channel.Reader.ReadAsync(context.CancellationToken).ConfigureAwait(false);
                 await responseStream.WriteAsync(ToStatusEvent(snapshot)).ConfigureAwait(false);
             }
@@ -327,11 +328,11 @@ public sealed class EngineHostGrpcService : EngineHostApi.EngineHostApiBase {
     }
 
     /// <summary>
-    /// 将 HostRuntime.RouteStatusSnapshot 转换为 gRPC RouteStatusEvent。
+    /// 将 RouteStatusSnapshot 转换为 gRPC RouteStatusEvent。
     /// </summary>
     /// <param name="snapshot"></param>
     /// <returns></returns>
-    private static RouteStatusEvent ToStatusEvent(HostRuntime.RouteStatusSnapshot snapshot) =>
+    private static RouteStatusEvent ToStatusEvent(RouteStatusSnapshot snapshot) =>
         new RouteStatusEvent {
             RouteId          = snapshot.RouteId,
             Online           = snapshot.Online,

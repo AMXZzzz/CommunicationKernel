@@ -6,13 +6,19 @@
 //   1) TcpTransportFactory 实现 ITransportFactory，PluginId = "transport-tcp"。
 //   2) TcpTransportClient 实现 ITransportClient：
 //        ConnectAsync        → TcpClient.ConnectAsync，超时由 CancellationToken 控制
-//        SendAndReceiveAsync → 先完整写入，再循环读取直到 NetworkStream 数据耗尽
+//        SendAndReceiveAsync → 先完整写入，再按协议给出的 TryGetFrameLength
+//                              读满一整帧；多读到的字节留作残留供下一帧使用
 //        DisconnectAsync     → 关闭并释放 TcpClient
-//   3) 读取策略：
-//        首帧超时 = 5 s（等待 PLC 第一字节响应）
-//        后续数据块等待 50 ms（RTU/Modbus 帧间静默判断）
-//        MAX_RESPONSE = 512 字节（超出视为协议异常）
-//   4) 全部字节流操作使用 ArrayPool 减少 GC 分配。
+//   3) 帧边界由协议决定，传输层不猜：
+//        调用方传入 TryGetFrameLength 委托，传输层只负责"读够长度"。
+//        早期版本靠"数据耗尽/静默若干毫秒"判定帧尾，在 TCP 分片与
+//        粘包下会截断或粘连——现已彻底移除该策略。
+//   4) 超时是"帧不完整"的兜底，不是"帧已结束"的判定：
+//        FirstByteTimeoutMs        = 5 s   （等待 PLC 第一字节响应）
+//        SubsequentByteTimeoutMs   = 1 s   （帧已开始后等待后续字节）
+//        MaxResponseBytes          = 1024  （超出视为协议异常，防止无界增长）
+//   5) 全部字节流操作使用 ArrayPool 减少 GC 分配；归还前 Array.Clear，
+//      避免上一路由的报文残留被下一次租用读到。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -171,7 +177,19 @@ public sealed class TcpTransportClient : ITransportClient
 
         try
         {
-            // 分支1：发送请求
+            // 分支1：丢弃上一次请求遗留的残留字节，再发送请求。
+            //
+            // 残留的作用域是「一次帧读取之内」——组帧时多读到的字节必须留着，
+            // 丢了会把下一帧截断。但跨请求就不同了：路由层的 I/O 门保证同一
+            // 时刻只有一个在途请求，所以一次响应读完后还留在缓冲里的字节，
+            // 只可能是重复响应，或早先超时请求的迟到响应。
+            // 把它当成本次请求的响应会让请求/响应永久错位一格——
+            // 之后每一次读到的都是上一次的数据，且不报任何错。
+            //
+            // 串口侧一直是这么做的（DiscardInBuffer + 归零），TCP 侧此前漏了，
+            // 两个传输的语义因此不一致。
+            _residualLength = 0;
+
             await _stream.WriteAsync(request, 0, request.Length, cancellationToken)
                 .ConfigureAwait(false);
             await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);

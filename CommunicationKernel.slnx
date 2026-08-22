@@ -12,6 +12,9 @@
   <!-- 路由引擎 -->
   <Project Path="CommunicationKernel.Engine.Router/CommunicationKernel.Engine.Router.csproj" />
 
+  <!-- 引擎：可嵌入的 SDK 核心，不依赖 ASP.NET -->
+  <Project Path="CommunicationKernel.Engine/CommunicationKernel.Engine.csproj" />
+
   <!-- 宿主进程 + 契约 -->
   <Project Path="CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj" />
 

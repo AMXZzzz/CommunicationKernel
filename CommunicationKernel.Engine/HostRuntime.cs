@@ -1,3 +1,4 @@
+using CommunicationKernel.Engine.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -13,7 +14,7 @@ using CommunicationKernel.Engine.Router.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace CommunicationKernel.EngineHost.Host;
+namespace CommunicationKernel.Engine;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
@@ -507,42 +508,10 @@ public sealed class HostRuntime : IAsyncDisposable {
 
     // ── Inner types ───────────────────────────────────────────────────────────
 
-    public sealed class RegisterRouteCommand {
-        public required string RouteId { get; init; }
-        public required string ProtocolId { get; init; }
-        public string? TransportId { get; init; }
-        public required string TransportKind { get; init; }
-        public string? Address { get; init; }
-        public int Port { get; init; }
-        public string? Station { get; init; }
-        public string? SerialPort { get; init; }
-        public int BaudRate { get; init; }
-        public int MinIoIntervalMs { get; init; }
+    // RegisterRouteCommand / RouteRuntimeInfo / RouteStatusSnapshot
+    // 已提为顶层类型，见 Engine/Models/。
+    // 作为嵌套类型时，实现 IRouteAssemblyService 必须依赖 HostRuntime 这个具体类。
 
-        /// <summary>串口校验位（None / Even / Odd / Mark / Space）；空表示取插件默认。</summary>
-        public string? Parity { get; init; }
-
-        /// <summary>串口数据位（5-8）；0 表示取插件默认。</summary>
-        public int DataBits { get; init; }
-
-        /// <summary>串口停止位（One / OnePointFive / Two）；空表示取插件默认。</summary>
-        public string? StopBits { get; init; }
-    }
-
-    public sealed class RouteRuntimeInfo {
-        public required string RouteId { get; init; }
-        public required string TransportId { get; init; }
-        public required RouteKey RouteKey { get; init; }
-        public required TransportEndpoint Endpoint { get; init; }
-    }
-
-    public sealed class RouteStatusSnapshot {
-        public required string RouteId { get; init; }
-        public bool Online { get; init; }
-        public KernelErrorCode ErrorCode { get; init; }
-        public string ErrorMessage { get; init; } = string.Empty;
-        public DateTimeOffset TimestampUtc { get; init; }
-    }
 
     private sealed class RouteRuntimeRegistration {
         private long _lastSerialIoCompletedUtcTicks;

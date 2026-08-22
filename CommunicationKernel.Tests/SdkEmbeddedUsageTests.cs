@@ -1,0 +1,196 @@
+// -----------------------------------------------------------------------------
+// 文件: SdkEmbeddedUsageTests.cs
+// 层级: Tests
+// 作用: 验证内核可作为 SDK 嵌入使用——不经 gRPC、不依赖插件目录。
+//
+// 对应场景：树莓派 / Linux 上的上位机程序直连 PLC。
+// 该场景下没有独立宿主进程，也不会在输出目录摆一个 plugins 文件夹，
+// 工厂由消费者在编译期直接提供。
+// -----------------------------------------------------------------------------
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using CommunicationKernel.Communication.Protocol.Abstractions;
+using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Abstractions.Errors;
+using CommunicationKernel.Core.Abstractions.Results;
+using CommunicationKernel.Engine;
+using CommunicationKernel.Engine.Models;
+using CommunicationKernel.Engine.Router;
+using CommunicationKernel.Engine.Router.Abstractions;
+using CommunicationKernel.Plugins.Modbus.Tcp;
+
+namespace CommunicationKernel.Tests;
+
+[TestClass]
+public class SdkEmbeddedUsageTests {
+
+    [TestMethod]
+    public void StaticAssembly_ExposesProtocols_WithoutPluginDirectory() {
+        // 关键：全程不触碰文件系统
+        var assembly = new StaticRouteAssemblyService(
+            transportFactories: new ITransportFactory[] { new FakeTransportFactory() },
+            protocolFactories:  new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() });
+
+        IReadOnlyList<ProtocolMetadata> protocols = assembly.GetAvailableProtocols();
+
+        Assert.HasCount(1, protocols);
+        Assert.AreEqual("modbus-tcp", protocols[0].ProtocolId);
+    }
+
+    [TestMethod]
+    public async Task EmbeddedEngine_CompletesRegisterReadWriteCycle() {
+        // 完整的嵌入式使用流程：构造 → 注册 → 读 → 写 → 注销
+        var transport = new FakeTransportFactory();
+        var assembly = new StaticRouteAssemblyService(
+            transportFactories: new ITransportFactory[] { transport },
+            protocolFactories:  new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() });
+
+        await using var engine = new HostRuntime(
+            assembly,
+            new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator()));
+
+        OperationResult<string> registered = await engine.RegisterRouteAsync(
+            new RegisterRouteCommand {
+                RouteId       = "plc-1",
+                ProtocolId    = "modbus-tcp",
+                TransportKind = "Tcp",
+                Address       = "192.168.1.10",
+                Port          = 502,
+                Station       = "1"
+            },
+            CancellationToken.None);
+
+        Assert.IsTrue(registered.Success, registered.ErrorMessage);
+        Assert.AreEqual(1, engine.RouteCount);
+
+        // 读：伪传输回放一个合法的 MBAP + FC03 响应
+        transport.NextResponse = BuildModbusReadResponse(unitId: 1, data: new byte[] { 0x12, 0x34 });
+        OperationResult<byte[]> read = await engine.ReadByRouteIdAsync(
+            "plc-1", "40001", 2, CancellationToken.None);
+
+        Assert.IsTrue(read.Success, read.ErrorMessage);
+        CollectionAssert.AreEqual(new byte[] { 0x12, 0x34 }, read.Value);
+
+        // 写：回放 FC06 回显响应
+        transport.NextResponse = BuildModbusWriteEcho(unitId: 1);
+        OperationResult write = await engine.WriteByRouteIdAsync(
+            "plc-1", "40001", new byte[] { 0x00, 0x2A }, CancellationToken.None);
+
+        Assert.IsTrue(write.Success, write.ErrorMessage);
+
+        Assert.IsTrue((await engine.UnregisterRouteAsync("plc-1", CancellationToken.None)).Success);
+        Assert.AreEqual(0, engine.RouteCount);
+    }
+
+    [TestMethod]
+    public async Task EmbeddedEngine_RejectsProtocolTransportMismatch() {
+        // Modbus TCP 的 MBAP 封装依赖 TCP，配到串口上应在注册期即被拒绝，
+        // 而不是等到首次读写才以无关的错误暴露
+        var assembly = new StaticRouteAssemblyService(
+            transportFactories: new ITransportFactory[] { new FakeTransportFactory(TransportKind.Serial) },
+            protocolFactories:  new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() });
+
+        await using var engine = new HostRuntime(
+            assembly,
+            new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator()));
+
+        OperationResult<string> result = await engine.RegisterRouteAsync(
+            new RegisterRouteCommand {
+                RouteId       = "bad",
+                ProtocolId    = "modbus-tcp",
+                TransportKind = "Serial",
+                SerialPort    = "/dev/ttyUSB0",
+                BaudRate      = 9600
+            },
+            CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        StringAssert.Contains(result.ErrorMessage, "不支持");
+    }
+
+    [TestMethod]
+    public void StaticAssembly_RejectsEmptyFactoryLists() {
+        Assert.ThrowsExactly<ArgumentException>(() => new StaticRouteAssemblyService(
+            Array.Empty<ITransportFactory>(),
+            new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() }));
+
+        Assert.ThrowsExactly<ArgumentException>(() => new StaticRouteAssemblyService(
+            new ITransportFactory[] { new FakeTransportFactory() },
+            Array.Empty<IProtocolDriverFactory>()));
+    }
+
+    // =========================================================================
+    // 伪造的传输层：回放预设响应，不涉及真实网络
+    // =========================================================================
+
+    private static byte[] BuildModbusReadResponse(byte unitId, byte[] data) {
+        // MBAP(7) + FC(1) + ByteCount(1) + Data
+        byte[] frame = new byte[9 + data.Length];
+        frame[0] = 0x00; frame[1] = 0x01;                   // 事务 ID，由伪传输在发送时回填
+        frame[2] = 0x00; frame[3] = 0x00;                   // 协议 ID
+        int length = 3 + data.Length;                        // UnitId + FC + ByteCount + Data
+        frame[4] = (byte)(length >> 8); frame[5] = (byte)(length & 0xFF);
+        frame[6] = unitId;
+        frame[7] = 0x03;                                     // FC03
+        frame[8] = (byte)data.Length;
+        Buffer.BlockCopy(data, 0, frame, 9, data.Length);
+        return frame;
+    }
+
+    private static byte[] BuildModbusWriteEcho(byte unitId) {
+        // FC06 响应回显地址与值
+        byte[] frame = new byte[12];
+        frame[2] = 0x00; frame[3] = 0x00;
+        frame[4] = 0x00; frame[5] = 0x06;
+        frame[6] = unitId;
+        frame[7] = 0x06;
+        return frame;
+    }
+
+    private sealed class FakeTransportFactory : ITransportFactory {
+        private readonly TransportKind _kind;
+        private readonly FakeTransportClient _client = new();
+
+        public FakeTransportFactory(TransportKind kind = TransportKind.Tcp) => _kind = kind;
+
+        public string TransportId => "fake-transport";
+        public TransportKind Kind => _kind;
+        public int PluginApiVersion => 1;
+
+        /// <summary>下一次 SendAndReceive 要回放的响应帧。</summary>
+        public byte[] NextResponse { set => _client.NextResponse = value; }
+
+        public ITransportClient CreateClient() => _client;
+    }
+
+    private sealed class FakeTransportClient : ITransportClient {
+        public byte[] NextResponse { get; set; } = Array.Empty<byte>();
+
+        public string TransportId => "fake-transport";
+        public TransportKind Kind => TransportKind.Tcp;
+
+        public Task<OperationResult> ConnectAsync(TransportEndpoint e, CancellationToken ct)
+            => Task.FromResult(OperationResult.Ok);
+
+        public Task<OperationResult> DisconnectAsync(CancellationToken ct)
+            => Task.FromResult(OperationResult.Ok);
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public Task<OperationResult<byte[]>> SendAndReceiveAsync(
+            byte[] request, TryGetFrameLength probe, CancellationToken ct) {
+
+            // 回填请求的事务 ID，模拟设备正确应答
+            byte[] response = (byte[])NextResponse.Clone();
+            if (response.Length >= 2 && request.Length >= 2) {
+                response[0] = request[0];
+                response[1] = request[1];
+            }
+            return Task.FromResult(OperationResult<byte[]>.Ok(response));
+        }
+    }
+}
