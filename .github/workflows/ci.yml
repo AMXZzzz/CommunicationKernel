@@ -5,7 +5,7 @@ name: CI
 # 建立动机：本项目经历过多轮大规模重构（Modbus 三份实现合并、传输层分帧重写、
 # 路由门控统一），全程仅靠本地人工验证。期间发生过两类「不报错的损坏」：
 #   · MEWTOCOL 与 Modbus 同类缺陷漏改——按插件排查而非按缺陷模式排查
-#   · EngineHost.csproj 插件块被批量编辑整块复制——MSBuild 对重复 Target
+#   · Host.App.csproj 插件块被批量编辑整块复制——MSBuild 对重复 Target
 #     是「后者覆盖」不报错，构建仍然绿
 # 两者都不会让构建失败，正是自动化基线才能稳定拦住的类型。
 
@@ -91,13 +91,13 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: 构建 EngineHost
-        run: dotnet build CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj --configuration Release
+      - name: 构建 Host.App
+        run: dotnet build CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj --configuration Release
 
       - name: 校验 plugins 目录内容
         shell: pwsh
         run: |
-          $dir = "CommunicationKernel.Engine.Host/bin/Release/net8.0/plugins"
+          $dir = "CommunicationKernel.Host.App/bin/Release/net8.0/plugins"
           if (-not (Test-Path $dir)) {
             Write-Error "plugins 目录不存在——插件部署 Target 未执行"
             exit 1
@@ -109,9 +109,9 @@ jobs:
           #    Modbus 的 TCP / RTU / ASCII 三个变体同处一个程序集，
           #    与 Siemens.S7 内含 1200 / 200Smart 两个工厂是同一种组织方式。
           $expected = @(
-            'CommunicationKernel.Plugins.Modbus.dll',
-            'CommunicationKernel.Plugins.Panasonic.dll',
-            'CommunicationKernel.Plugins.Siemens.S7.dll',
+            'CommunicationKernel.Plugins.Protocol.Modbus.dll',
+            'CommunicationKernel.Plugins.Protocol.Panasonic.dll',
+            'CommunicationKernel.Plugins.Protocol.Siemens.S7.dll',
             'CommunicationKernel.Plugins.Transport.Tcp.dll',
             'CommunicationKernel.Plugins.Transport.SerialPort.dll'
           )
@@ -126,7 +126,7 @@ jobs:
             'CommunicationKernel.Core.Abstractions.dll',
             'CommunicationKernel.Communication.Protocol.dll',
             'CommunicationKernel.Communication.Transport.dll',
-            'CommunicationKernel.Plugin.Runtime.dll'
+            'CommunicationKernel.Plugin.Loader.dll'
           )
           $leaked = $forbidden | Where-Object { $_ -in $dlls }
           if ($leaked) {
@@ -161,8 +161,8 @@ jobs:
       - name: 构建引擎与插件（不含 WPF）
         run: |
           for p in \
-            CommunicationKernel.Engine/CommunicationKernel.Engine.csproj \
-            CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj \
+            CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj \
+            CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj \
             CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj
           do
             echo "::group::$p"
@@ -185,12 +185,12 @@ jobs:
               <TargetFramework>net8.0</TargetFramework>
             </PropertyGroup>
             <ItemGroup>
-              <ProjectReference Include="$(GITHUB_WORKSPACE)/CommunicationKernel.Engine/CommunicationKernel.Engine.csproj" />
+              <ProjectReference Include="$(GITHUB_WORKSPACE)/CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj" />
             </ItemGroup>
           </Project>
           EOF
           sed -i "s|\$(GITHUB_WORKSPACE)|$GITHUB_WORKSPACE|" /tmp/sdkprobe/sdkprobe.csproj
-          echo 'System.Console.WriteLine(typeof(CommunicationKernel.Engine.HostRuntime).FullName);' > /tmp/sdkprobe/Program.cs
+          echo 'System.Console.WriteLine(typeof(CommunicationKernel.Engine.Runtime.EngineRuntime).FullName);' > /tmp/sdkprobe/Program.cs
           dotnet build /tmp/sdkprobe/sdkprobe.csproj
 
           if grep -q '"Microsoft\.AspNetCore' /tmp/sdkprobe/obj/project.assets.json; then
@@ -217,7 +217,7 @@ jobs:
 
       - name: 发布 linux-arm64
         run: >
-          dotnet publish CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj
+          dotnet publish CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj
           --configuration Release
           --runtime linux-arm64
           --self-contained true
@@ -242,9 +242,9 @@ jobs:
           #    而 publish 的输出目录不同——曾出现「构建目录有插件、
           #    发布目录 0 个」且 publish 本身不报任何错的情况。
           for dll in \
-            CommunicationKernel.Plugins.Modbus \
-            CommunicationKernel.Plugins.Panasonic \
-            CommunicationKernel.Plugins.Siemens.S7 \
+            CommunicationKernel.Plugins.Protocol.Modbus \
+            CommunicationKernel.Plugins.Protocol.Panasonic \
+            CommunicationKernel.Plugins.Protocol.Siemens.S7 \
             CommunicationKernel.Plugins.Transport.Tcp \
             CommunicationKernel.Plugins.Transport.SerialPort
           do
@@ -261,7 +261,7 @@ jobs:
             CommunicationKernel.Core.Abstractions \
             CommunicationKernel.Communication.Protocol \
             CommunicationKernel.Communication.Transport \
-            CommunicationKernel.Plugin.Runtime
+            CommunicationKernel.Plugin.Loader
           do
             if [ ! -f "$root/$dll.dll" ]; then
               echo "::error::宿主根目录缺少共享契约 $dll.dll"
@@ -275,7 +275,7 @@ jobs:
 
           # 4) 自包含发布必须产出可直接执行的 apphost——
           #    树莓派上通常不预装 .NET 运行时。
-          if [ ! -f "$root/CommunicationKernel.Engine.Host" ]; then
+          if [ ! -f "$root/CommunicationKernel.Host.App" ]; then
             echo "::error::缺少自包含 apphost，目标机将需要预装 .NET 运行时才能启动"
             fail=1
           fi
@@ -314,7 +314,7 @@ jobs:
       # 插件部署与 RID 资产的正确性由 publish-linux-arm64 作业负责。
       - name: 发布 linux-x64
         run: >
-          dotnet publish CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj
+          dotnet publish CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj
           --configuration Release
           --runtime linux-x64
           --self-contained true
@@ -325,7 +325,7 @@ jobs:
           cd ./publish/smoke
           # nohup + setsid：每个 step 是独立 shell，进程需脱离该 shell
           # 才能活到后续 step
-          setsid nohup ./CommunicationKernel.Engine.Host > $GITHUB_WORKSPACE/host.log 2>&1 &
+          setsid nohup ./CommunicationKernel.Host.App > $GITHUB_WORKSPACE/host.log 2>&1 &
           echo $! > $GITHUB_WORKSPACE/host.pid
 
           # 轮询而非固定 sleep：CI 机器负载波动大，固定等待要么不够要么浪费
