@@ -77,13 +77,13 @@ public partial class MainWindow : Window {
     // 初始化
     // -------------------------------------------------------------------------
 
-    /// <summary>窗口加载完成后：导航到默认首页，并启动 EngineHost 健康轮询。</summary>
+    /// <summary>窗口加载完成后：导航到默认首页，并启动 Host.App 健康轮询。</summary>
     private void MainWindow_Loaded(object sender, RoutedEventArgs e) {
         // 默认显示 MES 监控页（与 NavSidebar 默认选中项一致）
         NavigateTo(typeof(Views.Pages.MesMonitor.DataMonitorPage));
 
         // 获取 gRPC 客户端并启动后台健康检查轮询
-        EngineHostGrpcClient client = _services.GetService<EngineHostGrpcClient>();
+        HostClient client = _services.GetService<HostClient>();
         if (client != null)
             StartHealthPolling(client);
     }
@@ -100,7 +100,7 @@ public partial class MainWindow : Window {
     /// 必须可取消：无取消的 while(true) 会在应用退出后继续存活，
     /// 向已释放的 gRPC 通道发请求、向已关闭的 Dispatcher 排队回调。
     /// </remarks>
-    private void StartHealthPolling(EngineHostGrpcClient client) {
+    private void StartHealthPolling(HostClient client) {
         CancellationToken ct = _healthCts.Token;
 
         // 在线程池后台运行，不阻塞 UI 线程
@@ -192,13 +192,13 @@ public partial class MainWindow : Window {
             if (connected) {
                 // 在线：绿色指示灯
                 statusIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
-                txtStatus.Text = "EngineHost在线";
-                txtCurrentDevice.Text = string.IsNullOrEmpty(info) ? "EngineHost在线" : info;
+                txtStatus.Text = "Host.App 在线";
+                txtCurrentDevice.Text = string.IsNullOrEmpty(info) ? "Host.App 在线" : info;
             } else {
                 // 离线：灰色指示灯
                 statusIndicator.Fill = (Brush)FindResource("SF.Brush.Text.Secondary");
                 txtStatus.Text = "未连接";
-                txtCurrentDevice.Text = "EngineHost离线";
+                txtCurrentDevice.Text = "Host.App 离线";
             }
         });
     }

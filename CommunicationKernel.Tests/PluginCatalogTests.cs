@@ -1,4 +1,4 @@
-using CommunicationKernel.Plugin.Runtime.Loader;
+using CommunicationKernel.Plugin.Loader;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CommunicationKernel.Tests;

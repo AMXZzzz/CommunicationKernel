@@ -3,14 +3,14 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/GrpcSerialPortProvider.cs
 // 层级: UI层 — 服务实现
-// 作用: 通过 gRPC 向 EngineHost 查询其所在机器上的串口。
+// 作用: 通过 gRPC 向 Host.App 查询其所在机器上的串口。
 // -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Client.Grpc;
+using CommunicationKernel.Host.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 
 namespace CommunicationKernel.UI.Wpf.Services
@@ -25,9 +25,9 @@ namespace CommunicationKernel.UI.Wpf.Services
     /// </remarks>
     public sealed class GrpcSerialPortProvider : ISerialPortProvider
     {
-        private readonly EngineHostGrpcClient _client;
+        private readonly HostClient _client;
 
-        public GrpcSerialPortProvider(EngineHostGrpcClient client)
+        public GrpcSerialPortProvider(HostClient client)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
         }

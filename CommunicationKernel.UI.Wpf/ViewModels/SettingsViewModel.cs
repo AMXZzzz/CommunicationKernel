@@ -3,11 +3,11 @@
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/SettingsViewModel.cs
 // 层级: UI 层 — 系统设置页 ViewModel
-// 作用: 封装 EngineHost 地址配置、连接模式选择、连接测试及设置持久化。
+// 作用: 封装 Host.App 地址配置、连接模式选择、连接测试及设置持久化。
 //       SettingsPage 只保留 RadioButton Checked 回调，其余全部通过绑定驱动。
 // 调用链:
 //   SettingsPage（XAML 绑定 + 2 个 RadioButton Checked 事件）
-//     → SettingsViewModel.TestConnectionCommand → EngineHostGrpcClient.HealthAsync
+//     → SettingsViewModel.TestConnectionCommand → HostClient.HealthAsync
 //     → SettingsViewModel.SaveCommand → settings.json
 // -----------------------------------------------------------------------------
 
@@ -45,7 +45,7 @@ public sealed class SettingsViewModel : ViewModelBase {
     // =========================================================================
 
     /// <summary>gRPC 客户端，用于测试连接（HealthAsync）。</summary>
-    private readonly EngineHostGrpcClient _client;
+    private readonly HostClient _client;
 
     // 后备字段
     private string _hostAddress    = "http://localhost:5000";
@@ -59,7 +59,7 @@ public sealed class SettingsViewModel : ViewModelBase {
     // =========================================================================
 
     /// <summary>
-    /// EngineHost gRPC 地址。绑定到 SettingsPage.txtAddress。
+    /// Host.App gRPC 地址。绑定到 SettingsPage.txtAddress。
     /// 保存命令将此值写入 settings.json。
     /// </summary>
     public string HostAddress {
@@ -128,7 +128,7 @@ public sealed class SettingsViewModel : ViewModelBase {
     // =========================================================================
 
     /// <param name="client">gRPC 客户端，用于测试连接，必须非 null。</param>
-    public SettingsViewModel(EngineHostGrpcClient client) {
+    public SettingsViewModel(HostClient client) {
         // 保存 gRPC 客户端引用
         _client = client ?? throw new ArgumentNullException(nameof(client));
 
@@ -167,7 +167,7 @@ public sealed class SettingsViewModel : ViewModelBase {
 
         try {
             // 建立临时 gRPC 客户端（不与注入的单例共享，以测试新地址）
-            EngineHostGrpcClient tempClient = new EngineHostGrpcClient(addr);
+            HostClient tempClient = new HostClient(addr);
 
             using CancellationTokenSource cts =
                 new CancellationTokenSource(TimeSpan.FromSeconds(TestTimeoutSeconds));
@@ -178,8 +178,8 @@ public sealed class SettingsViewModel : ViewModelBase {
 
             // 更新测试结果文字
             TestResultText = ok
-                ? string.Format("✔ 连接成功 — EngineHost v{0}，路由数: {1}", ver, routes)
-                : "✘ EngineHost 无响应";
+                ? string.Format("✔ 连接成功 — Host.App v{0}，路由数: {1}", ver, routes)
+                : "✘ Host.App 无响应";
         } catch (Exception ex) {
             // 网络异常或超时
             TestResultText = "✘ " + ex.Message;
@@ -256,7 +256,7 @@ public sealed class SettingsViewModel : ViewModelBase {
 
     /// <summary>settings.json 序列化模型，仅存储 HostAddress。</summary>
     private sealed class AppSettings {
-        /// <summary>EngineHost gRPC 服务地址。</summary>
+        /// <summary>Host.App gRPC 服务地址。</summary>
         public string HostAddress { get; set; } = "http://localhost:5000";
     }
 }

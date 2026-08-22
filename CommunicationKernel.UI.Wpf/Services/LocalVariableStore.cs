@@ -28,7 +28,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 {
     /// <summary>
     /// <see cref="IVariableService"/> 的内存+磁盘实现。
-    /// 变量列表存储在 List&lt;VariableItem&gt; 中，写入时通过 <see cref="EngineHostGrpcClient"/> 发送。
+    /// 变量列表存储在 List&lt;VariableItem&gt; 中，写入时通过 <see cref="HostClient"/> 发送。
     /// 每次 Add / Update / Remove 后触发 <see cref="VariablesChanged"/> 事件，
     /// 供 <c>VariablePollingService</c> 同步轮询任务集合；同时异步持久化到本地 JSON 文件。
     /// </summary>
@@ -55,7 +55,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         // -------------------------------------------------------------------------
 
         /// <summary>gRPC 客户端，用于执行 WriteAsync。</summary>
-        private readonly EngineHostGrpcClient _client;
+        private readonly HostClient _client;
 
         /// <summary>内存变量列表，所有 CRUD 操作均在此列表上进行。</summary>
         private readonly List<VariableItem> _items = new List<VariableItem>();
@@ -82,7 +82,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// 初始化 LocalVariableStore，并从磁盘加载上次保存的变量列表。
         /// </summary>
         /// <param name="client">已初始化的 gRPC 客户端，用于写入操作。</param>
-        public LocalVariableStore(EngineHostGrpcClient client)
+        public LocalVariableStore(HostClient client)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             // 启动时从磁盘恢复，恢复失败则静默忽略（内存列表为空，用户可重新导入）
@@ -198,7 +198,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>
         /// 向 PLC 写入指定变量的值。
         /// 根据变量的 DataType 将 value 序列化为字节数组（大端序），
-        /// 然后通过 gRPC WriteAsync 发送到 EngineHost。
+        /// 然后通过 gRPC WriteAsync 发送到 Host.App。
         /// </summary>
         /// <param name="id">目标变量的 Id。</param>
         /// <param name="value">要写入的值，类型应与变量 DataType 匹配。</param>

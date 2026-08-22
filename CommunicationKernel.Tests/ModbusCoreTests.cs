@@ -15,7 +15,7 @@
 
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Plugins.Modbus.Core;
+using CommunicationKernel.Plugins.Protocol.Modbus.Core;
 
 namespace CommunicationKernel.Tests;
 

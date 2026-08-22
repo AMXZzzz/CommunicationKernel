@@ -3,7 +3,7 @@
   <!-- ========================================================================
        文件: CommunicationKernel.UI.Web.csproj
        层级: UI 层 — Blazor Server Web 客户端
-       作用: 通过 gRPC-Web 或 gRPC 连接 EngineHost，提供浏览器端监控界面。
+       作用: 通过 gRPC-Web 或 gRPC 连接 Host.App，提供浏览器端监控界面。
              Blazor Server 模式：组件在服务端渲染，通过 SignalR 推送 DOM diff 到浏览器。
        ======================================================================== -->
 
@@ -15,10 +15,10 @@
 
   <ItemGroup>
     <!-- 共享 gRPC 客户端：proto 代码生成、通道管理、DTO、断线重连全在库内。
-         此前本项目自持一份 EngineHostWebClient，长期缺 RegisterRoute /
+         此前本项目自持一份 Host.AppWebClient，长期缺 RegisterRoute /
          RemoveRoute / QueryProtocols，也没有断线重连。
          proto 已收敛到单一来源，客户端封装没有理由再分裂两份。 -->
-    <ProjectReference Include="..\CommunicationKernel.Client.Grpc\CommunicationKernel.Client.Grpc.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Host.Sdk\CommunicationKernel.Host.Sdk.csproj" />
   </ItemGroup>
 
 </Project>

@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Core/Interfaces/IRouteReconciler.cs
 // 层级: UI层 — 核心接口
-// 作用: 按需把本地设备配置重新推给 EngineHost，使路由恢复可用。
+// 作用: 按需把本地设备配置重新推给 Host.App，使路由恢复可用。
 // -----------------------------------------------------------------------------
 
 using System.Threading;
@@ -12,11 +12,11 @@ using System.Threading.Tasks;
 namespace CommunicationKernel.UI.Wpf.Core.Interfaces
 {
     /// <summary>
-    /// 路由对账器：确保某条路由在 EngineHost 侧确实存在。
+    /// 路由对账器：确保某条路由在 Host.App 侧确实存在。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// EngineHost 的路由是纯内存对象，进程重启即全部丢失。此时上位机侧
+    /// Host.App 的路由是纯内存对象，进程重启即全部丢失。此时上位机侧
     /// 所有读写都会收到 <c>RouteNotFound</c>，并且不会自行恢复——
     /// 轮询循环只会一直退避重试同一个必然失败的请求。
     /// </para>
@@ -38,7 +38,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
     public interface IRouteReconciler
     {
         /// <summary>
-        /// 确保指定路由在 EngineHost 侧存在，必要时用本地留存的配置重新注册。
+        /// 确保指定路由在 Host.App 侧存在，必要时用本地留存的配置重新注册。
         /// </summary>
         /// <param name="routeId">路由 ID。</param>
         /// <param name="ct">取消令牌。</param>

@@ -20,7 +20,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
 {
     /// <summary>
     /// 协议描述符解析器接口。
-    /// 提供当前 EngineHost 已加载的协议清单，用于设备配置界面。
+    /// 提供当前 Host.App 已加载的协议清单，用于设备配置界面。
     /// </summary>
     public interface IProtocolResolver
     {

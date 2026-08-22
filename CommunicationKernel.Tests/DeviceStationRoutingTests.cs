@@ -16,15 +16,15 @@
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 
-using CommunicationKernel.Plugins.Modbus.Tcp;
-using CommunicationKernel.Plugins.Modbus.Rtu;
-using CommunicationKernel.Plugins.Modbus.Ascii;
-using CommunicationKernel.Plugins.Siemens.S7;
-using CommunicationKernel.Plugins.Panasonic;
+using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
+using CommunicationKernel.Plugins.Protocol.Modbus.Rtu;
+using CommunicationKernel.Plugins.Protocol.Modbus.Ascii;
+using CommunicationKernel.Plugins.Protocol.Siemens.S7;
+using CommunicationKernel.Plugins.Protocol.Panasonic;
 
 // Modbus 三种变体的地址语义已收敛到共享 Core，不再各持一份
-using ModbusSharedAddress = CommunicationKernel.Plugins.Modbus.Core.ModbusAddress;
-using MewtocolAddress     = CommunicationKernel.Plugins.Panasonic.Internal.MewtocolAddress;
+using ModbusSharedAddress = CommunicationKernel.Plugins.Protocol.Modbus.Core.ModbusAddress;
+using MewtocolAddress     = CommunicationKernel.Plugins.Protocol.Panasonic.Internal.MewtocolAddress;
 
 namespace CommunicationKernel.Tests;
 

@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/GrpcProtocolResolver.cs
 // 层级: UI 层 — 服务实现
-// 作用: IProtocolResolver 的 gRPC 实现。协议清单一律来自 EngineHost，
+// 作用: IProtocolResolver 的 gRPC 实现。协议清单一律来自 Host.App，
 //       UI 层不内置任何协议知识。
 // 离线策略:
 //       上一次成功获取的服务端清单被缓存到本地 JSON 文件，
@@ -39,7 +39,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
-        private readonly EngineHostGrpcClient _client;
+        private readonly HostClient _client;
 
         /// <summary>
         /// 当前协议清单。多线程读写通过 volatile + 整体替换（copy-on-write）保证安全。
@@ -56,7 +56,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         public event Action ProtocolsChanged;
 
         /// <param name="client">已初始化的 gRPC 客户端。</param>
-        public GrpcProtocolResolver(EngineHostGrpcClient client)
+        public GrpcProtocolResolver(HostClient client)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
 

@@ -15,7 +15,7 @@ namespace CommunicationKernel.Engine.Router.Abstractions;
 /// 说明:
 /// - 实现 IAsyncDisposable：路由注销时必须调用 DisposeAsync 释放 TransportClient，
 ///   否则底层 TCP socket / SerialPort 句柄泄漏。
-/// - 调用方（HostRuntime.UnregisterRouteAsync）负责在 TryRemove 后调用 DisposeAsync。
+/// - 调用方（EngineRuntime.UnregisterRouteAsync）负责在 TryRemove 后调用 DisposeAsync。
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class RouteEntry : IAsyncDisposable {

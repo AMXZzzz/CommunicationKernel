@@ -6,7 +6,7 @@
 | | 形态 A：SDK 嵌入 | 形态 B：独立宿主 |
 |---|---|---|
 | 上位机在哪 | 与 PLC 通讯的同一台机器 | 另一台机器 |
-| 进程数 | 1（上位机自己直连 PLC） | 2（上位机 + EngineHost） |
+| 进程数 | 1（上位机自己直连 PLC） | 2（上位机 + Host.App） |
 | 通讯方式 | 进程内直接调用 | gRPC over HTTP/2 |
 | 插件目录 | 不需要 | 需要 |
 | 典型场景 | 树莓派上跑控制程序直连 PLC | 现场网关 + 远端上位机 |
@@ -15,14 +15,14 @@
 
 ## 形态 A：把内核当 SDK 嵌进上位机
 
-树莓派直连 PLC 时不需要 EngineHost，也不需要 gRPC——多一个进程和一趟本机
-网络往返，只会增加故障面。直接引用 `CommunicationKernel.Engine`，
+树莓派直连 PLC 时不需要 Host.App，也不需要 gRPC——多一个进程和一趟本机
+网络往返，只会增加故障面。直接引用 `CommunicationKernel.Engine.Runtime`，
 用 `StaticRouteAssemblyService` 在编译期交出工厂即可。
 
 ```xml
 <ItemGroup>
-  <ProjectReference Include="../CommunicationKernel.Engine/CommunicationKernel.Engine.csproj" />
-  <ProjectReference Include="../CommunicationKernel.Plugins.Modbus/CommunicationKernel.Plugins.Modbus.csproj" />
+  <ProjectReference Include="../CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj" />
+  <ProjectReference Include="../CommunicationKernel.Plugins.Protocol.Modbus/CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
   <ProjectReference Include="../CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
 </ItemGroup>
 ```
@@ -33,7 +33,7 @@ var assembly = new StaticRouteAssemblyService(
     transportFactories: new ITransportFactory[] { new SerialPortTransportFactory() },
     protocolFactories:  new IProtocolDriverFactory[] { new ModbusRtuProtocolDriverFactory() });
 
-await using var engine = new HostRuntime(
+await using var engine = new EngineRuntime(
     assembly,
     new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator()));
 
@@ -67,10 +67,10 @@ dotnet publish YourApp.csproj -c Release -r linux-arm64 --self-contained true -o
 
 ---
 
-## 形态 B：独立宿主 EngineHost
+## 形态 B：独立宿主 Host.App
 
 ```bash
-dotnet publish CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj \
+dotnet publish CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj \
   -c Release -r linux-arm64 --self-contained true -o ./publish/linux-arm64
 ```
 
@@ -81,14 +81,14 @@ dotnet publish CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.c
 
 ```
 publish/linux-arm64/
-├── CommunicationKernel.Engine.Host          # 可执行 apphost
+├── CommunicationKernel.Host.App          # 可执行 apphost
 ├── appsettings.json
 ├── CommunicationKernel.Core.Abstractions.dll        ┐
 ├── CommunicationKernel.Communication.Protocol.dll   │ 四个共享契约
 ├── CommunicationKernel.Communication.Transport.dll  │ 必须在这一层
-├── CommunicationKernel.Plugin.Runtime.dll           ┘
+├── CommunicationKernel.Plugin.Loader.dll           ┘
 └── plugins/
-    ├── CommunicationKernel.Plugins.Modbus.dll        # TCP / RTU / ASCII 三个变体同处一个程序集
+    ├── CommunicationKernel.Plugins.Protocol.Modbus.dll        # TCP / RTU / ASCII 三个变体同处一个程序集
     ├── CommunicationKernel.Plugins.Transport.*.dll
     └── runtimes/linux-arm64/native/libSystem.IO.Ports.Native.so
 ```
@@ -172,7 +172,7 @@ TLS ALPN 可供协议协商——Kestrel 在明文上同时配 `Http1AndHttp2` �
 也可以不改文件，用环境变量覆盖：
 
 ```bash
-Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:5000 ./CommunicationKernel.Engine.Host
+Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:5000 ./CommunicationKernel.Host.App
 ```
 
 > **gRPC 端点没有任何认证与授权。** 能建立连接就能注册路由、读写 PLC 寄存器。
@@ -189,7 +189,7 @@ Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:5000 ./CommunicationKernel.Engine.H
 
 ```ini
 [Unit]
-Description=CommunicationKernel EngineHost
+Description=CommunicationKernel Host.App
 # network-online 而非 network：仅 network 只保证网络栈起来了，
 # 不保证拿到地址，绑定固定 IP 时会启动失败
 After=network-online.target
@@ -200,7 +200,7 @@ Wants=network-online.target
 # 不会发送就绪通知，用 notify 会让 systemd 一直等到超时判定启动失败
 Type=simple
 WorkingDirectory=/opt/communication-kernel
-ExecStart=/opt/communication-kernel/CommunicationKernel.Engine.Host
+ExecStart=/opt/communication-kernel/CommunicationKernel.Host.App
 Restart=always
 RestartSec=5
 
@@ -241,7 +241,7 @@ journalctl -u communication-kernel -f
 启动日志里必然有这一行，先看它：
 
 ```
-info: EngineHost.Startup[0]
+info: Host.App.Startup[0]
       已加载 6 个协议：modbus-ascii, modbus-rtu, modbus-tcp, panasonic-mewtocol, siemens-s7-1200, siemens-s7-200smart
 ```
 

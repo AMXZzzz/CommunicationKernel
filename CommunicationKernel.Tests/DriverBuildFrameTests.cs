@@ -7,11 +7,11 @@
 
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Plugins.Modbus.Tcp;
-using CommunicationKernel.Plugins.Modbus.Rtu;
-using CommunicationKernel.Plugins.Modbus.Ascii;
-using CommunicationKernel.Plugins.Siemens.S7;
-using CommunicationKernel.Plugins.Panasonic;
+using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
+using CommunicationKernel.Plugins.Protocol.Modbus.Rtu;
+using CommunicationKernel.Plugins.Protocol.Modbus.Ascii;
+using CommunicationKernel.Plugins.Protocol.Siemens.S7;
+using CommunicationKernel.Plugins.Protocol.Panasonic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CommunicationKernel.Tests;

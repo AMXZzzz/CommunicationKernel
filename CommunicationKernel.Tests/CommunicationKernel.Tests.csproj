@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <PackageReference Include="MSTest" />
@@ -12,20 +12,20 @@
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Plugin.Runtime\CommunicationKernel.Plugin.Runtime.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugin.Loader\CommunicationKernel.Plugin.Loader.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Engine.Router\CommunicationKernel.Engine.Router.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Engine\CommunicationKernel.Engine.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Engine.Runtime\CommunicationKernel.Engine.Runtime.csproj" />
     <!-- Modbus 三个变体（TCP / RTU / ASCII）与其协议语义已合并为单一程序集 -->
-    <ProjectReference Include="..\CommunicationKernel.Plugins.Modbus\CommunicationKernel.Plugins.Modbus.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Plugins.Panasonic\CommunicationKernel.Plugins.Panasonic.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Plugins.Siemens.S7\CommunicationKernel.Plugins.Siemens.S7.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Protocol.Modbus\CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Protocol.Panasonic\CommunicationKernel.Plugins.Protocol.Panasonic.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugins.Protocol.Siemens.S7\CommunicationKernel.Plugins.Protocol.Siemens.S7.csproj" />
     <!-- 传输插件：分帧行为用回环 TcpListener 做真实链路测试，
          不引用则测不到「切断 / 粘连 / 超长」这几类只在真实流上才出现的情况 -->
     <ProjectReference Include="..\CommunicationKernel.Plugins.Transport.Tcp\CommunicationKernel.Plugins.Transport.Tcp.csproj" />
     <!-- 串口插件：验证 ListPorts 在无串口的机器（如 CI 运行器）上也不抛异常 -->
     <ProjectReference Include="..\CommunicationKernel.Plugins.Transport.SerialPort\CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
     <!-- 客户端库：重注册闸门的合并与节流是纯时序逻辑，与界面无关，可直接测 -->
-    <ProjectReference Include="..\CommunicationKernel.Client.Grpc\CommunicationKernel.Client.Grpc.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Host.Sdk\CommunicationKernel.Host.Sdk.csproj" />
   </ItemGroup>
 
 </Project>
