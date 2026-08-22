@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/Device/Controls/DeviceEditPanel.xaml.cs
+// 层级: UI 层 — WPF Views
+// 作用: 设备新增/编辑面板；按协议描述符切换 TCP/串口表单，不解析协议语义。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Collections.Generic;
 using System.Windows;
@@ -52,10 +58,15 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         public ISerialPortProvider SerialPortProvider { get; set; }
 
         public DeviceEditPanel () {
+            // 解析 XAML，构建视觉树
             InitializeComponent();
         }
 
         public bool IsNew => string.IsNullOrEmpty(_editingId);
+
+        // ============================================================================
+        // 串口清单
+        // ============================================================================
 
         /// <summary>
         /// 向宿主拉取串口清单并填入下拉框，保留调用前已有的文本值。
@@ -71,9 +82,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
             IReadOnlyList<SerialPortDto> ports;
             try {
+                // 需回到 UI 线程操作控件
                 ports = await SerialPortProvider
                     .GetPortsAsync(System.Threading.CancellationToken.None)
-                    .ConfigureAwait(true);   // 需回到 UI 线程操作控件
+                    .ConfigureAwait(true);
             } catch (Exception) {
                 return;
             }
@@ -101,6 +113,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (cmbSerialPort?.SelectedItem is ComboBoxItem item && item.Tag is string portName)
                 cmbSerialPort.Text = portName;
         }
+
+        // ============================================================================
+        // 协议 / 介质
+        // ============================================================================
 
         /// <summary>
         /// 填充协议下拉框。
@@ -198,6 +214,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
         /// <summary>介质标识 → 面向操作员的说明文案。</summary>
         private static string DescribeTransport (string kind) {
+            // 串口 / 以太网给出操作员可读文案，其它标识原样返回
             if (string.Equals(kind, "Serial", StringComparison.OrdinalIgnoreCase))
                 return "串口直连（RS-232 / RS-485）";
             if (string.Equals(kind, "Tcp", StringComparison.OrdinalIgnoreCase))
@@ -212,6 +229,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
                 : null;
 
             string kind = item != null ? item.Tag as string : null;
+            // 有明确选择就用它，否则回落到协议默认介质
             if (!string.IsNullOrWhiteSpace(kind))
                 return kind;
 
@@ -221,6 +239,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
         /// <summary>连接方式变化：仅切换连接参数表单，不改变协议选择。</summary>
         private void CmbTransport_SelectionChanged (object sender, SelectionChangedEventArgs e) {
+            // 重建下拉期间抑制，避免中间态刷新布局
             if (_suppressTransportEvent) return;
             ApplyTransportLayout(GetSelectedDescriptor(), GetSelectedTransport());
         }
@@ -290,6 +309,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
                 : null;
             return item != null ? item.Tag as ProtocolDescriptorDto : null;
         }
+
+        // ============================================================================
+        // 载入 / 构建
+        // ============================================================================
 
         /// <summary>载入设备到表单。</summary>
         public void LoadData (DeviceInfo info, bool isNew) {
@@ -437,7 +460,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
             try {
                 txtStatus.Foreground = (System.Windows.Media.Brush)FindResource(key);
-            } catch { }
+            } catch {
+                // 主题资源缺失时保持默认前景色
+            }
         }
 
         /// <summary>
@@ -474,6 +499,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             return d != null ? d.ProtocolId : "";
         }
 
+        // ============================================================================
+        // 轨道 / 按钮
+        // ============================================================================
+
         private void UpdateLaneButtons () {
             if (btnLaneSingle == null || btnLaneDual == null)
                 return;
@@ -498,6 +527,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         private void BtnClose_Click (object sender, MouseButtonEventArgs e) => CloseRequested?.Invoke();
         private void BtnSave_Click (object sender, RoutedEventArgs e) => SaveRequested?.Invoke();
         private void BtnDelete_Click (object sender, RoutedEventArgs e) => DeleteRequested?.Invoke();
+
+        // ============================================================================
+        // 拖动
+        // ============================================================================
 
         /// <summary>打开弹窗时复位拖动偏移（回到遮罩居中）。</summary>
         public void ResetPosition () {
@@ -529,6 +562,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         private void TitleBar_MouseMove (object sender, MouseEventArgs e) {
+            // 未进入拖动或已松开左键则忽略
             if (!_dragging || e.LeftButton != MouseButtonState.Pressed)
                 return;
             Point p = e.GetPosition(null);
@@ -547,6 +581,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         private void StopDrag () {
+            // 未在拖动中无需释放捕获
             if (!_dragging)
                 return;
             _dragging = false;

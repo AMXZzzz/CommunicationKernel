@@ -6,6 +6,10 @@
 
 namespace CommunicationKernel.Plugins.Protocol.Siemens.S7.Internal;
 
+// ============================================================================
+// 单帧容量
+// ============================================================================
+
 /// <summary>S7 协议的单帧容量上限。</summary>
 internal static class S7Limits {
 

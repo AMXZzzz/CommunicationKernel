@@ -2,9 +2,8 @@
 
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/VariablePageViewModel.cs
-// 层级: UI 层 — 变量配置页 ViewModel
-// 作用: 封装设备选中状态、变量 CRUD、批量添加、协议写入。
-//       不碰 Popup / Visibility——由 VariableConfigPage 处理。
+// 层级: UI 层 — WPF 变量配置页 ViewModel
+// 作用: 封装设备选中、变量 CRUD、批量添加与协议写入；Popup 仍由页面处理。
 // 调用链:
 //   VariableConfigPage → VariablePageViewModel
 //     → IVariableService.Add/Update/Remove/WriteAsync
@@ -30,9 +29,9 @@ namespace CommunicationKernel.UI.Wpf.ViewModels;
 /// </summary>
 public sealed class VariablePageViewModel : ViewModelBase {
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 私有字段
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     private readonly IVariableService _variables;
     private readonly IDeviceService   _devices;
@@ -40,9 +39,9 @@ public sealed class VariablePageViewModel : ViewModelBase {
 
     private string _selectedDeviceId;
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 公开属性
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>供页面给子控件属性注入。</summary>
     public IVariableService VariableService => _variables;
@@ -56,9 +55,9 @@ public sealed class VariablePageViewModel : ViewModelBase {
         private set => SetField(ref _selectedDeviceId, value);
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 事件（VM → View）
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>请求页面刷新变量表和左侧设备列表。</summary>
     public event Action RequestRefresh;
@@ -66,9 +65,9 @@ public sealed class VariablePageViewModel : ViewModelBase {
     /// <summary>请求页面弹出主题 Info 框：(标题, 正文)。</summary>
     public event Action<string, string> RequestShowInfo;
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 构造函数
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <param name="variables">变量管理服务（必须非 null）。</param>
     /// <param name="devices">设备管理服务（必须非 null）。</param>
@@ -77,17 +76,19 @@ public sealed class VariablePageViewModel : ViewModelBase {
         IVariableService variables,
         IDeviceService   devices,
         IAppLogger       logger = null) {
+        // 变量与设备服务必填；日志器可空
         _variables = variables ?? throw new ArgumentNullException(nameof(variables));
         _devices   = devices   ?? throw new ArgumentNullException(nameof(devices));
         _log       = logger;
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 公开操作
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>更新当前选中设备。</summary>
     public void SelectDevice(string deviceId) {
+        // 记录左侧列表选中的 RouteId，后续 CRUD 都挂到这台设备
         SelectedDeviceId = deviceId;
     }
 
@@ -96,6 +97,7 @@ public sealed class VariablePageViewModel : ViewModelBase {
     /// 已选设备时返回 true，调用方可继续操作。
     /// </summary>
     public bool EnsureDeviceSelected() {
+        // 已选设备则允许继续新增/批量添加
         if (!string.IsNullOrEmpty(SelectedDeviceId))
             return true;
 
@@ -109,6 +111,7 @@ public sealed class VariablePageViewModel : ViewModelBase {
     /// 未选中设备时返回空字符串。
     /// </summary>
     public string GetSelectedDeviceTitle() {
+        // 未选中则标题栏留空
         if (string.IsNullOrEmpty(SelectedDeviceId))
             return "";
 
@@ -125,8 +128,10 @@ public sealed class VariablePageViewModel : ViewModelBase {
 
     /// <summary>当前设备下的变量条数。</summary>
     public int CountCurrentVariables() {
+        // 未选中设备时计数为 0
         if (string.IsNullOrEmpty(SelectedDeviceId))
             return 0;
+        // 只统计挂在当前 RouteId 下的变量
         return _variables.Variables.Count(
             v => v != null && v.DeviceId == SelectedDeviceId);
     }
@@ -139,24 +144,25 @@ public sealed class VariablePageViewModel : ViewModelBase {
     /// <param name="item">待保存的变量。</param>
     /// <param name="isNew">true = 新增；false = 更新。</param>
     public void SaveVariable(VariableItem item, bool isNew) {
+        // 空对象无法入库
         if (item == null) return;
 
-        // 自动补 DeviceId
+        // 编辑面板未填 DeviceId 时补当前选中设备
         if (string.IsNullOrEmpty(item.DeviceId))
             item.DeviceId = SelectedDeviceId;
 
-        // 无设备则提示
+        // 仍无设备则无法确定读写目标路由
         if (string.IsNullOrEmpty(item.DeviceId)) {
             RaiseInfo("提示", "请先选择左侧设备");
             return;
         }
 
         try {
-            // 根据操作类型选择添加或更新
+            // 新增或更新本地列表，并触发轮询集合重建
             if (isNew) _variables.Add(item);
             else       _variables.Update(item);
 
-            // 通知页面刷新变量列表
+            // 通知页面刷新变量表
             RequestRefresh?.Invoke();
         } catch (Exception ex) {
             _log?.Warn("Variable", "保存失败: " + ex.Message);
@@ -166,9 +172,11 @@ public sealed class VariablePageViewModel : ViewModelBase {
 
     /// <summary>删除指定 Id 的变量。</summary>
     public void DeleteVariable(string id) {
+        // 空 Id 无法定位
         if (string.IsNullOrEmpty(id)) return;
 
         try {
+            // 从本地列表移除并停止对应轮询任务
             _variables.Remove(id);
             RequestRefresh?.Invoke();
         } catch (Exception ex) {
@@ -179,11 +187,13 @@ public sealed class VariablePageViewModel : ViewModelBase {
 
     /// <summary>批量添加变量，统一挂到当前选中设备。</summary>
     public void SaveBatch(IList<VariableItem> items) {
+        // 无条目或未选设备则忽略
         if (items == null || string.IsNullOrEmpty(SelectedDeviceId)) return;
 
         try {
             foreach (VariableItem v in items) {
                 if (v == null) continue;
+                // 批量添加一律归属当前左侧选中设备
                 v.DeviceId = SelectedDeviceId;
                 _variables.Add(v);
             }
@@ -201,6 +211,7 @@ public sealed class VariablePageViewModel : ViewModelBase {
     /// <param name="variableId">目标变量 Id。</param>
     /// <param name="writeText">用户输入的写入文本。</param>
     public async Task WriteVariableAsync(string variableId, string writeText) {
+        // 空 Id 无法定位变量
         if (string.IsNullOrWhiteSpace(variableId)) return;
 
         // 查找目标变量
@@ -212,7 +223,7 @@ public sealed class VariablePageViewModel : ViewModelBase {
             return;
         }
 
-        // 解析写入文本为强类型值
+        // 按 DataType 把界面字符串解析为强类型值
         if (!ValueParser.TryParse(variable.DataType, writeText, out object value, out string parseError)) {
             RaiseInfo("写入失败", parseError ?? "格式不正确");
             return;
@@ -220,6 +231,7 @@ public sealed class VariablePageViewModel : ViewModelBase {
 
         OperationResult result;
         try {
+            // 经 gRPC WriteAsync 下发到 PLC
             result = await _variables.WriteAsync(variableId, value, CancellationToken.None)
                 .ConfigureAwait(true);
         } catch (Exception ex) {
@@ -235,9 +247,9 @@ public sealed class VariablePageViewModel : ViewModelBase {
         RequestRefresh?.Invoke();
     }
 
-    // -------------------------------------------------------------------------
+    // ============================================================================
     // 私有辅助
-    // -------------------------------------------------------------------------
+    // ============================================================================
 
     /// <summary>触发 RequestShowInfo 事件，通知页面弹出 Info 对话框。</summary>
     private void RaiseInfo(string title, string message) =>

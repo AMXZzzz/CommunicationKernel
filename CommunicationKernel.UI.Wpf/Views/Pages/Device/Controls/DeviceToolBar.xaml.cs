@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/Device/Controls/DeviceToolBar.xaml.cs
+// 层级: UI 层 — WPF Views
+// 作用: 设备管理页顶栏；按钮只发事件，业务由 DevicePage 处理。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Windows;
 using System.Windows.Controls;
@@ -33,8 +39,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         public event Action CancelSelectClicked;
 
         public DeviceToolBar () {
+            // 解析 XAML，构建视觉树
             InitializeComponent();
         }
+
+        // ============================================================================
+        // 外观同步
+        // ============================================================================
 
         /// <summary>
         /// 更新右侧「设备总数」角标。
@@ -67,6 +78,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             if (btnCancelSelect != null)
                 btnCancelSelect.Visibility = select;
         }
+
+        // ============================================================================
+        // 按钮 → 事件
+        // ============================================================================
 
         /// <summary>一键连接。</summary>
         private void BtnConnectAll_Click (object sender, RoutedEventArgs e) {

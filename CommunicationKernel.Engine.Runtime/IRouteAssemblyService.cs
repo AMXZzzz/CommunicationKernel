@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: IRouteAssemblyService.cs
+// 层级: Engine.Runtime
+// 作用: 抽象路由装配服务，屏蔽协议/传输工厂与插件发现细节。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Engine.Runtime.Models;
 using System;
 using System.Collections.Generic;

@@ -2,13 +2,11 @@
 
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/SettingsViewModel.cs
-// 层级: UI 层 — 系统设置页 ViewModel
-// 作用: 封装 Host.App 地址配置、连接模式选择、连接测试及设置持久化。
-//       SettingsPage 只保留 RadioButton Checked 回调，其余全部通过绑定驱动。
+// 层级: UI 层 — WPF 系统设置页 ViewModel
+// 作用: 封装 Host.App 地址配置、连接模式、连接测试及 settings.json 持久化。
 // 调用链:
-//   SettingsPage（XAML 绑定 + 2 个 RadioButton Checked 事件）
-//     → SettingsViewModel.TestConnectionCommand → HostClient.HealthAsync
-//     → SettingsViewModel.SaveCommand → settings.json
+//   SettingsPage → TestConnectionCommand → HostClient.HealthAsync
+//                 → SaveCommand → settings.json
 // -----------------------------------------------------------------------------
 
 using System;
@@ -28,9 +26,9 @@ namespace CommunicationKernel.UI.Wpf.ViewModels;
 /// </summary>
 public sealed class SettingsViewModel : ViewModelBase {
 
-    // =========================================================================
+    // ============================================================================
     // 常量
-    // =========================================================================
+    // ============================================================================
 
     /// <summary>持久化 JSON 文件路径（与 App.xaml.cs 中 LoadSavedHostAddress 保持一致）。</summary>
     private static readonly string SettingsPath = Path.Combine(
@@ -40,9 +38,9 @@ public sealed class SettingsViewModel : ViewModelBase {
     /// <summary>测试连接超时（秒）。</summary>
     private const int TestTimeoutSeconds = 5;
 
-    // =========================================================================
+    // ============================================================================
     // 私有字段
-    // =========================================================================
+    // ============================================================================
 
     /// <summary>gRPC 客户端，用于测试连接（HealthAsync）。</summary>
     private readonly HostClient _client;
@@ -54,9 +52,9 @@ public sealed class SettingsViewModel : ViewModelBase {
     private string _saveConfirmText = string.Empty;
     private bool   _isTesting      = false;
 
-    // =========================================================================
+    // ============================================================================
     // 公开属性（XAML 双向绑定）
-    // =========================================================================
+    // ============================================================================
 
     /// <summary>
     /// Host.App gRPC 地址。绑定到 SettingsPage.txtAddress。
@@ -103,7 +101,7 @@ public sealed class SettingsViewModel : ViewModelBase {
         set {
             // 更新测试状态标志
             SetField(ref _isTesting, value);
-            // 同步通知 IsNotTesting（计算属性，供 IsEnabled 绑定使用）
+            // 同步通知 IsNotTesting（计算属性，供按钮 IsEnabled 绑定）
             OnPropertyChanged(nameof(IsNotTesting));
         }
     }
@@ -113,9 +111,9 @@ public sealed class SettingsViewModel : ViewModelBase {
     /// </summary>
     public bool IsNotTesting => !_isTesting;
 
-    // =========================================================================
+    // ============================================================================
     // 命令
-    // =========================================================================
+    // ============================================================================
 
     /// <summary>测试连接命令：向当前 HostAddress 发起 HealthAsync 并更新 TestResultText。</summary>
     public ICommand TestConnectionCommand { get; }
@@ -123,9 +121,9 @@ public sealed class SettingsViewModel : ViewModelBase {
     /// <summary>保存命令：将 HostAddress 写入 settings.json。</summary>
     public ICommand SaveCommand { get; }
 
-    // =========================================================================
+    // ============================================================================
     // 构造函数
-    // =========================================================================
+    // ============================================================================
 
     /// <param name="client">gRPC 客户端，用于测试连接，必须非 null。</param>
     public SettingsViewModel(HostClient client) {
@@ -142,9 +140,9 @@ public sealed class SettingsViewModel : ViewModelBase {
         SaveCommand = new RelayCommand(ExecuteSave);
     }
 
-    // =========================================================================
+    // ============================================================================
     // 命令实现
-    // =========================================================================
+    // ============================================================================
 
     /// <summary>
     /// 测试连接：向 HostAddress 创建临时客户端并调用 HealthAsync。
@@ -160,7 +158,7 @@ public sealed class SettingsViewModel : ViewModelBase {
         TestResultText = "连接中…";
         SaveConfirmText = string.Empty;
 
-        // 读取当前输入地址
+        // 读取当前输入地址，空值回落到开发默认
         string addr = string.IsNullOrWhiteSpace(_hostAddress)
             ? "http://localhost:5000"
             : _hostAddress.Trim();
@@ -193,7 +191,7 @@ public sealed class SettingsViewModel : ViewModelBase {
     /// 保存设置：将当前 HostAddress 序列化写入 settings.json。
     /// </summary>
     private void ExecuteSave() {
-        // 规范化地址（去空白）
+        // 规范化地址（去空白），空值回落到开发默认
         string addr = string.IsNullOrWhiteSpace(_hostAddress)
             ? "http://localhost:5000"
             : _hostAddress.Trim();
@@ -212,7 +210,7 @@ public sealed class SettingsViewModel : ViewModelBase {
                 new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(SettingsPath, json);
 
-            // 提示用户重启后生效
+            // 提示用户重启后生效（App 启动时才读取该文件）
             SaveConfirmText = "✔ 已保存，重启应用后生效";
             TestResultText  = string.Empty;
         } catch (Exception ex) {
@@ -221,9 +219,9 @@ public sealed class SettingsViewModel : ViewModelBase {
         }
     }
 
-    // =========================================================================
+    // ============================================================================
     // 持久化辅助
-    // =========================================================================
+    // ============================================================================
 
     /// <summary>
     /// 从 settings.json 读取已保存的 HostAddress。
@@ -232,6 +230,7 @@ public sealed class SettingsViewModel : ViewModelBase {
     private static string LoadSavedAddress() {
         const string defaultAddr = "http://localhost:5000";
         try {
+            // 文件不存在视为首次运行
             if (!File.Exists(SettingsPath))
                 return defaultAddr;
 
@@ -250,9 +249,9 @@ public sealed class SettingsViewModel : ViewModelBase {
         return defaultAddr;
     }
 
-    // =========================================================================
+    // ============================================================================
     // 内部设置数据模型
-    // =========================================================================
+    // ============================================================================
 
     /// <summary>settings.json 序列化模型，仅存储 HostAddress。</summary>
     private sealed class AppSettings {

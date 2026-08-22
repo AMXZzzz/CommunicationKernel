@@ -2,8 +2,8 @@
 
 // -----------------------------------------------------------------------------
 // 文件: Services/DeviceConfigStore.cs
-// 层级: UI层 — 服务实现
-// 作用: 把设备配置持久化到磁盘，作为上位机侧的唯一事实来源。
+// 层级: UI 层 — WPF 服务实现
+// 作用: 把设备配置持久化到磁盘，作为上位机侧的唯一事实来源，供路由对账恢复。
 //
 // 为什么需要它：
 //   Host.App 的路由是纯内存对象，进程重启即全部丢失。此前上位机没有任何
@@ -32,9 +32,9 @@ namespace CommunicationKernel.UI.Wpf.Services
     /// </summary>
     public sealed class DeviceConfigStore
     {
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 常量与字段
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>配置文件完整路径。</summary>
         private static readonly string FilePath = Path.Combine(
@@ -56,9 +56,9 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly Dictionary<string, DeviceRecord> _records
             = new Dictionary<string, DeviceRecord>(StringComparer.OrdinalIgnoreCase);
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 记录类型
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 一台设备的可持久化配置。
@@ -89,27 +89,29 @@ namespace CommunicationKernel.UI.Wpf.Services
             public string ExtraSettingsJson { get; set; }
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 构造
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>构造并立即从磁盘载入既有配置。</summary>
         /// <param name="log">可选日志记录器。</param>
         public DeviceConfigStore(IAppLogger log = null)
         {
             _log = log;
+            // 启动即载入，保证设备页构造时本地列表已有内容
             LoadFromDisk();
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 公开方法
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>返回全部已持久化的设备配置快照。</summary>
         public IReadOnlyList<DeviceRecord> GetAll()
         {
             lock (_lock)
             {
+                // 返回副本，避免调用方在锁外改内部字典
                 return new List<DeviceRecord>(_records.Values);
             }
         }
@@ -117,10 +119,12 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>按路由 ID 取配置；不存在返回 null。</summary>
         public DeviceRecord Get(string routeId)
         {
+            // 空 ID 无法对账，直接视为没有配置
             if (string.IsNullOrWhiteSpace(routeId)) return null;
 
             lock (_lock)
             {
+                // 命中返回记录，未命中返回 null（调用方据此决定是否重注册）
                 return _records.TryGetValue(routeId, out DeviceRecord record) ? record : null;
             }
         }
@@ -128,10 +132,12 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>写入（或覆盖）一台设备的配置并落盘。</summary>
         public void Save(string routeId, DeviceInfo info)
         {
+            // 缺 ID 或设备对象则无法持久化
             if (string.IsNullOrWhiteSpace(routeId) || info == null) return;
 
             lock (_lock)
             {
+                // 用当前 DeviceInfo 覆盖内存记录（含 gRPC 没有的名称/型号/轨道）
                 _records[routeId] = new DeviceRecord
                 {
                     Id                = routeId,
@@ -149,6 +155,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                     ExtraSettingsJson = info.ExtraSettingsJson
                 };
 
+                // 立即落盘，避免进程异常退出丢失刚保存的设备
                 FlushToDisk();
             }
         }
@@ -156,38 +163,45 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>删除一台设备的配置并落盘。</summary>
         public void Delete(string routeId)
         {
+            // 空 ID 无需处理
             if (string.IsNullOrWhiteSpace(routeId)) return;
 
             lock (_lock)
             {
+                // 真正删掉才写盘，避免无谓 I/O
                 if (_records.Remove(routeId))
                     FlushToDisk();
             }
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 磁盘 I/O
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>从磁盘载入；文件缺失或损坏时以空配置起步，不抛异常。</summary>
         private void LoadFromDisk()
         {
             try
             {
+                // 首次启动尚无文件，保持空字典即可
                 if (!File.Exists(FilePath)) return;
 
+                // 读取并反序列化设备列表
                 string json = File.ReadAllText(FilePath);
                 List<DeviceRecord> loaded =
                     JsonSerializer.Deserialize<List<DeviceRecord>>(json, SerializerOptions);
 
+                // JSON 为 null 时视为空配置
                 if (loaded == null) return;
 
                 foreach (DeviceRecord record in loaded)
                 {
+                    // 跳过损坏条目（缺 RouteId 无法作为字典键）
                     if (record != null && !string.IsNullOrWhiteSpace(record.Id))
                         _records[record.Id] = record;
                 }
 
+                // 记录载入条数，便于启动排查
                 _log?.Info("Device", string.Format("已从本地载入 {0} 台设备配置", _records.Count));
             }
             catch (Exception ex)
@@ -209,17 +223,19 @@ namespace CommunicationKernel.UI.Wpf.Services
         {
             try
             {
+                // 确保 %APPDATA%\CommunicationKernel 目录存在
                 string directory = Path.GetDirectoryName(FilePath);
                 if (!string.IsNullOrEmpty(directory))
                     Directory.CreateDirectory(directory);
 
+                // 序列化当前内存快照
                 string json = JsonSerializer.Serialize(
                     new List<DeviceRecord>(_records.Values), SerializerOptions);
 
                 string tempPath = FilePath + ".tmp";
                 File.WriteAllText(tempPath, json);
 
-                // 分支1：目标已存在——用 Replace 做原子替换
+                // 目标已存在则原子替换，否则直接改名
                 if (File.Exists(FilePath))
                     File.Replace(tempPath, FilePath, null);
                 else

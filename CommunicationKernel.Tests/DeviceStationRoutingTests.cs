@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: DeviceStationRoutingTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 验证「站号来自设备级配置」这条链路的正确性。
 // 背景:
 //   历史实现中站号只能通过地址前缀书写（如 "01:DT100"），设备表单里的站号字段
@@ -32,53 +32,86 @@ namespace CommunicationKernel.Tests;
 // 设备级站号 → 驱动默认站号
 // =============================================================================
 
+// 干净地址必须吃到设备表单里填的站号，无需再写 "05:" 前缀
 [TestClass]
 public class DefaultStationResolutionTests
 {
+    // MEWTOCOL：设备站号 5 + 干净地址 DT100 → 实际站号 5
     [TestMethod]
     public void Mewtocol_CleanAddress_UsesDeviceStation()
     {
+        // ============================================================================
+        // Arrange / Act
+        // ============================================================================
         // 设备表单填了站号 5，变量地址保持干净的 "DT100"
         var parsed = MewtocolAddress.Parse("DT100", defaultStation: 5);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(parsed.Success);
         Assert.AreEqual((byte)5, parsed.Value.Station,
             "设备级站号应作为默认站号生效，无需在地址中书写 '05:' 前缀");
     }
 
+    // RS-485 一主多从：地址前缀必须能覆盖设备级站号
     [TestMethod]
     public void Mewtocol_AddressPrefix_OverridesDeviceStation()
     {
+        // ============================================================================
+        // Arrange / Act
+        // ============================================================================
         // RS-485 一主多从：同一路由下个别变量指向别的站
         var parsed = MewtocolAddress.Parse("07:DT100", defaultStation: 5);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(parsed.Success);
         Assert.AreEqual((byte)7, parsed.Value.Station,
             "地址前缀应覆盖设备级站号");
     }
 
+    // Modbus 三种变体共用同一份解析，干净地址吃到设备 UnitId
     [TestMethod]
     public void Modbus_CleanAddress_UsesDeviceUnitId()
     {
+        // ============================================================================
+        // Arrange / Act
+        // ============================================================================
         // 三种 Modbus 变体共用同一份地址解析，一次断言即覆盖全部
         var parsed = ModbusSharedAddress.Parse("40001", defaultUnitId: 9);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(parsed.Success);
         Assert.AreEqual((byte)9, parsed.Value.UnitId);
     }
 
+    // 地址前缀 "3:" 覆盖设备 UnitId 9
     [TestMethod]
     public void Modbus_AddressPrefix_OverridesDeviceUnitId()
     {
+        // ============================================================================
+        // Arrange / Act
+        // ============================================================================
         var parsed = ModbusSharedAddress.Parse("3:40001", defaultUnitId: 9);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(parsed.Success);
         Assert.AreEqual((byte)3, parsed.Value.UnitId);
     }
 
+    // 未传默认站号时保持历史行为（站号 1），既有调用方不受影响
     [TestMethod]
     public void Parse_WithoutExplicitDefault_KeepsLegacyStationOne()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // 未传默认站号时行为与历史一致，保证既有调用方不受影响
         Assert.AreEqual((byte)1, MewtocolAddress.Parse("DT100").Value.Station);
         Assert.AreEqual((byte)1, ModbusSharedAddress.Parse("40001").Value.UnitId);
@@ -89,37 +122,54 @@ public class DefaultStationResolutionTests
 // 站号原文 → 默认站号的安全回落
 // =============================================================================
 
+// 非法/越界站号必须回落到 1，不得让整条路由注册失败
 [TestClass]
 public class StationFallbackTests
 {
+    // null / 空 / 空白一律回落到站号 1
     [TestMethod]
     public void Mewtocol_NullOrEmptyStation_FallsBackToOne()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual((byte)1, MewtocolAddress.ResolveDefaultStation(null));
         Assert.AreEqual((byte)1, MewtocolAddress.ResolveDefaultStation(""));
         Assert.AreEqual((byte)1, MewtocolAddress.ResolveDefaultStation("   "));
     }
 
+    // MEWTOCOL 有效站号 1-99，越界与非数字都回落，路由仍可用
     [TestMethod]
     public void Mewtocol_OutOfRangeStation_FallsBackToOne()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // MEWTOCOL 有效站号 1-99，越界值不应使整条路由不可用
         Assert.AreEqual((byte)1, MewtocolAddress.ResolveDefaultStation("0"));
         Assert.AreEqual((byte)1, MewtocolAddress.ResolveDefaultStation("100"));
         Assert.AreEqual((byte)1, MewtocolAddress.ResolveDefaultStation("abc"));
     }
 
+    // 合法站号（含首尾空白）必须按数字解析
     [TestMethod]
     public void Mewtocol_ValidStation_IsParsed()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual((byte)1,  MewtocolAddress.ResolveDefaultStation("1"));
         Assert.AreEqual((byte)42, MewtocolAddress.ResolveDefaultStation("42"));
         Assert.AreEqual((byte)99, MewtocolAddress.ResolveDefaultStation(" 99 "));
     }
 
+    // Modbus 从站 1-247；248-255 为保留值，越界回落到 1
     [TestMethod]
     public void Modbus_OutOfRangeUnitId_FallsBackToOne()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // Modbus 有效从站地址 1-247，248-255 为保留值。
         // 三种变体共用同一份解析，不再存在"只在其中一份修好"的漂移风险。
         Assert.AreEqual((byte)1, ModbusSharedAddress.ResolveDefaultUnitId("0"));
@@ -133,57 +183,99 @@ public class StationFallbackTests
 // 驱动工厂：站号经 ProtocolDriverContext 注入
 // =============================================================================
 
+// 工厂必须把 Context.Station 写进实际发出的帧，而不是只存在于配置对象里
 [TestClass]
 public class ProtocolDriverContextTests
 {
+    // MEWTOCOL 帧头 '%' + 两位十六进制站号：23 → 0x17
     [TestMethod]
     public void MewtocolFactory_StationFromContext_AppliedToCleanAddress()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var factory = new MewtocolProtocolDriverFactory();
         IProtocolDriver driver = factory.CreateDriver(
             new ProtocolDriverContext { Station = "23" });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         // 干净地址构建出的帧应携带设备级站号 23（十六进制 "17"）
         var frame = driver.BuildReadFrame("DT100", 2);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(frame.Success);
         string text = System.Text.Encoding.ASCII.GetString(frame.Value);
         StringAssert.StartsWith(text, "%17#",
             "MEWTOCOL 帧头应为 '%' + 两位十六进制站号，23 → 0x17");
     }
 
+    // 未传 Context 时回落到站号 1，帧头为 %01#
     [TestMethod]
     public void MewtocolFactory_NullContext_UsesStationOne()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var driver = new MewtocolProtocolDriverFactory().CreateDriver(null);
+
+        // ============================================================================
+        // Act
+        // ============================================================================
         var frame  = driver.BuildReadFrame("DT100", 2);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(frame.Success);
         string text = System.Text.Encoding.ASCII.GetString(frame.Value);
         StringAssert.StartsWith(text, "%01#");
     }
 
+    // Modbus TCP：设备站号写入 MBAP 第 6 字节（Unit ID）
     [TestMethod]
     public void ModbusTcpFactory_StationFromContext_AppliedToUnitIdByte()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var driver = new ModbusTcpProtocolDriverFactory().CreateDriver(
             new ProtocolDriverContext { Station = "6" });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         var frame = driver.BuildReadFrame("40001", 2);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(frame.Success);
         // MBAP 头第 6 字节（0 基）为 Unit ID
         Assert.AreEqual((byte)6, frame.Value[6]);
     }
 
+    // 空站号回落到 Unit ID 1，不得发出 Unit ID 0（广播）
     [TestMethod]
     public void ModbusTcpFactory_EmptyStation_FallsBackToUnitIdOne()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var driver = new ModbusTcpProtocolDriverFactory().CreateDriver(
             new ProtocolDriverContext { Station = "" });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         var frame = driver.BuildReadFrame("40001", 2);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(frame.Success);
         Assert.AreEqual((byte)1, frame.Value[6]);
     }
@@ -193,12 +285,17 @@ public class ProtocolDriverContextTests
 // 协议元信息：UI 渲染设备表单的唯一依据
 // =============================================================================
 
+// UI 完全按元信息渲染：介质清单、站号是否必填、ProtocolId 格式都必须正确
 [TestClass]
 public class ProtocolMetadataContractTests
 {
+    // 能跑在串口上的协议必须声明 Serial，否则 UI 不会给出串口选项
     [TestMethod]
     public void SerialCapableProtocols_DeclareSerialSupport()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         CollectionAssert.Contains(
             new ModbusRtuProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
             TransportKind.Serial);
@@ -210,9 +307,13 @@ public class ProtocolMetadataContractTests
             TransportKind.Serial);
     }
 
+    // RTU/ASCII/MEWTOCOL 也必须支持 TCP：现场常见串口服务器透传
     [TestMethod]
     public void RtuAndAscii_AlsoSupportTcp_ForSerialOverEthernetGateways()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // 现场常见接法：Modbus RTU 经 TCP 转串口透传装置（Moxa NPort、USR-TCP232 等）
         // 接入以太网。若把协议锁死为单一介质，这类设备将完全无法接入。
         CollectionAssert.Contains(
@@ -226,9 +327,13 @@ public class ProtocolMetadataContractTests
             TransportKind.Tcp);
     }
 
+    // 防回归：读 1 字节 DT 不得因 length==1 被转成 RCS 触点读
     [TestMethod]
     public void Mewtocol_SingleByteReadOnWordAddress_StaysDataRead()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 防回归：历史实现写作 (addr.IsBit || length == 1)，
         // 读 1 字节的 DT 字寄存器会被转成 RCS 单点读，
         // 返回完全不同数据区的位值且全程 Success = true。
@@ -236,8 +341,14 @@ public class ProtocolMetadataContractTests
         var driver = new MewtocolProtocolDriverFactory()
             .CreateDriver(new ProtocolDriverContext { Station = "1" });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         var frame = driver.BuildReadFrame("DT100", 1);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(frame.Success);
         string text = System.Text.Encoding.ASCII.GetString(frame.Value);
         StringAssert.Contains(text, "#RD",
@@ -245,12 +356,19 @@ public class ProtocolMetadataContractTests
         Assert.DoesNotContain("#RCS", text);
     }
 
+    // 位地址不论请求多少字节都走 RCS——数据区只由地址决定
     [TestMethod]
     public void Mewtocol_BitAddress_AlwaysUsesContactRead()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var driver = new MewtocolProtocolDriverFactory()
             .CreateDriver(new ProtocolDriverContext { Station = "1" });
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         // 位地址不论请求多少字节都走 RCS——数据区只由地址决定
         foreach (int len in new[] { 1, 2, 8 })
         {
@@ -260,29 +378,47 @@ public class ProtocolMetadataContractTests
         }
     }
 
+    // length<=0 必须拒绝，不得发出读 0 个的帧
     [TestMethod]
     public void Mewtocol_NonPositiveLength_IsRejected()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var driver = new MewtocolProtocolDriverFactory().CreateDriver(null);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(driver.BuildReadFrame("DT100", 0).Success);
         Assert.IsFalse(driver.BuildReadFrame("DT100", -1).Success);
     }
 
+    // 帧格式与介质无关，只应有一个 ProtocolId，拆成 -tcp/-serial 会让同一协议出现两份元信息
     [TestMethod]
     public void Mewtocol_IsSingleProtocolAcrossBothTransports()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 帧格式与介质无关，因此只应存在一个 ProtocolId，
         // 拆成 -tcp / -serial 会让同一协议出现两份元信息
         ProtocolMetadata meta = new MewtocolProtocolDriverFactory().Metadata;
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual("panasonic-mewtocol", meta.ProtocolId);
         Assert.HasCount(2, meta.SupportedTransports);
     }
 
+    // MBAP 与 TPKT/COTP 依赖 TCP 可靠流，不得声明串口
     [TestMethod]
     public void TcpOnlyProtocols_DoNotDeclareSerial()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // MBAP 与 TPKT/COTP 均依赖 TCP 的可靠有序流，无串口对应形式
         CollectionAssert.DoesNotContain(
             new ModbusTcpProtocolDriverFactory().Metadata.SupportedTransports.ToArray(),
@@ -292,24 +428,36 @@ public class ProtocolMetadataContractTests
             TransportKind.Serial);
     }
 
+    // 站号型协议必须声明 RequiresStation，UI 才会渲染站号输入框
     [TestMethod]
     public void StationBasedProtocols_RequireStation()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(new ModbusTcpProtocolDriverFactory().Metadata.RequiresStation);
         Assert.IsTrue(new ModbusRtuProtocolDriverFactory().Metadata.RequiresStation);
         Assert.IsTrue(new MewtocolProtocolDriverFactory().Metadata.RequiresStation);
     }
 
+    // S7 站号已固化在 TSAP 里，不得再要操作员填站号
     [TestMethod]
     public void S7_DoesNotRequireStation_RackSlotFixedInTsap()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(new SiemensS7_1200ProtocolDriverFactory().Metadata.RequiresStation);
         Assert.IsFalse(new SiemensS7_200SmartProtocolDriverFactory().Metadata.RequiresStation);
     }
 
+    // StationHint 会直接展示给操作员，缺失会导致不知道填什么范围
     [TestMethod]
     public void ProtocolsRequiringStation_ProvideHintText()
     {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // UI 直接展示该文案，缺失会导致操作员不知道填什么范围
         Assert.IsFalse(string.IsNullOrWhiteSpace(
             new ModbusTcpProtocolDriverFactory().Metadata.StationHint));
@@ -317,9 +465,13 @@ public class ProtocolMetadataContractTests
             new MewtocolProtocolDriverFactory().Metadata.StationHint));
     }
 
+    // 防回归：UI 曾把展示名当 ProtocolId 回传，服务端匹配不到工厂
     [TestMethod]
     public void AllProtocolIds_AreLowerKebabCase_NotDisplayNames()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 防回归：UI 曾把展示名当 ProtocolId 回传，导致服务端匹配不到协议工厂
         string[] ids = {
             new ModbusTcpProtocolDriverFactory().Metadata.ProtocolId,
@@ -330,6 +482,9 @@ public class ProtocolMetadataContractTests
             new SiemensS7_200SmartProtocolDriverFactory().Metadata.ProtocolId,
         };
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         foreach (string id in ids)
         {
             Assert.IsFalse(string.IsNullOrWhiteSpace(id));

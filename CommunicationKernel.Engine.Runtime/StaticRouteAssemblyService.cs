@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: StaticRouteAssemblyService.cs
-// 层级: Engine
+// 层级: Engine.Runtime
+// 作用: 由调用方在编译期直接提供工厂实例的装配服务，不扫描文件系统。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Communication.Protocol.Abstractions;
@@ -66,19 +67,23 @@ public sealed class StaticRouteAssemblyService : IRouteAssemblyService {
         int defaultSerialMinIoIntervalMs = 15,
         ILogger<StaticRouteAssemblyService>? logger = null) {
 
+        // 工厂集合为必填：没有传输工厂无法建链，没有协议工厂无法造驱动
         ArgumentNullException.ThrowIfNull(transportFactories);
         ArgumentNullException.ThrowIfNull(protocolFactories);
 
+        // 物化为列表：后续装配/枚举会多次遍历，且需立即校验非空
         IReadOnlyList<ITransportFactory> transports = transportFactories.ToList();
         _transportFactories = transports;
         _protocolFactories = protocolFactories.ToList();
 
+        // 空集合在首次 RegisterRoute 才暴露为「找不到插件」，构造期拒绝更早、更清楚
         if (transports.Count == 0)
             throw new ArgumentException("至少需要提供一个传输工厂", nameof(transportFactories));
         if (_protocolFactories.Count == 0)
             throw new ArgumentException("至少需要提供一个协议工厂", nameof(protocolFactories));
 
         ILogger log = logger ?? NullLogger<StaticRouteAssemblyService>.Instance;
+        // 装配过程与插件扫描路径共用 RouteAssembler，避免两套实现漂移
         _assembler = new RouteAssembler(transports, _protocolFactories, defaultSerialMinIoIntervalMs, log);
 
         log.LogInformation(
@@ -88,6 +93,7 @@ public sealed class StaticRouteAssemblyService : IRouteAssemblyService {
 
     /// <inheritdoc />
     public IReadOnlyList<ProtocolMetadata> GetAvailableProtocols()
+        // 数据源是调用方注入的工厂，与是否已注册路由无关
         => _protocolFactories
             .Select(f => f.Metadata)
             .Where(m => !string.IsNullOrWhiteSpace(m.ProtocolId))
@@ -103,5 +109,6 @@ public sealed class StaticRouteAssemblyService : IRouteAssemblyService {
     /// <inheritdoc />
     public Task<OperationResult<RouteAssemblyResult>> AssembleAsync(
         RegisterRouteCommand command, CancellationToken cancellationToken)
+        // 选工厂、建链、造驱动全部委托给共享装配器
         => _assembler.AssembleAsync(command, cancellationToken);
 }

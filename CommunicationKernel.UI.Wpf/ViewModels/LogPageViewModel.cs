@@ -1,13 +1,13 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: ViewModels/LogPageViewModel.cs
-// 层级: UI层 — 日志页 ViewModel
-// 作用: 订阅 IAppLogger.EntryAdded 事件，将日志条目转化为 UI 可绑定的视图模型，
-//       支持级别过滤和关键字过滤，并提供清空命令。
+// 层级: UI 层 — WPF 日志页 ViewModel
+// 作用: 订阅 IAppLogger.EntryAdded，将日志转为可绑定项，支持级别/关键字过滤与清空。
 // 调用链:
-//   IAppLogger（任意服务层）→ EntryAdded 事件
-//     → LogPageViewModel.OnEntryAdded → FilteredEntries (ObservableCollection)
-//       → ListBox / DataGrid (XAML 绑定)
+//   IAppLogger（任意服务层）→ EntryAdded
+//     → LogPageViewModel.OnEntryAdded → FilteredEntries → ListBox / DataGrid
+// -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -17,9 +17,9 @@ using CommunicationKernel.UI.Wpf.Core.Logging;
 
 namespace CommunicationKernel.UI.Wpf.ViewModels
 {
-    // =============================================================================
+    // ============================================================================
     // 单条日志条目 ViewModel
-    // =============================================================================
+    // ============================================================================
 
     /// <summary>
     /// 日志列表中一行的显示数据。
@@ -47,7 +47,7 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
         {
             get
             {
-                // 根据级别返回对应颜色
+                // 按级别返回日志页 Foreground 颜色
                 switch (Level)
                 {
                     case "ERROR":
@@ -63,9 +63,9 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
         }
     }
 
-    // =============================================================================
+    // ============================================================================
     // 日志页 ViewModel
-    // =============================================================================
+    // ============================================================================
 
     /// <summary>
     /// 通讯日志页的 ViewModel。
@@ -74,9 +74,9 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
     /// </summary>
     public sealed class LogPageViewModel : ViewModelBase
     {
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 常量与字段
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>UI 显示列表的最大条目数，超出时移除最旧的条目防止内存增长。</summary>
         private const int MaxDisplayEntries = 2000;
@@ -93,9 +93,9 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
         private string _filterText  = string.Empty;
         private bool   _autoScroll  = true;
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 公开属性
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 过滤后的日志条目，绑定到 ListBox / DataGrid。
@@ -115,7 +115,7 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
             {
                 if (SetProperty(ref _filterLevel, value))
                 {
-                    // 过滤条件改变，重新计算显示列表
+                    // 级别条件改变，重新计算显示列表
                     ApplyFilter();
                 }
             }
@@ -145,16 +145,16 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
             set => SetProperty(ref _autoScroll, value);
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 命令
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>清空所有日志命令，清空 IAppLogger 的缓冲区及本 ViewModel 的显示列表。</summary>
         public RelayCommand ClearCommand { get; }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 构造函数
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 初始化 LogPageViewModel 并订阅 IAppLogger 的日志事件。
@@ -162,17 +162,17 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
         /// <param name="logger">应用日志记录器，必须非 null。</param>
         public LogPageViewModel(IAppLogger logger)
         {
-            // 保存日志器引用并订阅事件
+            // 保存日志器引用并订阅新条目事件
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _logger.EntryAdded += OnEntryAdded;
 
             // 绑定清空命令
             ClearCommand = new RelayCommand(ExecuteClear);
 
-            // 加载已有的历史条目（如果 MemoryAppLogger 中已有日志）
+            // 加载已有的历史条目（启动阶段服务层可能已写过日志）
             foreach (LogEntry entry in _logger.GetRecent())
             {
-                // 将历史条目转为 ViewModel 并根据当前过滤条件决定是否加入显示列表
+                // 将历史条目转为 ViewModel，符合当前过滤条件才加入显示列表
                 LogEntryItemViewModel vm = ConvertEntry(entry);
                 _allEntries.Add(vm);
                 if (MatchesFilter(vm))
@@ -180,9 +180,9 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
             }
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 事件处理
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 响应 IAppLogger.EntryAdded 事件，将新条目追加到显示列表。
@@ -216,9 +216,9 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
             });
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 私有方法
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 将 LogEntry 核心模型转换为 UI 绑定用的 LogEntryItemViewModel。

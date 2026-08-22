@@ -12,6 +12,10 @@ using CommunicationKernel.Plugin.Loader.Abstractions;
 
 namespace CommunicationKernel.Plugins.Protocol.Siemens.S7;
 
+// ============================================================================
+// Manifest
+// ============================================================================
+
 /// <summary>
 /// 西门子 S7 合并插件 Manifest（包含 S7-1200 与 S7-200Smart）。
 /// </summary>

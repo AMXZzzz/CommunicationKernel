@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: EngineRuntimeLifecycleTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 覆盖 EngineRuntime 的注册/注销生命周期与状态广播语义。
 // 覆盖缺陷:
 //   #12 并发注册同一 RouteId 的 TOCTOU 竞态（旧实现会覆盖登记项并泄漏连接）
@@ -27,6 +27,7 @@ using CommunicationKernel.Engine.Runtime.Models;
 
 namespace CommunicationKernel.Tests;
 
+// 生命周期：注册互斥、注销终态、状态只在变化时广播
 [TestClass]
 public sealed class EngineRuntimeLifecycleTests
 {
@@ -34,13 +35,20 @@ public sealed class EngineRuntimeLifecycleTests
     // #12 — 并发注册竞态
     // =========================================================================
 
+    // 同一 RouteId 并发注册必须只成功一个，其余以 RouteBusy 拒绝
     [TestMethod]
     public async Task RegisterRoute_ConcurrentSameRouteId_OnlyOneSucceeds()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 装配服务人为放慢，放大「检查-装配-登记」之间的竞态窗口
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 50);
         var runtime  = new EngineRuntime(assembly, NewOrchestrator());
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         // 8 个请求并发注册同一个 RouteId
         Task<OperationResult<string>>[] tasks = Enumerable.Range(0, 8)
             .Select(i => runtime.RegisterRouteAsync(
@@ -49,18 +57,28 @@ public sealed class EngineRuntimeLifecycleTests
 
         OperationResult<string>[] results = await Task.WhenAll(tasks);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         int succeeded = results.Count(r => r.Success);
         Assert.AreEqual(1, succeeded,
             "同一 RouteId 并发注册应当只有一个成功，其余以 RouteBusy 拒绝");
         Assert.HasCount(1, runtime.SnapshotRoutes());
     }
 
+    // 落败的并发装配必须回滚释放 TransportClient，否则 socket 成为孤儿
     [TestMethod]
     public async Task RegisterRoute_LosersDoNotLeakTransportClients()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 50);
         var runtime  = new EngineRuntime(assembly, NewOrchestrator());
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         Task<OperationResult<string>>[] tasks = Enumerable.Range(0, 8)
             .Select(i => runtime.RegisterRouteAsync(
                 NewCommand("route-A", address: $"10.0.0.{i}"), CancellationToken.None))
@@ -68,6 +86,9 @@ public sealed class EngineRuntimeLifecycleTests
 
         await Task.WhenAll(tasks);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         // 每次装配都会创建一个 TransportClient；未能登记的那些必须被回滚释放，
         // 否则 socket 成为无人引用的孤儿（旧实现正是如此泄漏的）。
         int created  = assembly.CreatedClients.Count;
@@ -77,12 +98,19 @@ public sealed class EngineRuntimeLifecycleTests
             $"应有 {created - 1} 个落败装配被回滚释放，实际 {disposed}");
     }
 
+    // 装配失败必须释放占位，否则该 RouteId 被永久占死
     [TestMethod]
     public async Task RegisterRoute_FailedAssembly_ReleasesReservation()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 0) { FailAssembly = true };
         var runtime  = new EngineRuntime(assembly, NewOrchestrator());
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         OperationResult<string> first = await runtime.RegisterRouteAsync(
             NewCommand("route-A"), CancellationToken.None);
         Assert.IsFalse(first.Success);
@@ -92,15 +120,25 @@ public sealed class EngineRuntimeLifecycleTests
         OperationResult<string> second = await runtime.RegisterRouteAsync(
             NewCommand("route-A"), CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(second.Success, "装配失败后占位应已释放，允许重新注册");
     }
 
+    // 相同 protocol+address+port+station 构成相同 RouteKey，重复必须拒绝并回滚
     [TestMethod]
     public async Task RegisterRoute_DuplicateRouteKey_IsRejectedAndRolledBack()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var assembly = new SlowFakeAssemblyService(assembleDelayMs: 0);
         var runtime  = new EngineRuntime(assembly, NewOrchestrator());
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         // 相同 protocol+address+port+station 构成相同 RouteKey
         Assert.IsTrue((await runtime.RegisterRouteAsync(
             NewCommand("route-A", address: "10.0.0.1"), CancellationToken.None)).Success);
@@ -108,6 +146,9 @@ public sealed class EngineRuntimeLifecycleTests
         OperationResult<string> dup = await runtime.RegisterRouteAsync(
             NewCommand("route-B", address: "10.0.0.1"), CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(dup.Success, "指向同一物理设备的重复路由应被拒绝");
         Assert.AreEqual(KernelErrorCode.RouteBusy, dup.ErrorCode);
         Assert.IsTrue(assembly.CreatedClients[1].Disposed, "被拒绝的装配必须回滚释放连接");
@@ -117,14 +158,21 @@ public sealed class EngineRuntimeLifecycleTests
     // 注销与重注册
     // =========================================================================
 
+    // 「更新设备参数」= 先注销再注册，占位未释放就会失败
     [TestMethod]
     public async Task UnregisterRoute_AllowsReRegisteringSameRouteId()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var runtime = new EngineRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
 
         Assert.IsTrue((await runtime.RegisterRouteAsync(
             NewCommand("route-A"), CancellationToken.None)).Success);
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         Assert.IsTrue((await runtime.UnregisterRouteAsync(
             "route-A", CancellationToken.None)).Success);
 
@@ -132,17 +180,30 @@ public sealed class EngineRuntimeLifecycleTests
         OperationResult<string> again = await runtime.RegisterRouteAsync(
             NewCommand("route-A", address: "10.9.9.9"), CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(again.Success, "注销后同名 RouteId 应可重新注册");
     }
 
+    // 注销不存在的路由必须返回 RouteNotFound，而不是静默成功
     [TestMethod]
     public async Task UnregisterRoute_NotFound_ReturnsRouteNotFound()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var runtime = new EngineRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         OperationResult result = await runtime.UnregisterRouteAsync(
             "missing", CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(result.Success);
         Assert.AreEqual(KernelErrorCode.RouteNotFound, result.ErrorCode);
     }
@@ -151,33 +212,53 @@ public sealed class EngineRuntimeLifecycleTests
     // #16 — 注销广播终态
     // =========================================================================
 
+    // 注销必须广播一次离线终态，否则其他客户端会永远显示该设备在线
     [TestMethod]
     public async Task UnregisterRoute_BroadcastsFinalOfflineEvent()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var runtime = new EngineRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
         var events  = new List<RouteStatusSnapshot>();
 
         await runtime.RegisterRouteAsync(NewCommand("route-A"), CancellationToken.None);
         runtime.RouteStatusChanged += s => { lock (events) events.Add(s); };
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         await runtime.UnregisterRouteAsync("route-A", CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.HasCount(1, events, "注销应恰好广播一次终态事件");
         Assert.AreEqual("route-A", events[0].RouteId);
         Assert.IsFalse(events[0].Online,
             "终态必须是离线，否则其他客户端会永远显示该设备在线");
     }
 
+    // 已注销路由不得在状态快照中留下幽灵条目
     [TestMethod]
     public async Task UnregisterRoute_RemovesStatusSnapshot()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var runtime = new EngineRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
 
         await runtime.RegisterRouteAsync(NewCommand("route-A"), CancellationToken.None);
         Assert.HasCount(1, runtime.SnapshotStatuses("route-A"));
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         await runtime.UnregisterRouteAsync("route-A", CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsEmpty(runtime.SnapshotStatuses("route-A"),
             "已注销路由不应在状态快照中留下幽灵条目");
     }
@@ -186,15 +267,22 @@ public sealed class EngineRuntimeLifecycleTests
     // #8 — 状态仅在变化时广播
     // =========================================================================
 
+    // 连续成功读取不得刷状态事件，否则轮询会淹没所有订阅客户端
     [TestMethod]
     public async Task RepeatedSuccessfulReads_DoNotFloodStatusEvents()
     {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var runtime = new EngineRuntime(new SlowFakeAssemblyService(0), NewOrchestrator());
         await runtime.RegisterRouteAsync(NewCommand("route-A"), CancellationToken.None);
 
         int eventCount = 0;
         runtime.RouteStatusChanged += _ => Interlocked.Increment(ref eventCount);
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         // 连续 20 次成功读取，状态始终为「在线」，不应产生任何状态变化事件
         for (int i = 0; i < 20; i++)
         {
@@ -203,6 +291,9 @@ public sealed class EngineRuntimeLifecycleTests
             Assert.IsTrue(read.Success);
         }
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual(0, eventCount,
             "状态未变化时不得广播事件——否则轮询场景下会淹没所有订阅客户端");
     }

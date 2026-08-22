@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ReadCoordinator.cs
+// 层级: Engine.Router / Runtime
+// 作用: 协调同一读请求键的并发读取，避免多 UI 轮询重复打点同一 PLC 地址。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
@@ -45,9 +51,11 @@ public sealed class ReadCoordinator : IReadCoordinator {
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
         CancellationToken cancellationToken) {
 
+        // 读委托缺失无法打点设备，直接以参数错误失败，避免空引用进入合并表
         if (readAction is null)
             return OperationResult<byte[]>.Fail("readAction is null", KernelErrorCode.InvalidArgument);
 
+        // 加入已有的同键在途读取，或创建新的——多 UI 轮询同一地址只打点 PLC 一次
         InflightRead inflight = Join(requestKey, readAction);
 
         try {
@@ -58,6 +66,7 @@ public sealed class ReadCoordinator : IReadCoordinator {
             inflight.Leave();
             return OperationResult<byte[]>.Fail("Cancelled", KernelErrorCode.Cancelled);
         } catch (Exception ex) {
+            // 非取消异常（如共享任务本身故障）：映射为 Unknown，不误触发重连
             return OperationResult<byte[]>.Fail(ex.Message, KernelErrorCode.Unknown);
         }
     }
@@ -72,7 +81,9 @@ public sealed class ReadCoordinator : IReadCoordinator {
         ReadRequestKey requestKey,
         Func<CancellationToken, Task<OperationResult<byte[]>>> readAction) {
 
+        // GetOrAdd 与 TryEnter 之间存在「条目刚完成」窗口，必须循环直到成功加入
         while (true) {
+            // 同键已有在途读则复用；否则工厂创建新条目（工厂可能被推测性调用，真正 I/O 延迟启动）
             InflightRead existing = _inflight.GetOrAdd(
                 requestKey,
                 key => new InflightRead(key, readAction, _inflight));
@@ -82,6 +93,7 @@ public sealed class ReadCoordinator : IReadCoordinator {
             if (existing.TryEnter())
                 return existing;
 
+            // 条件移除：只删掉这个已收尾的实例，避免误删后来者刚插入的新条目
             _inflight.TryRemove(new KeyValuePair<ReadRequestKey, InflightRead>(requestKey, existing));
         }
     }
@@ -90,6 +102,7 @@ public sealed class ReadCoordinator : IReadCoordinator {
     /// 一次在途读取及其参与者引用计数。
     /// </summary>
     private sealed class InflightRead {
+        // 独立取消源：与任一调用方的令牌解耦，只有全部参与者离开才取消底层 PLC 读
         private readonly CancellationTokenSource _cts = new();
         private readonly ConcurrentDictionary<ReadRequestKey, InflightRead> _owner;
         private readonly ReadRequestKey _key;
@@ -117,6 +130,7 @@ public sealed class ReadCoordinator : IReadCoordinator {
 
             _key   = key;
             _owner = owner;
+            // ExecutionAndPublication：多线程首次访问只启动一次真实 PLC 读
             _task  = new Lazy<Task<OperationResult<byte[]>>>(
                 () => RunAsync(readAction), LazyThreadSafetyMode.ExecutionAndPublication);
         }
@@ -126,13 +140,16 @@ public sealed class ReadCoordinator : IReadCoordinator {
 
         /// <summary>尝试加入；条目已完成时返回 false。</summary>
         public bool TryEnter() {
+            // 已完成的条目不再接受新参与者，调用方应走 Join 重试拿到新条目
             if (Volatile.Read(ref _completed) != 0)
                 return false;
 
+            // 先占名额，再二次检查完成标志——关闭「检查与自增之间刚好完成」的窗口
             Interlocked.Increment(ref _participants);
 
             // 再检查一次：可能在自增之前刚好完成
             if (Volatile.Read(ref _completed) != 0) {
+                // 条目已收尾：退还刚占的名额，避免引用计数泄漏导致底层 I/O 永不取消
                 Interlocked.Decrement(ref _participants);
                 return false;
             }
@@ -141,10 +158,12 @@ public sealed class ReadCoordinator : IReadCoordinator {
 
         /// <summary>某参与者放弃等待；最后一个离开时取消底层 I/O。</summary>
         public void Leave() {
+            // 仍有其他 UI/调用方在等同一份结果：不取消底层 PLC 读
             if (Interlocked.Decrement(ref _participants) > 0)
                 return;
 
             try {
+                // 最后一个等待者已走：取消底层读，避免无人认领的 I/O 继续占用独占门控
                 _cts.Cancel();
             } catch (ObjectDisposedException) {
                 // 读取已收尾，无需取消
@@ -155,15 +174,22 @@ public sealed class ReadCoordinator : IReadCoordinator {
             Func<CancellationToken, Task<OperationResult<byte[]>>> readAction) {
 
             try {
+                // 用独立 CTS 驱动真正的协议读；任一调用方取消自己的令牌不会传到这里
                 OperationResult<byte[]> result = await readAction(_cts.Token).ConfigureAwait(false);
+                // 协议驱动返回 null 视为未知故障，避免上游 NRE
                 return result ?? OperationResult<byte[]>.Fail("readAction returned null", KernelErrorCode.Unknown);
             } catch (OperationCanceledException) {
+                // 全部参与者离开或外部取消：映射为 Cancelled，上层不得据此重连
                 return OperationResult<byte[]>.Fail("Cancelled", KernelErrorCode.Cancelled);
             } catch (Exception ex) {
+                // 协议/传输抛出的未分类异常：包装后交给上层策略（重连由 EngineRuntime 判定）
                 return OperationResult<byte[]>.Fail(ex.Message, KernelErrorCode.Unknown);
             } finally {
+                // 标记完成，阻止新参与者加入这个即将移除的条目
                 Volatile.Write(ref _completed, 1);
+                // 条件移除自身：只删这个实例，避免误删 Join 重试后插入的新条目
                 _owner.TryRemove(new KeyValuePair<ReadRequestKey, InflightRead>(_key, this));
+                // 释放独立取消源；此后 Leave 中的 Cancel 会碰到 ObjectDisposedException
                 _cts.Dispose();
             }
         }

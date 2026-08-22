@@ -1,9 +1,10 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: Core/Interfaces/IDeviceService.cs
-// 层级: UI层 — 核心接口
-// 作用: 定义设备管理服务的抽象接口，供 DevicePageViewModel 依赖注入使用。
-//       具体实现（GrpcDeviceService）封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus。
+// 层级: UI 层 — WPF 核心接口
+// 作用: 设备管理抽象，供 DevicePageViewModel 注入；实现封装 gRPC 路由生命周期。
+// -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.ObjectModel;

@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: RouterOrchestratorTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 用替身隔离验证 RouterOrchestrator 的编排语义本身。
 //
 // 为什么要用替身：
@@ -27,6 +27,7 @@ using CommunicationKernel.Engine.Router.Models;
 
 namespace CommunicationKernel.Tests;
 
+// 编排器只委托、不自实现；注销必须先摘表再释放
 [TestClass]
 public class RouterOrchestratorTests {
 
@@ -34,8 +35,12 @@ public class RouterOrchestratorTests {
     // 构造契约
     // =========================================================================
 
+    // 依赖为 null 必须立刻失败，而不是在第一次调用时 NRE
     [TestMethod]
     public void Constructor_RejectsNullDependencies() {
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.ThrowsExactly<ArgumentNullException>(
             () => new RouterOrchestrator(null!, new SpyReadCoordinator()));
         Assert.ThrowsExactly<ArgumentNullException>(
@@ -46,43 +51,77 @@ public class RouterOrchestratorTests {
     // 转发语义：编排器不自行实现路由表，只委托
     // =========================================================================
 
+    // TryRegister 必须原样转发给 ConnectionRouter
     [TestMethod]
     public void TryRegister_DelegatesToConnectionRouter() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var router = new SpyConnectionRouter();
         var sut = new RouterOrchestrator(router, new SpyReadCoordinator());
         RouteEntry entry = NewEntry();
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         bool ok = sut.TryRegister(entry);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(ok);
         CollectionAssert.AreEqual(new[] { "TryRegister" }, router.Calls);
         Assert.AreSame(entry, router.LastRegistered);
     }
 
+    // 路由表拒绝时编排器必须原样传播，不得自行重试
     [TestMethod]
     public void TryRegister_PropagatesRejection() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var router = new SpyConnectionRouter { RegisterResult = false };
         var sut = new RouterOrchestrator(router, new SpyReadCoordinator());
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         Assert.IsFalse(sut.TryRegister(NewEntry()));
     }
 
+    // RouteCount 必须读自路由表，不得自己再维护一份计数
     [TestMethod]
     public void RouteCount_ReadsFromConnectionRouter() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var router = new SpyConnectionRouter { CountValue = 7 };
         var sut = new RouterOrchestrator(router, new SpyReadCoordinator());
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual(7, sut.RouteCount);
     }
 
+    // 读路径必须走 ReadCoordinator，否则同键合并不会生效
     [TestMethod]
     public void ExecuteReadAsync_DelegatesToReadCoordinator() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var coordinator = new SpyReadCoordinator();
         var sut = new RouterOrchestrator(new SpyConnectionRouter(), coordinator);
         var key = NewReadKey();
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         _ = sut.ExecuteReadAsync(key, _ => Task.FromResult(OperationResult<byte[]>.Ok(new byte[] { 1 })), CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual(1, coordinator.ExecuteCount);
         Assert.AreEqual(key, coordinator.LastKey);
     }
@@ -91,8 +130,12 @@ public class RouterOrchestratorTests {
     // 编排语义：注销的顺序契约
     // =========================================================================
 
+    // 必须先从路由表摘除，再释放传输资源
     [TestMethod]
     public async Task TryRemoveAndDisposeAsync_RemovesFromTableBeforeDisposingEntry() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 顺序是编排器存在的理由。反过来（先释放再摘表）会让并发进入的
         // 读写从路由表里拿到一个已释放的 TransportClient。
         var trace = new List<string>();
@@ -101,22 +144,38 @@ public class RouterOrchestratorTests {
         var router = new SpyConnectionRouter(trace) { EntryToRemove = entry };
         var sut = new RouterOrchestrator(router, new SpyReadCoordinator());
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         bool removed = await sut.TryRemoveAndDisposeAsync(entry.Key, CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(removed);
         CollectionAssert.AreEqual(
             new[] { "TryRemove", "DisposeEntry" }, trace,
             "必须先从路由表摘除，再释放传输资源");
     }
 
+    // 路由不存在时不应触碰任何资源
     [TestMethod]
     public async Task TryRemoveAndDisposeAsync_WhenNotFound_DoesNotDispose() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var trace = new List<string>();
         var router = new SpyConnectionRouter(trace) { EntryToRemove = null };
         var sut = new RouterOrchestrator(router, new SpyReadCoordinator());
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         bool removed = await sut.TryRemoveAndDisposeAsync(NewKey(), CancellationToken.None);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(removed);
         CollectionAssert.AreEqual(new[] { "TryRemove" }, trace,
             "路由不存在时不应触碰任何资源");
@@ -126,13 +185,20 @@ public class RouterOrchestratorTests {
     // 封装契约：子组件不得外泄
     // =========================================================================
 
+    // 子组件必须是实现细节，暴露出去就能绕过 TryRemoveAndDisposeAsync
     [TestMethod]
     public void Interface_DoesNotExposeSubComponents() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 防回归：曾经同时提供子组件属性与转发方法，
         // 调用方可绕过 TryRemoveAndDisposeAsync 直接 ConnectionRouter.TryRemove，
         // 从而跳过资源释放。子组件必须是实现细节。
         Type t = typeof(IRouterOrchestrator);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsNull(t.GetProperty("ConnectionRouter"),
             "IRouterOrchestrator 不应暴露 ConnectionRouter——那是绕过编排语义的旁路");
         Assert.IsNull(t.GetProperty("ReadCoordinator"),

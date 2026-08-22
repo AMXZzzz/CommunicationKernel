@@ -1,4 +1,9 @@
-﻿<Page x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Variable.VariableConfigPage"
+﻿<!--
+  文件: VariableConfigPage.xaml
+  层级: UI 层 — WPF Views
+  作用: 变量配置页：工具栏、设备列表、变量表、多层弹层遮罩。
+-->
+<Page x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Variable.VariableConfigPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ctrl="clr-namespace:CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls"
@@ -12,6 +17,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
+        <!-- 顶栏：导入 / 导出 / 实时刷新 -->
         <ctrl:VariableToolBar x:Name="toolBar" Grid.Row="0"/>
 
         <Grid Grid.Row="1">
@@ -20,8 +26,10 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
+            <!-- 左侧设备列表 -->
             <ctrl:VariableDeviceList x:Name="deviceList" Grid.Column="0"/>
 
+            <!-- 右侧：当前设备标题 + 变量表 -->
             <Border Grid.Column="1"
                     Margin="16,12,16,16"
                     Padding="16"
@@ -40,6 +48,7 @@
             </Border>
         </Grid>
 
+        <!-- 遮罩 + 编辑 / 批量 / 导入导出 / 消息弹层 -->
         <Border x:Name="editOverlay"
                 Grid.Row="0" Grid.RowSpan="2"
                 Background="#99000000"

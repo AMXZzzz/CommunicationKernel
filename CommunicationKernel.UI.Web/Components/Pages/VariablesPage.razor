@@ -243,6 +243,7 @@
     }
 
     private void AddVariable() {
+        // 名称是必填，其它字段允许空
         if (string.IsNullOrWhiteSpace(EditName))
             return;
         Variables.Add(new VariableRow {
@@ -270,6 +271,7 @@
 
     private static bool TryParseHex(string input, out byte[] data) {
         string clean = input.Replace(" ", "").Trim();
+        // 空串或奇数长度不是合法十六进制
         if (clean.Length == 0 || clean.Length % 2 != 0) { data = Array.Empty<byte>(); return false; }
         try {
             data = Enumerable.Range(0, clean.Length / 2)

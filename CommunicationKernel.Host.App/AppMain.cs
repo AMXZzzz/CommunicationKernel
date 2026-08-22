@@ -26,105 +26,123 @@ using Microsoft.Extensions.Logging;
 //    gRPC 只跑在 HTTP/2 上，而明文端点没有 TLS ALPN 可供协议协商——
 //    Kestrel 在明文上同时配两种协议时无法区分，会退回纯 HTTP/1.1，
 //    此时所有 gRPC 调用被服务端以 HTTP_1_1_REQUIRED 直接拒绝。
-//    代价是根路由的引导页浏览器打不开（浏览器不做明文 h2c），
-//    但存活检查本就该用 systemctl / journalctl，不值得为此牺牲 gRPC。
 // -----------------------------------------------------------------------------
 
-// 创建Web 服务端
+// ============================================================================
+// 创建宿主
+// ============================================================================
+
+// 读取 appsettings / 环境变量，准备 DI 与 Kestrel 配置
 var builder = WebApplication.CreateBuilder(args);
 
-// 注册 gRPC 基础设施（HTTP/2 + 高性能二进制协议）。
+// ============================================================================
+// 服务注册
+// ============================================================================
+
+// 注册 gRPC 基础设施（HTTP/2 + 高性能二进制协议）
 builder.Services.AddGrpc(options =>
 {
-    // 预留服务级拦截器/限流等策略扩展点；当前保持默认最小配置。
+    // 预留服务级拦截器/限流等策略扩展点；当前保持默认最小配置
 });
 
-
-// 组合根：注册路由装配服务，隔离 EngineRuntime 与具体协议/传输装配实现。
+// 组合根：注册路由装配服务，隔离 EngineRuntime 与具体协议/传输装配实现
 builder.Services.AddSingleton<IRouteAssemblyService>(sp =>
 {
-    // 读取Runtime配置
+    // 插件目录：未配置时默认输出目录下的 plugins
     string pluginDirectorySetting = builder.Configuration["EngineRuntime:PluginDirectory"] ?? "plugins";
-    //! 串口最小 I/O 间隔（帧间静默窗口），单位毫秒
+
+    // 串口最小 I/O 间隔（帧间静默窗口），单位毫秒；解析失败回落 15
     int defaultSerialIntervalMs = int.TryParse(builder.Configuration["EngineRuntime:DefaultSerialMinIoIntervalMs"], out int value)
         ? value
         : 15;
 
-    // 分支1：相对路径按宿主基目录解析，避免不同启动目录导致插件目录漂移。
+    // 相对路径按宿主基目录解析，避免不同启动目录导致插件目录漂移
     string resolvedPluginDirectory = Path.IsPathRooted(pluginDirectorySetting)
         ? pluginDirectorySetting
         : Path.Combine(AppContext.BaseDirectory, pluginDirectorySetting);
 
-    //! 日志记录：输出插件目录与默认间隔配置
+    // 装配服务需要日志工厂，以便插件加载失败时写启动日志
     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
 
-    //! 日志记录：输出插件目录与默认间隔配置
+    // 插件装配：扫描目录、实例化协议/传输工厂，供 EngineRuntime 按需组装路由
     return new PluginRouteAssemblyService(
         pluginDirectory: resolvedPluginDirectory,
         defaultSerialMinIoIntervalMs: defaultSerialIntervalMs,
         loggerFactory: loggerFactory);
 });
 
-// 组合根：路由引擎的子组件面向接口注册，可整体或逐个替换实现。
+// 路由表：跨路由并行、同路由串行；日志可为空（ConnectionRouter 内部容忍 null）
 builder.Services.AddSingleton<IConnectionRouter>(sp =>
     new ConnectionRouter(sp.GetService<ILogger<ConnectionRouter>>()));
+
+// 读合并：相同地址的并发读合成一次 I/O
 builder.Services.AddSingleton<IReadCoordinator, ReadCoordinator>();
+
+// 编排器：把路由表与读合并绑在一起
 builder.Services.AddSingleton<IRouterOrchestrator, RouterOrchestrator>();
 
-// 组合根：注册 EngineRuntime，仅依赖抽象服务与编排器。
+// 通讯内核：只依赖上面的抽象，不直接 new 协议/传输
 builder.Services.AddSingleton<EngineRuntime>();
 
-//! 创建应用程序
+// ============================================================================
+// 构建应用
+// ============================================================================
+
+// 冻结服务容器，生成可运行的 WebApplication
 var app = builder.Build();
 
-// 映射 gRPC 服务端点（首批 Health + Diagnostics）。
+// 映射 gRPC 服务端点（Health / 路由 / 读写均走 HostGrpcService）
 app.MapGrpcService<HostGrpcService>();
 
-// 辅助根路由：便于浏览器直连时看到引导信息。
+// 辅助根路由：浏览器直连时给出引导，避免空白 404
 app.MapGet("/", () => "CommunicationKernel.Host.App is running. Use a gRPC client to call endpoints./ [引导文]: CommunicationKernel.Host.App 服务端初始化Done ");
 
-// -----------------------------------------------------------------------------
+// ============================================================================
 // 监听地址的暴露面告警
-// -----------------------------------------------------------------------------
+// ============================================================================
 // 本 gRPC 端点没有任何认证与授权：能建立连接就能注册路由、读写 PLC 寄存器。
 // 绑定到非回环地址意味着同一网段的任何主机都可以直接操作现场设备。
 //
 // 跨机部署（宿主在树莓派、上位机在别的机器）确实需要这么做，所以不禁止；
 // 但必须让运维在启动日志里明确看到自己打开了什么，而不是默认静默放行。
-// 隔离手段由部署方负责：防火墙白名单、独立 VLAN，或前置一层带认证的反向代理。
 //
 // 在 ApplicationStarted 里读 IServerAddressesFeature 而非读配置：
 // 命令行 --urls 与环境变量 ASPNETCORE_URLS 会覆盖 appsettings，
 // 只有服务器实际绑定完成后拿到的地址才是真正生效的那一份。
 app.Lifetime.ApplicationStarted.Register(() =>
 {
+    // 独立分类名，journalctl 可按 Host.App.Endpoint 过滤
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Host.App.Endpoint");
 
+    // 实际绑定地址（含 --urls / ASPNETCORE_URLS 覆盖后的结果）
     var addresses = app.Services.GetRequiredService<IServer>()
         .Features.Get<IServerAddressesFeature>()?.Addresses;
 
-    // 分支1：拿不到地址特性（理论上只发生在被替换的服务器实现上），跳过告警。
+    // 拿不到地址特性（理论上只发生在被替换的服务器实现上），跳过告警
     if (addresses is null || addresses.Count == 0)
     {
+        // 非标准服务器实现，无法判断暴露面，只记一条警告
         logger.LogWarning("无法获取实际监听地址，跳过暴露面检查。");
         return;
     }
 
+    // 逐地址检查：回环仅本机可达，非回环则警告无认证暴露
     foreach (string address in addresses)
     {
-        // 分支2：回环地址——仅本机可达，无需告警。
+        // 回环地址——仅本机可达，无需告警
         bool isLoopback =
             address.Contains("localhost", StringComparison.OrdinalIgnoreCase) ||
             address.Contains("127.0.0.1", StringComparison.Ordinal) ||
             address.Contains("[::1]", StringComparison.Ordinal);
 
+        // 回环地址不告警，只记 Information 方便确认绑定成功
         if (isLoopback)
         {
             logger.LogInformation("gRPC 监听 {Address}（仅本机可达）。", address);
             continue;
         }
 
-        // 分支3：非回环——同网段可达，且服务端无认证。
+        // 非回环——同网段可达，且服务端无认证
         logger.LogWarning(
             "gRPC 监听 {Address}：该地址可被同网段主机访问，而本服务不做任何认证——" +
             "连上即可读写 PLC。请确认已通过防火墙、VLAN 或带认证的反向代理限制访问范围。",
@@ -132,19 +150,24 @@ app.Lifetime.ApplicationStarted.Register(() =>
     }
 });
 
-// -----------------------------------------------------------------------------
+// ============================================================================
 // 插件预热
-// -----------------------------------------------------------------------------
+// ============================================================================
 // IRouteAssemblyService 是懒构造的单例：不主动解析，插件要等到第一次 gRPC 调用
 // 才加载。而插件加载失败是静默的（共享契约泄漏、目录缺失、工厂实例化异常都只记日志），
 // 于是无人值守部署会出现「服务好好跑着、直到有人操作才发现一个协议都没有」。
 // 在这里提前解析，把协议清单写进启动日志——树莓派上只有 journalctl 可看。
 {
+    // 启动诊断分类名，journalctl 可按 Host.App.Startup 过滤
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Host.App.Startup");
+
+    // 触发单例构造，从而扫描 plugins 目录
     var assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
+
+    // 已成功实例化的协议工厂清单
     var protocols = assemblyService.GetAvailableProtocols();
 
-    // 分支1：一个协议都没加载到——服务在这种状态下无法完成任何实际工作。
+    // 一个协议都没加载到——服务在这种状态下无法完成任何实际工作
     if (protocols.Count == 0)
     {
         logger.LogError(
@@ -153,10 +176,11 @@ app.Lifetime.ApplicationStarted.Register(() =>
     }
     else
     {
+        // 至少有一个协议，把 ID 清单打到启动日志供运维核对
         logger.LogInformation("已加载 {Count} 个协议：{Protocols}",
             protocols.Count, string.Join(", ", protocols.Select(p => p.ProtocolId)));
     }
 }
 
-//! 阻塞运行，直至进程收到停止信号
+// 阻塞运行，直至进程收到停止信号
 app.Run();

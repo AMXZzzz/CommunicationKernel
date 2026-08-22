@@ -105,6 +105,7 @@ public sealed class SerialPortTransportFactory : ITransportFactory, ISerialPortE
         Array.Sort(names, StringComparer.OrdinalIgnoreCase);
 
         var result = new List<SerialPortDescriptor>(names.Length);
+        // 为每个口附带 by-id 说明，方便操作员区分 USB 串口
         foreach (string name in names)
             result.Add(new SerialPortDescriptor(name, DescribePort(name)));
 
@@ -197,6 +198,7 @@ public sealed class SerialPortTransportClient : ITransportClient
     {
         ThrowIfDisposed();
 
+        // 串口名缺失时尽早失败，避免 SerialPort 构造抛含义不清的异常
         if (string.IsNullOrWhiteSpace(endpoint.SerialPort))
             return Task.FromResult(OperationResult.Fail(
                 "SerialPort name is required in TransportEndpoint.SerialPort",
@@ -209,6 +211,7 @@ public sealed class SerialPortTransportClient : ITransportClient
 
         try
         {
+            // Properties 可覆盖校验/数据位/停止位，缺省 8N1
             Parity   parity   = ParseParity(endpoint);
             int      dataBits = ParseDataBits(endpoint);
             StopBits stopBits = ParseStopBits(endpoint);
@@ -234,6 +237,7 @@ public sealed class SerialPortTransportClient : ITransportClient
         }
         catch (Exception ex)
         {
+            // 打开失败（被占用、权限不足、设备不存在）必须释放半开对象
             DisposeInternals();
             return Task.FromResult(OperationResult.Fail(
                 $"SerialPort connect failed ({endpoint}): {ex.Message}",
@@ -247,6 +251,7 @@ public sealed class SerialPortTransportClient : ITransportClient
     {
         ThrowIfDisposed();
 
+        // 帧边界必须由协议给出（RTU 按功能码推定、ASCII 扫 CRLF）
         if (tryGetFrameLength is null)
             return OperationResult<byte[]>.Fail(
                 "tryGetFrameLength is required", KernelErrorCode.InvalidArgument);
@@ -304,6 +309,7 @@ public sealed class SerialPortTransportClient : ITransportClient
 
     private static Parity ParseParity(TransportEndpoint ep)
     {
+        // 未配置时默认 None（8N1）
         if (!ep.Properties.TryGetValue("Parity", out string? val))
             return Parity.None;
 
@@ -319,6 +325,7 @@ public sealed class SerialPortTransportClient : ITransportClient
 
     private static int ParseDataBits(TransportEndpoint ep)
     {
+        // 仅接受 5-8；非法值回落 8，避免 SerialPort 构造抛 ArgumentOutOfRange
         if (ep.Properties.TryGetValue("DataBits", out string? val)
             && int.TryParse(val, out int bits)
             && bits is >= 5 and <= 8)
@@ -348,6 +355,7 @@ public sealed class SerialPortTransportClient : ITransportClient
     {
         if (_port is not null)
         {
+            // 先 Close 再 Dispose，避免驱动缓冲未刷完
             if (_port.IsOpen) _port.Close();
             _port.Dispose();
             _port = null;
@@ -356,6 +364,7 @@ public sealed class SerialPortTransportClient : ITransportClient
 
     private void ThrowIfDisposed()
     {
+        // 已 Dispose 后禁止再 Connect/Send，避免对已关闭串口操作
         if (_disposed) throw new ObjectDisposedException(nameof(SerialPortTransportClient));
     }
 }

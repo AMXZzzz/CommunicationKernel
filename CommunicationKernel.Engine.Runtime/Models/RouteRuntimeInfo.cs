@@ -1,6 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteRuntimeInfo.cs
-// 层级: Engine / Models
+// 层级: Engine.Runtime / Models
+// 作用: 已注册路由的只读元数据快照，供 gRPC/UI 查询，不暴露 TransportClient。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Communication.Transport.Abstractions;

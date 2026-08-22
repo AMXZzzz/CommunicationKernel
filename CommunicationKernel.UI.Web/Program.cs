@@ -6,12 +6,15 @@
 //   WebApplication.CreateBuilder
 //     → AddRazorComponents().AddInteractiveServerComponents()
 //     → AddSingleton<HostClient>
+//     → builder.Build()
+//     → 中间件管道
 //     → app.Run()
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.UI.Web.Components;
 using CommunicationKernel.Host.Sdk;
 
+// 读取 appsettings / 环境变量，准备 DI 与配置
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 // ============================================================================
@@ -38,6 +41,7 @@ builder.Services.AddSingleton<HostClient>(sp => {
 // 构建应用
 // ============================================================================
 
+// 冻结服务容器，生成可运行的 WebApplication
 WebApplication app = builder.Build();
 
 // 生产环境：异常处理中间件（开发环境 Blazor 有内置错误 UI）
@@ -54,5 +58,5 @@ app.UseAntiforgery();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-// 启动！
+// 阻塞监听，直到进程收到停止信号
 app.Run();

@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ModbusRtuFraming.cs
+// 层级: 插件层 / 协议
+// 作用: Modbus RTU 封装与解封（从站号 + PDU + CRC16 小端）。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 
@@ -29,20 +35,30 @@ public static class ModbusRtuFraming {
     /// <summary>写响应固定长度：从站号 + FC + 地址(2) + 值/数量(2) + CRC16。</summary>
     public const int WriteResponseLength = 8;
 
+    // ============================================================================
+    // 封装
+    // ============================================================================
+
     /// <summary>
     /// 将 PDU 封装为完整 RTU 帧。
     /// </summary>
     public static byte[] Wrap(byte unitId, byte[] pdu) {
+        // [UnitId][PDU...][CRC16 低][CRC16 高]
         byte[] frame = new byte[1 + pdu.Length + 2];
         frame[0] = unitId;
         Buffer.BlockCopy(pdu, 0, frame, 1, pdu.Length);
 
+        // CRC16 覆盖从站号与 PDU，多项式 0xA001，初值 0xFFFF
         ushort crc = ComputeCrc16(frame, 0, 1 + pdu.Length);
         // CRC16 在 RTU 中按小端附加（低字节在前）
         frame[^2] = (byte)(crc & 0xFF);
         frame[^1] = (byte)(crc >> 8);
         return frame;
     }
+
+    // ============================================================================
+    // 帧长探测
+    // ============================================================================
 
     /// <summary>
     /// 帧长探测：供传输层判定响应是否已完整接收。
@@ -94,12 +110,17 @@ public static class ModbusRtuFraming {
         }
     }
 
+    // ============================================================================
+    // 解封
+    // ============================================================================
+
     /// <summary>
     /// 校验 CRC 并剥离外层封装，返回 PDU。
     /// </summary>
     /// <param name="frame">完整 RTU 响应帧。</param>
     /// <param name="expectedUnitId">请求所用的从站号，用于配对校验。</param>
     public static OperationResult<byte[]> Unwrap(byte[]? frame, byte expectedUnitId) {
+        // 最短：UnitId + FC + CRC16(2)
         if (frame is null || frame.Length < MinFrameLength)
             return OperationResult<byte[]>.Fail(
                 $"RTU 响应过短：至少需要 {MinFrameLength} 字节，实际 {frame?.Length ?? 0} 字节",
@@ -121,6 +142,7 @@ public static class ModbusRtuFraming {
                 $"RTU 从站号不匹配：请求 {expectedUnitId}，响应 {frame[0]}",
                 KernelErrorCode.ProtocolError);
 
+        // 剥掉 UnitId(1) 与 CRC16(2)，剩下纯 PDU
         byte[] pdu = new byte[frame.Length - 3];
         Buffer.BlockCopy(frame, 1, pdu, 0, pdu.Length);
         return OperationResult<byte[]>.Ok(pdu);
@@ -133,6 +155,7 @@ public static class ModbusRtuFraming {
         ushort crc = 0xFFFF;
         for (int i = offset; i < offset + length; i++) {
             crc ^= buffer[i];
+            // 逐位右移，最低位为 1 时异或 0xA001（Modbus 标准多项式反转形式）
             for (int bit = 0; bit < 8; bit++) {
                 bool lsb = (crc & 0x0001) != 0;
                 crc >>= 1;

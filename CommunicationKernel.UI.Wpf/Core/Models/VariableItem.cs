@@ -2,10 +2,8 @@
 
 // -----------------------------------------------------------------------------
 // 文件: Core/Models/VariableItem.cs
-// 层级: UI 层 — 核心模型
-// 作用: 本地变量定义模型，存储变量的地址、数据类型、轮询配置及最近读值。
-//       实现 INotifyPropertyChanged 供 DataGrid / VariableTable 绑定刷新。
-//       变量不持久化到 gRPC 服务端，仅在本地内存中存储。
+// 层级: UI 层 — WPF 核心模型
+// 作用: 本地变量定义，绑定 DataGrid / VariableTable；含地址、类型、轮询与最近读值。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -24,10 +22,13 @@ public sealed class VariableItem : INotifyPropertyChanged {
     // WPF 数据绑定引擎订阅此事件以侦测属性变更
     public event PropertyChangedEventHandler PropertyChanged;
 
+    // 属性变更时通知 DataGrid / 轮询结果列刷新
     private void Notify([CallerMemberName] string name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-    // ── 标识 ──────────────────────────────────────────────────────────────
+    // ============================================================================
+    // 标识
+    // ============================================================================
 
     private string _id = Guid.NewGuid().ToString();
     /// <summary>变量唯一标识，使用 Guid 字符串。在应用生命周期内全局唯一。</summary>
@@ -37,7 +38,9 @@ public sealed class VariableItem : INotifyPropertyChanged {
     /// <summary>所属设备的路由 ID，对应 DeviceInfo.Id。读写时通过此字段确定目标路由。</summary>
     public string DeviceId { get => _deviceId; set { _deviceId = value; Notify(); } }
 
-    // ── 配置 ──────────────────────────────────────────────────────────────
+    // ============================================================================
+    // 配置
+    // ============================================================================
 
     private string _name = string.Empty;
     /// <summary>变量显示名称，例如 "传送带速度"。仅用于 UI 展示，不影响通信逻辑。</summary>
@@ -74,7 +77,9 @@ public sealed class VariableItem : INotifyPropertyChanged {
     /// <summary>变量描述，详细说明此变量的用途，供操作员参考。</summary>
     public string Description { get => _description; set { _description = value; Notify(); } }
 
-    // ── 运行时状态 ────────────────────────────────────────────────────────
+    // ============================================================================
+    // 运行时状态
+    // ============================================================================
 
     private string _lastValue = string.Empty;
     /// <summary>最近一次读取到的值（字符串形式）。</summary>
@@ -84,7 +89,9 @@ public sealed class VariableItem : INotifyPropertyChanged {
     /// <summary>最近一次读取的错误信息。成功时为空字符串。</summary>
     public string LastError { get => _lastError; set { _lastError = value; Notify(); } }
 
-    // ── 轮询配置 ──────────────────────────────────────────────────────────
+    // ============================================================================
+    // 轮询配置
+    // ============================================================================
 
     private bool _isPollingEnabled = false;
     /// <summary>是否启用轮询读取。true = 由轮询服务按 ScanRateMs 周期自动读取。</summary>

@@ -1,13 +1,15 @@
 using System.Collections.Generic;
 
+// -----------------------------------------------------------------------------
+// 文件: ISerialPortEnumerator.cs
+// 层级: Communication.Transport / Abstractions
+// 作用: 由传输插件可选实现，枚举本机可用串口。
+// -----------------------------------------------------------------------------
+
 namespace CommunicationKernel.Communication.Transport.Abstractions;
 
 /// <summary>
-/// -----------------------------------------------------------------------------
-/// 文件: ISerialPortEnumerator.cs
-/// 层级: Communication.Transport / Abstractions
-/// 作用: 由传输插件可选实现，枚举本机可用串口。
-/// -----------------------------------------------------------------------------
+/// 由传输插件可选实现，枚举宿主本机可用串口。
 /// </summary>
 /// <remarks>
 /// <para>

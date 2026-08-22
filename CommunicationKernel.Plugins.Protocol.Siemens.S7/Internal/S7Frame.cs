@@ -83,6 +83,7 @@ internal static class S7Frame {
             0xC2, 0x02, dstHi, dstLo
         };
 
+        // 外套 4 字节 TPKT 头（版本 0x03 + 总长）
         return WrapTpkt(cotpCr);
     }
 
@@ -108,6 +109,7 @@ internal static class S7Frame {
             0x01, 0xE0  // PDU Length: 480
         };
 
+        // Setup 走 COTP DT（数据传输），再外套 TPKT
         return WrapTpktWithCotpDt(s7);
     }
 
@@ -138,6 +140,7 @@ internal static class S7Frame {
             (byte)(bitAddress >> 16), (byte)(bitAddress >> 8), (byte)(bitAddress & 0xFF) // Byte address (3 bytes)
         };
 
+        // Job 类型 0x01，无 Data 段
         byte[] s7Header = BuildS7Header(jobType: 0x01, paramLen: (ushort)param.Length, dataLen: 0);
         byte[] s7 = Combine(s7Header, param);
         return WrapTpktWithCotpDt(s7);
@@ -215,6 +218,7 @@ internal static class S7Frame {
             return OperationResult<byte[]>.Fail("S7 response data truncated", KernelErrorCode.ProtocolError);
         }
 
+        // 按请求字节数裁剪，保证「请求 N 字节 → 返回 N 字节」
         byte[] result = new byte[Math.Min(byteLen, expectedBytes)];
         Array.Copy(response, dataStart, result, 0, result.Length);
         return OperationResult<byte[]>.Ok(result);
@@ -224,10 +228,12 @@ internal static class S7Frame {
     /// 解析 Write Var 响应，校验写入成功标志。
     /// </summary>
     internal static OperationResult ParseWriteResponse(byte[] response) {
+        // TPKT + COTP DT + S7 头至少 22 字节才够读错误类
         if (response.Length < 22) {
             return OperationResult.Fail("S7 write response too short", KernelErrorCode.ProtocolError);
         }
 
+        // S7Comm 错误类/错误码必须为 0
         if (response[17] != 0x00 || response[18] != 0x00) {
             return OperationResult.Fail($"S7 write error class=0x{response[17]:X2} code=0x{response[18]:X2}", KernelErrorCode.ProtocolError);
         }
@@ -348,6 +354,7 @@ internal static class S7Frame {
     }
 
     private static byte[] WrapTpkt(byte[] payload) {
+        // TPKT：[0]=0x03 [1]=0x00 [2-3]=总长（含头本身）
         ushort totalLen = (ushort)(4 + payload.Length);
         byte[] frame = new byte[totalLen];
         frame[0] = TpktVersion;
@@ -367,9 +374,11 @@ internal static class S7Frame {
 
     private static byte[] Combine(params byte[][] arrays) {
         int totalLen = 0;
+        // 先累加总长再一次分配，避免多次扩容
         foreach (byte[] a in arrays) totalLen += a.Length;
         byte[] result = new byte[totalLen];
         int offset = 0;
+        // 按顺序拼接 TPKT/COTP/S7 各段
         foreach (byte[] a in arrays) {
             Array.Copy(a, 0, result, offset, a.Length);
             offset += a.Length;

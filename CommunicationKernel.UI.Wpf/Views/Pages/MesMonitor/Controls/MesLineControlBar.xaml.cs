@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/MesMonitor/Controls/MesLineControlBar.xaml.cs
+// 层级: UI 层 — MES 监控页子控件
+// 作用: 整线控制栏；点击告警入口后通知宿主弹出告警列表。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -11,6 +17,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls {
     /// </summary>
     public partial class MesLineControlBar : UserControl {
         public MesLineControlBar () {
+            // 解析 XAML，构建视觉树
             InitializeComponent();
         }
 

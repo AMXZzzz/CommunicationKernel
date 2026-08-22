@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteReconcileGateTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 验证宿主重启后自动重注册的两条时序保证。
 //
 // 场景还原：
@@ -19,11 +19,16 @@ using CommunicationKernel.Host.Sdk;
 
 namespace CommunicationKernel.Tests;
 
+// 重注册门控：同路由合并为一次调用，失败后按最小间隔节流
 [TestClass]
 public class RouteReconcileGateTests {
 
+    // 50 个变量同时发现路由不存在，必须合并成一次实际注册
     [TestMethod]
     public async Task ConcurrentCalls_OnSameRoute_CollapseToSingleInvocation() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var gate = new RouteReconcileGate(TimeSpan.Zero);
 
         int invocations = 0;
@@ -34,6 +39,9 @@ public class RouteReconcileGateTests {
             return await release.Task;
         }
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         // 50 个变量同时发现路由不存在
         Task<bool>[] callers = Enumerable.Range(0, 50)
             .Select(_ => gate.RunAsync("plc-1", Operation))
@@ -42,12 +50,19 @@ public class RouteReconcileGateTests {
         release.SetResult(true);
         bool[] results = await Task.WhenAll(callers);
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.AreEqual(1, invocations, "50 个并发请求必须合并成一次实际注册调用");
         Assert.IsTrue(results.All(r => r), "合并后的调用者都应拿到同一个成功结果");
     }
 
+    // 合并只发生在同一条路由内部；不同设备互不影响
     [TestMethod]
     public async Task ConcurrentCalls_OnDifferentRoutes_RunIndependently() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 合并只应发生在同一条路由内部。不同设备之间互不影响，
         // 否则一台设备卡住会拖住其余全部设备的恢复。
         var gate = new RouteReconcileGate(TimeSpan.Zero);
@@ -61,14 +76,24 @@ public class RouteReconcileGateTests {
             return true;
         });
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         await Task.WhenAll(Operation("plc-1"), Operation("plc-2"), Operation("plc-3"));
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         CollectionAssert.AreEquivalent(
             new[] { "plc-1", "plc-2", "plc-3" }, invoked);
     }
 
+    // PLC 拔线时重注册也会失败；窗口内不得再打第二次
     [TestMethod]
     public async Task SecondCall_WithinMinInterval_IsThrottled_WithoutInvoking() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // PLC 拔线时重注册也会失败。没有最小间隔，每个轮询周期都会再打一次。
         DateTime now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var gate = new RouteReconcileGate(TimeSpan.FromSeconds(5), () => now);
@@ -80,6 +105,9 @@ public class RouteReconcileGateTests {
             return false;                       // 注册失败（PLC 不可达）
         });
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         Assert.IsFalse(await Operation());
         Assert.AreEqual(1, invocations);
 
@@ -89,8 +117,12 @@ public class RouteReconcileGateTests {
         Assert.AreEqual(1, invocations, "节流窗口内不得发起第二次实际调用");
     }
 
+    // 节流是限速不是永久熔断——过了窗口必须重新尝试
     [TestMethod]
     public async Task Call_AfterMinInterval_InvokesAgain() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 节流是限速，不是永久熔断——过了窗口必须重新尝试，
         // 否则 PLC 修好后设备再也不会自行恢复。
         DateTime now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -103,6 +135,9 @@ public class RouteReconcileGateTests {
             return result;
         });
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         Assert.IsFalse(await Operation(false));
 
         now = now.AddSeconds(6);
@@ -110,13 +145,20 @@ public class RouteReconcileGateTests {
         Assert.AreEqual(2, invocations);
     }
 
+    // 在途记录若因异常没被摘掉，该路由会永远复用一个已完成的失败任务
     [TestMethod]
     public async Task FailedInvocation_DoesNotLeaveStaleInflightEntry() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 在途记录若因异常没被摘掉，该路由此后会永远复用一个已完成的失败任务，
         // 再也无法重新注册——且不报任何错。
         DateTime now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var gate = new RouteReconcileGate(TimeSpan.Zero, () => now);
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => gate.RunAsync("plc-1", () => throw new InvalidOperationException("注册炸了")));
 
@@ -125,21 +167,35 @@ public class RouteReconcileGateTests {
         Assert.IsTrue(second, "上一次抛异常后在途记录未清理，路由被永久卡死");
     }
 
+    // 取消按失败处理，且必须清掉在途记录以便重试
     [TestMethod]
     public async Task CancelledInvocation_ReportsFailure_AndClearsInflight() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var gate = new RouteReconcileGate(TimeSpan.Zero);
 
+        // ============================================================================
+        // Act
+        // ============================================================================
         bool cancelled = await gate.RunAsync("plc-1",
             () => throw new OperationCanceledException());
 
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsFalse(cancelled, "取消按失败处理，由调用方继续退避");
 
         bool retry = await gate.RunAsync("plc-1", () => Task.FromResult(true));
         Assert.IsTrue(retry);
     }
 
+    // 空白 RouteId 直接拒绝，不得对宿主发起无意义的注册
     [TestMethod]
     public async Task BlankRouteId_IsRejected_WithoutInvoking() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         var gate = new RouteReconcileGate(TimeSpan.Zero);
 
         int invocations = 0;
@@ -148,14 +204,21 @@ public class RouteReconcileGateTests {
             return Task.FromResult(true);
         });
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         Assert.IsFalse(await Operation(null!));
         Assert.IsFalse(await Operation(""));
         Assert.IsFalse(await Operation("   "));
         Assert.AreEqual(0, invocations);
     }
 
+    // 路由 ID 大小写不敏感，否则合并与节流都会被绕过
     [TestMethod]
     public async Task RouteId_IsMatchedCaseInsensitively() {
+        // ============================================================================
+        // Arrange
+        // ============================================================================
         // 路由 ID 在 gRPC 契约与本地配置之间来回传递，大小写不应产生两条独立记录，
         // 否则合并与节流都会被绕过。
         var gate = new RouteReconcileGate(TimeSpan.FromSeconds(5));
@@ -167,6 +230,9 @@ public class RouteReconcileGateTests {
             return false;
         });
 
+        // ============================================================================
+        // Act / Assert
+        // ============================================================================
         Assert.IsFalse(await Operation("PLC-1"));
         Assert.IsFalse(await Operation("plc-1"));
 

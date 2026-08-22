@@ -1,14 +1,16 @@
+// -----------------------------------------------------------------------------
+// 文件: ITransportFactory.cs
+// 层级: Communication.Transport / Abstractions
+// 作用: 约束传输插件工厂，以统一方式创建传输客户端。
+// 说明:
+//   - 工厂本身是插件暴露给宿主的入口。
+//   - 宿主可按 Kind/TransportId 选择对应工厂并创建客户端实例。
+// -----------------------------------------------------------------------------
+
 namespace CommunicationKernel.Communication.Transport.Abstractions;
 
 /// <summary>
-/// -----------------------------------------------------------------------------
-/// 文件: ITransportFactory.cs
-/// 层级: Communication.Transport / Abstractions
-/// 作用: 约束传输插件工厂，以统一方式创建传输客户端。
-/// 说明:
-/// - 工厂本身是插件暴露给宿主的入口。
-/// - 宿主可按 Kind/TransportId 选择对应工厂并创建客户端实例。
-/// -----------------------------------------------------------------------------
+/// 传输插件工厂：宿主按 Kind / TransportId 选择后创建客户端实例。
 /// </summary>
 public interface ITransportFactory {
     /// <summary>

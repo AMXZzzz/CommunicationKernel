@@ -87,6 +87,7 @@ public sealed class MewtocolProtocolDriverFactory : IProtocolDriverFactory
 
     /// <inheritdoc />
     public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        // 站号从设备级配置解析，空则回落 1；帧格式与传输介质无关
         new MewtocolProtocolDriver(Metadata, MewtocolAddress.ResolveDefaultStation(context?.Station));
 }
 
@@ -125,6 +126,7 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildReadFrame(string address, int length) {
+        // 只组帧不发送，供诊断/预览使用
         OperationResult<MewtocolReadPlan> plan = PlanRead(address, length);
         return plan.Success
             ? OperationResult<byte[]>.Ok(plan.Value.Frame)
@@ -204,6 +206,7 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
         if (!parsed.Success)
             return OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode);
 
+        // 按 IsBit 选择 WCS 或 WD
         return OperationResult<byte[]>.Ok(BuildWriteFrameInternal(parsed.Value, payload));
     }
 
@@ -217,6 +220,7 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
 
         MewtocolReadPlan p = plan.Value;
 
+        // 以 CR 为帧边界收齐响应（ASCII 协议，无需静默判帧）
         OperationResult<byte[]> response =
             await client.SendAndReceiveAsync(p.Frame, TryGetFrameLength, cancellationToken)
                 .ConfigureAwait(false);
@@ -242,6 +246,7 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
         if (!response.Success)
             return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
 
+        // 写响应只校验 '!' 错误标志
         return MewtocolFrame.ParseWriteResponse(response.Value);
     }
 
@@ -264,6 +269,7 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
             return true;
         }
 
+        // 扫描 CR（0x0D）：MEWTOCOL 帧以回车为确定性边界
         for (int i = 0; i < received.Length; i++)
         {
             if (received[i] == 0x0D)
@@ -303,6 +309,7 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
         var words     = new ushort[wordCount];
         for (int i = 0; i < wordCount; i++)
         {
+            // 大端：高字节在前；奇数字节末尾补 0，避免漏写半个字
             byte hi = payload[i * 2];
             byte lo = i * 2 + 1 < payload.Length ? payload[i * 2 + 1] : (byte)0;
             words[i] = (ushort)((hi << 8) | lo);

@@ -1,4 +1,9 @@
-﻿<Page x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Log.LogPage"
+﻿<!--
+  文件: LogPage.xaml
+  层级: UI 层 — WPF Views
+  作用: 通讯日志页：顶栏清空按钮 + 虚拟化日志列表。
+-->
+<Page x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Log.LogPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       Title="通讯日志"

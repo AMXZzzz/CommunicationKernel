@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ModbusProtocolDriver.cs
+// 层级: 插件层 / 协议
+// 作用: 三种 Modbus 变体共用的驱动：解析地址、组 PDU、经 Envelope 封装后与传输层交换。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
@@ -41,6 +47,7 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildReadFrame(string address, int length) {
+        // 只组帧不发送，供诊断/预览使用
         OperationResult<ModbusExchange> plan = PlanRead(address, length);
         return plan.Success
             ? OperationResult<byte[]>.Ok(plan.Value.Framed.Frame)
@@ -49,6 +56,7 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildWriteFrame(string address, byte[] payload) {
+        // 只组帧不发送，供诊断/预览使用
         OperationResult<ModbusExchange> plan = PlanWrite(address, payload);
         return plan.Success
             ? OperationResult<byte[]>.Ok(plan.Value.Framed.Frame)
@@ -60,13 +68,16 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
         ITransportClient client, string address, int length, CancellationToken cancellationToken) {
 
         OperationResult<ModbusExchange> plan = PlanRead(address, length);
+        // 地址非法或超限时直接失败，不发帧
         if (!plan.Success)
             return OperationResult<byte[]>.Fail(plan.ErrorMessage, plan.ErrorCode);
 
+        // 发送完整帧，按 Envelope 的帧探测收齐响应，再剥外层得到 PDU
         OperationResult<byte[]> pdu = await ExchangeAsync(client, plan.Value, cancellationToken)
             .ConfigureAwait(false);
         if (!pdu.Success) return pdu;
 
+        // 校验功能码/异常码，裁剪到请求的字节数
         return ModbusPdu.ParseReadResponse(pdu.Value, plan.Value.Request);
     }
 
@@ -75,6 +86,7 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
         ITransportClient client, string address, byte[] payload, CancellationToken cancellationToken) {
 
         OperationResult<ModbusExchange> plan = PlanWrite(address, payload);
+        // 地址非法、只读区或 payload 不合法时直接失败，不发帧
         if (!plan.Success)
             return OperationResult.Fail(plan.ErrorMessage, plan.ErrorCode);
 
@@ -83,6 +95,7 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
         if (!pdu.Success)
             return OperationResult.Fail(pdu.ErrorMessage, pdu.ErrorCode);
 
+        // 写响应只做功能码配对与异常检测，不返回数据
         return ModbusPdu.ParseWriteResponse(pdu.Value, plan.Value.Request);
     }
 
@@ -97,6 +110,7 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
     private async Task<OperationResult<byte[]>> ExchangeAsync(
         ITransportClient client, ModbusExchange exchange, CancellationToken cancellationToken) {
 
+        // 帧边界由 Envelope.FrameProbe 决定（MBAP 长度 / RTU 推定 / ASCII CRLF）
         OperationResult<byte[]> response = await client
             .SendAndReceiveAsync(exchange.Framed.Frame, _envelope.FrameProbe, cancellationToken)
             .ConfigureAwait(false);
@@ -108,6 +122,7 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
 
     private OperationResult<ModbusExchange> PlanRead(string address, int length) {
         OperationResult<ModbusAddressInfo> addr = ModbusAddress.Parse(address, _defaultUnitId);
+        // 站号/区号/偏移任一非法则中止，避免发出畸形 PDU
         if (!addr.Success)
             return OperationResult<ModbusExchange>.Fail(addr.ErrorMessage, addr.ErrorCode);
 
@@ -116,9 +131,11 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
         // 数据区仅由地址决定，绝不受读取长度影响
         OperationResult<(byte[] Pdu, ushort Quantity)> pdu =
             ModbusPdu.BuildReadRequest(a.Area, a.RegisterAddress, length);
+        // 超限（FC03 最多 125 寄存器 / FC01 最多 2000 位）时拒绝
         if (!pdu.Success)
             return OperationResult<ModbusExchange>.Fail(pdu.ErrorMessage, pdu.ErrorCode);
 
+        // 按 TCP/RTU/ASCII 各自封装；请求上下文供响应配对使用
         ModbusFramedRequest framed = _envelope.Wrap(a.UnitId, pdu.Value.Pdu);
         var request = new ModbusRequestContext(a.UnitId, pdu.Value.Pdu[0], length);
 
@@ -127,12 +144,15 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
 
     private OperationResult<ModbusExchange> PlanWrite(string address, byte[] payload) {
         OperationResult<ModbusAddressInfo> addr = ModbusAddress.Parse(address, _defaultUnitId);
+        // 写路径同样先解析地址，非法则不组帧
         if (!addr.Success)
             return OperationResult<ModbusExchange>.Fail(addr.ErrorMessage, addr.ErrorCode);
 
         ModbusAddressInfo a = addr.Value;
 
+        // 按数据区选择 FC05 / FC06 / FC10
         OperationResult<byte[]> pdu = ModbusPdu.BuildWriteRequest(a.Area, a.RegisterAddress, payload);
+        // 只读区、空 payload、奇数字节或超 FC10 上限时拒绝
         if (!pdu.Success)
             return OperationResult<ModbusExchange>.Fail(pdu.ErrorMessage, pdu.ErrorCode);
 

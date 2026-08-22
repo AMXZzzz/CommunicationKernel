@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: PublicApiSurfaceTests.cs
-// 层级: Tests
+// 层级: 测试
 // 作用: 锁定两个打包库的公共 API 面，使其变更成为显式动作。
 //
 // 这两个库（Engine.Runtime 与 Host.Sdk）会以 NuGet 包发给外部消费者，
@@ -29,13 +29,16 @@ using System.Text;
 
 namespace CommunicationKernel.Tests;
 
+// 公共 API 快照：破坏性变更必须在评审里被看见，而不是上线后才被下游发现
 [TestClass]
 public class PublicApiSurfaceTests {
 
+    // Engine.Runtime 的公开面必须与基线一致
     [TestMethod]
     public void EngineAssembly_PublicApi_MatchesBaseline()
         => AssertSurfaceMatchesBaseline(typeof(CommunicationKernel.Engine.Runtime.EngineRuntime).Assembly);
 
+    // Host.Sdk 的公开面必须与基线一致
     [TestMethod]
     public void ClientAssembly_PublicApi_MatchesBaseline()
         => AssertSurfaceMatchesBaseline(typeof(CommunicationKernel.Host.Sdk.RouteReconcileGate).Assembly);

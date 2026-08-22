@@ -52,9 +52,9 @@ public partial class App : Application {
     /// <summary>.NET 泛型主机，持有 DI 容器和生命周期。</summary>
     private IHost _host;
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // 启动
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     /// <summary>
     /// App.xaml 中 Startup="Application_Startup" 绑定的启动方法。
@@ -65,7 +65,7 @@ public partial class App : Application {
         // 0. 先挂全局异常兜底，确保启动阶段的异常也能被捕获并展示
         InstallGlobalExceptionHandlers();
 
-        // 1. 构建主机（含 DI 容器）
+        // 1. 构建主机（含 DI 容器）：注册服务、配置日志
         _host = Host.CreateDefaultBuilder()
             .ConfigureServices(ConfigureServices)
             .ConfigureLogging(logging => {
@@ -80,14 +80,13 @@ public partial class App : Application {
         // 2. 启动主机（初始化 Hosted Services）
         await _host.StartAsync().ConfigureAwait(true);
 
-        // 3. 预加载设备列表：在后台触发 QueryRoutes，加载完成后自动刷新 DevicePage 和 DataMonitorPage
+        // 3. 预加载设备列表：后台 QueryRoutes，完成后刷新 DevicePage / DataMonitorPage
         _host.Services.GetRequiredService<IDeviceService>().Load();
 
-        // 4. 启动变量轮询服务：订阅 IVariableService.VariablesChanged，
-        //    对 IsPollingEnabled=true 的变量按 ScanRateMs 周期调用 ReadAsync
+        // 4. 启动变量轮询：对 IsPollingEnabled=true 的变量按 ScanRateMs 周期 ReadAsync
         _host.Services.GetRequiredService<VariablePollingService>().Start();
 
-        // 5. 从 DI 取主窗口并显示
+        // 5. 从 DI 取主窗口并显示（必须在 UI 线程）
         MainWindow mainWindow = _host.Services.GetRequiredService<MainWindow>();
         mainWindow.Show();
       } catch (Exception ex) {
@@ -97,6 +96,7 @@ public partial class App : Application {
         MessageBox.Show(
             "应用启动失败：\n\n" + ex.Message,
             "启动错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        // 非 0 退出码便于脚本/看门狗识别启动失败
         Shutdown(1);
       }
     }
@@ -111,21 +111,22 @@ public partial class App : Application {
     /// 意外异常都会让进程静默退出，现场无从排查。
     /// </remarks>
     private void InstallGlobalExceptionHandlers() {
+        // UI 线程异常：弹框提示并标记已处理，避免单个界面异常拖垮整个进程
         DispatcherUnhandledException += (_, args) => {
             TryLog("UI", args.Exception);
             MessageBox.Show(
                 "发生未处理的界面异常：\n\n" + args.Exception.Message,
                 "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            // 标记已处理，避免单个界面异常导致整个应用退出
             args.Handled = true;
         };
 
+        // 后台 Task 未观测异常：标记已观测，防止进程因此终止
         TaskScheduler.UnobservedTaskException += (_, args) => {
             TryLog("Task", args.Exception);
-            // 标记已观测，防止进程因未观测任务异常而终止
             args.SetObserved();
         };
 
+        // AppDomain 级致命异常：只能记日志，无法再恢复
         AppDomain.CurrentDomain.UnhandledException += (_, args) => {
             if (args.ExceptionObject is Exception ex)
                 TryLog("AppDomain", ex);
@@ -135,21 +136,25 @@ public partial class App : Application {
     /// <summary>尽力把异常写入应用日志；日志器不可用时静默忽略。</summary>
     private void TryLog(string category, Exception ex) {
         try {
+            // 启动早期 _host 可能尚未就绪，GetService 会返回 null
             _host?.Services.GetService<IAppLogger>()?.Error(category, "未处理异常: " + ex.Message, ex);
         } catch {
             // 兜底处理器自身绝不能再抛异常
         }
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // DI 服务注册
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     /// <summary>向 DI 容器注册所有服务。单例生命周期贯穿整个应用。</summary>
     private static void ConfigureServices(IServiceCollection services) {
 
-        // ── gRPC 客户端（单例）──────────────────────────────────────────
-        // 从 settings.json 读取 HostAddress；文件不存在或解析失败时使用默认地址
+        // =====================================================================
+        // gRPC 客户端（单例）
+        // =====================================================================
+
+        // 从 settings.json 读取 HostAddress；文件不存在或解析失败时使用开发默认值
         services.AddSingleton<HostClient>(sp => {
             ILogger<HostClient> logger =
                 sp.GetRequiredService<ILogger<HostClient>>();
@@ -158,92 +163,113 @@ public partial class App : Application {
             return new HostClient(address, logger);
         });
 
-        // ── 应用日志（单例）──────────────────────────────────────────────
+        // =====================================================================
+        // 应用日志（单例）
+        // =====================================================================
+
         // MemoryAppLogger 维护内存中的日志缓冲，LogPage 订阅其 EntryAdded 事件
         services.AddSingleton<IAppLogger, MemoryAppLogger>();
 
-        // ── 业务服务（单例）──────────────────────────────────────────────
-        // GrpcDeviceService 封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus / RemoveRoute
+        // =====================================================================
+        // 业务服务（单例）
+        // =====================================================================
+
+        // 封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus / RemoveRoute
         services.AddSingleton<IDeviceService>(sp =>
             new GrpcDeviceService(
                 sp.GetRequiredService<HostClient>(),
                 sp.GetRequiredService<IAppLogger>()));
-        // GrpcDeviceService 同时实现 IRouteReconciler：它持有本地设备配置，
-        // 是唯一有能力在宿主重启后把路由重新推回去的组件。
-        // 解析同一个单例而非再 new 一个——两份实例会各自持有独立的
-        // 在途表与节流表，合并与限流就都失效了。
+
+        // 同一单例再按 IRouteReconciler 取出：两份实例会拆开在途表，合并与限流失效
         services.AddSingleton<IRouteReconciler>(sp =>
             (IRouteReconciler)sp.GetRequiredService<IDeviceService>());
-        // LocalVariableStore 维护内存中的变量定义，Write 通过 gRPC 下发
+
+        // 内存变量表；写入走 gRPC WriteAsync
         services.AddSingleton<IVariableService>(sp =>
             new LocalVariableStore(sp.GetRequiredService<HostClient>()));
-        // GrpcProtocolResolver 返回支持的协议名称列表
+
+        // 协议清单一律来自 Host.App 已加载的插件，UI 不内置协议名
         services.AddSingleton<IProtocolResolver>(sp =>
             new GrpcProtocolResolver(sp.GetRequiredService<HostClient>()));
-        // 串口清单提供者：清单来自「宿主所在机器」，不是本机。
-        // 宿主跑在树莓派时，操作员要选的是 /dev/ttyUSB0，而不是本机 COM1。
+
+        // 串口清单来自宿主所在机器（树莓派上是 /dev/ttyUSB0，不是本机 COM1）
         services.AddSingleton<ISerialPortProvider>(sp =>
             new GrpcSerialPortProvider(sp.GetRequiredService<HostClient>()));
 
-        // ── 页面级 ViewModel（单例）──────────────────────────────────────
-        // DevicePageViewModel：设备列表、增删改查、连接/断开
+        // =====================================================================
+        // 页面级 ViewModel（单例）
+        // =====================================================================
+
+        // 设备列表、增删改查、连接/断开
         services.AddSingleton<DevicePageViewModel>(sp =>
             new DevicePageViewModel(
                 sp.GetRequiredService<IDeviceService>(),
                 sp.GetRequiredService<IAppLogger>()));
-        // LogPageViewModel：日志过滤与清空
+
+        // 日志过滤与清空
         services.AddSingleton<LogPageViewModel>(sp =>
             new LogPageViewModel(sp.GetRequiredService<IAppLogger>()));
-        // VariablePageViewModel：变量 CRUD 与协议写入
+
+        // 变量 CRUD 与协议写入
         services.AddSingleton<VariablePageViewModel>(sp =>
             new VariablePageViewModel(
                 sp.GetRequiredService<IVariableService>(),
                 sp.GetRequiredService<IDeviceService>(),
                 sp.GetRequiredService<IAppLogger>()));
-        // DataMonitorViewModel：从 IDeviceService.Devices 同步实时设备卡片数据
+
+        // MES 监控卡片：从 IDeviceService.Devices 同步
         services.AddSingleton<DataMonitorViewModel>(sp =>
             new DataMonitorViewModel(sp.GetRequiredService<IDeviceService>()));
-        // SettingsViewModel：地址配置、连接测试、设置持久化
+
+        // 地址配置、连接测试、设置持久化
         services.AddSingleton<SettingsViewModel>(sp =>
             new SettingsViewModel(sp.GetRequiredService<HostClient>()));
 
-        // ── 页面（Transient：每次导航新建，避免 Frame 缓存问题）──────────
-        // DataMonitorPage：注入 DataMonitorViewModel，设备卡片由 ItemsControl 动态生成
+        // =====================================================================
+        // 页面（Transient：每次导航新建，避免 Frame 缓存）
+        // =====================================================================
+
+        // MES 监控页：设备卡片由 ItemsControl 动态生成
         services.AddTransient<DataMonitorPage>(sp =>
             new DataMonitorPage(sp.GetRequiredService<DataMonitorViewModel>()));
-        // DevicePage：注入 DevicePageViewModel 和 IProtocolResolver（供 DeviceEditPanel 使用）
+
+        // 设备管理页：编辑面板需要协议清单与宿主侧串口清单
         services.AddTransient<DevicePage>(sp =>
             new DevicePage(
                 sp.GetRequiredService<DevicePageViewModel>(),
                 sp.GetRequiredService<IProtocolResolver>(),
                 sp.GetRequiredService<ISerialPortProvider>()));
-        // VariableConfigPage：注入 VariablePageViewModel
+
+        // 变量配置页
         services.AddTransient<VariableConfigPage>(sp =>
             new VariableConfigPage(sp.GetRequiredService<VariablePageViewModel>()));
-        // LogPage：注入 LogPageViewModel
+
+        // 运行日志页
         services.AddTransient<LogPage>(sp =>
             new LogPage(sp.GetRequiredService<LogPageViewModel>()));
-        // SettingsPage：注入 SettingsViewModel
+
+        // 系统设置页
         services.AddTransient<SettingsPage>(sp =>
             new SettingsPage(sp.GetRequiredService<SettingsViewModel>()));
 
-        // ── 变量轮询服务（单例）──────────────────────────────────────────
-        // VariablePollingService 管理 IsPollingEnabled=true 变量的后台 ReadAsync 循环
-        // 订阅 IVariableService.VariablesChanged，在变量增删改时自动重建轮询任务集合
+        // =====================================================================
+        // 变量轮询 + 主窗口
+        // =====================================================================
+
+        // 对 IsPollingEnabled 的变量按 ScanRateMs 后台 ReadAsync
         services.AddSingleton<VariablePollingService>(sp =>
             new VariablePollingService(
                 sp.GetRequiredService<IVariableService>(),
                 sp.GetRequiredService<HostClient>(),
                 sp.GetRequiredService<IRouteReconciler>()));
 
-        // ── 主窗口（单例）────────────────────────────────────────────────
-        // MainWindow 构造注入 IServiceProvider 用于懒解析各页面
+        // 主窗口注入 IServiceProvider，按导航懒解析页面
         services.AddSingleton<MainWindow>();
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // 辅助方法
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     /// <summary>
     /// 从 AppData/CommunicationKernel/settings.json 读取已保存的 HostAddress。
@@ -258,6 +284,7 @@ public partial class App : Application {
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "CommunicationKernel", "settings.json");
 
+            // 首次启动尚无配置文件：走开发默认值
             if (!File.Exists(path))
                 return defaultAddress;
 
@@ -276,9 +303,9 @@ public partial class App : Application {
         return defaultAddress;
     }
 
-    // -------------------------------------------------------------------------
+    // =========================================================================
     // 退出
-    // -------------------------------------------------------------------------
+    // =========================================================================
 
     /// <summary>
     /// 应用退出：先停止变量轮询服务（取消所有 ReadAsync 循环），
@@ -314,6 +341,7 @@ public partial class App : Application {
                 // 退出阶段的异常不应弹出崩溃对话框，静默吞掉
             }
         }
+        // 交给 WPF 基类完成其余关闭流程
         base.OnExit(e);
     }
 }

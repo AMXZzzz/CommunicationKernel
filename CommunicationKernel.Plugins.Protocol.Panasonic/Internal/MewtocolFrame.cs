@@ -38,6 +38,7 @@ internal static class MewtocolFrame
     /// <param name="addr">已解析的地址（IsBit=true）。</param>
     internal static byte[] BuildReadContact(MewtocolAddressInfo addr)
     {
+        // RCS + 触点编号（X/Y/R 定长文本）
         string contactStr = FormatContact(addr);
         return BuildFrame(addr.Station, "RCS" + contactStr);
     }
@@ -49,6 +50,7 @@ internal static class MewtocolFrame
     /// <param name="wordCount">要读取的字数（1 字=2 字节）。</param>
     internal static byte[] BuildReadData(MewtocolAddressInfo addr, int wordCount)
     {
+        // 至少读 1 个字，避免构出空范围
         if (wordCount < 1) wordCount = 1;
         string range = FormatDataRange(addr, wordCount);
         return BuildFrame(addr.Station, "RD" + range);
@@ -63,6 +65,7 @@ internal static class MewtocolFrame
     /// </summary>
     internal static byte[] BuildWriteContact(MewtocolAddressInfo addr, bool value)
     {
+        // WCS + 触点编号 + 0/1
         string contactStr = FormatContact(addr);
         return BuildFrame(addr.Station, "WCS" + contactStr + (value ? "1" : "0"));
     }
@@ -93,6 +96,7 @@ internal static class MewtocolFrame
     {
         string resp = Decode(responseBytes);
 
+        // 先看 '!' 错误标志，再解析数据
         OperationResult errCheck = CheckError(resp);
         if (!errCheck.Success)
             return OperationResult<byte[]>.Fail(errCheck.ErrorMessage, errCheck.ErrorCode);
@@ -219,6 +223,7 @@ internal static class MewtocolFrame
         int bang = resp.IndexOf('!');
         if (bang >= 0)
         {
+            // 取出 '!' 后两位错误码（如 23 = 地址越界）
             string errCode = resp.Length >= bang + 3
                 ? resp.Substring(bang + 1, 2)
                 : resp[(bang + 1)..];

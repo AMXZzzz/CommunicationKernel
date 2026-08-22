@@ -150,6 +150,7 @@
     private async Task RefreshAsync() {
         IsBusy = true;
         try {
+            // 向 Host.App 拉取当前全部路由
             Routes = (await Client.QueryRoutesAsync().ConfigureAwait(false)).ToList();
             StatusMessage = $"共 {Routes.Count} 台设备";
             StatusColor   = "status-info";

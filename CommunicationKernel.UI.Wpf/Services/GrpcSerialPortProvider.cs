@@ -2,8 +2,8 @@
 
 // -----------------------------------------------------------------------------
 // 文件: Services/GrpcSerialPortProvider.cs
-// 层级: UI层 — 服务实现
-// 作用: 通过 gRPC 向 Host.App 查询其所在机器上的串口。
+// 层级: UI 层 — WPF 服务实现
+// 作用: 通过 gRPC 向 Host.App 查询其所在机器上的串口，供设备编辑面板下拉框使用。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -29,6 +29,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         public GrpcSerialPortProvider(HostClient client)
         {
+            // gRPC 客户端必填，串口清单一律来自宿主机器
             _client = client ?? throw new ArgumentNullException(nameof(client));
         }
 

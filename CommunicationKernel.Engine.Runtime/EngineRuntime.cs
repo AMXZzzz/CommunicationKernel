@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: EngineRuntime.cs
+// 层级: Engine.Runtime
+// 作用: 通讯内核入口，负责路由注册、读写策略、重连与状态发布。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Engine.Runtime.Models;
 using System;
 using System.Collections.Concurrent;
@@ -31,13 +37,13 @@ namespace CommunicationKernel.Engine.Runtime;
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class EngineRuntime : IAsyncDisposable {
-    //! 用于存储路由注册信息，键为 RouteId，值为 RouteRuntimeRegistration 对象。
+    // RouteId → 运行时登记项：持有 RouteEntry、端点、传输标识，读写都经此定位物理连接
     private readonly ConcurrentDictionary<string, RouteRuntimeRegistration> _registrationsByRouteId = new(StringComparer.OrdinalIgnoreCase);
 
-    //! 用于存储路由状态快照，键为 RouteKey，值为 RouteId。
+    // RouteKey → RouteId：同一物理设备（协议+介质+地址+站号）只允许一条路由
     private readonly ConcurrentDictionary<RouteKey, string> _routeIdByKey = new();
 
-    //! 用于存储路由状态快照，键为 RouteId，值为 RouteStatusSnapshot。
+    // RouteId → 最新连接状态快照，供 WatchRouteStatus 流初始化与变化检测
     private readonly ConcurrentDictionary<string, RouteStatusSnapshot> _routeStatuses = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -51,10 +57,10 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// </remarks>
     private readonly ConcurrentDictionary<string, byte> _routeIdReservations = new(StringComparer.OrdinalIgnoreCase);
 
-    //! 依赖注入的路由装配服务：负责根据注册命令组装 RouteEntry 与连接资源。
+    // 装配服务：选协议/传输工厂、建链、造驱动；失败时由 RollbackAsync 释放已建连接
     private readonly IRouteAssemblyService _routeAssemblyService;
 
-    //! 日志记录器：用于记录 EngineRuntime 的运行信息和错误。
+    // 运行日志；未注入时退化为 NullLogger，避免测试与嵌入场景强制依赖日志组件
     private readonly ILogger<EngineRuntime> _logger;
 
     /// <summary>保护「状态比较 + 写入」的原子性，见 <see cref="PublishStatus"/>。</summary>
@@ -63,8 +69,12 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// <summary>当路由状态变化时触发，用于 gRPC 实时推流。</summary>
     public event Action<RouteStatusSnapshot>? RouteStatusChanged;
 
-    //! 路由编排器：管理路由表与读合并
+    // 路由编排器：管理路由表与读合并，注销时保证「先摘表、再释放」
     private readonly IRouterOrchestrator _orchestrator;
+
+    // ============================================================================
+    // 构造
+    // ============================================================================
 
     /// <summary>
     /// 构造 EngineRuntime。
@@ -81,11 +91,13 @@ public sealed class EngineRuntime : IAsyncDisposable {
         IRouterOrchestrator orchestrator,
         ILogger<EngineRuntime>? logger = null) {
 
+        // 装配服务缺失则无法建链；编排器缺失则无法落表——二者均为内核必填依赖
         ArgumentNullException.ThrowIfNull(routeAssemblyService);
         ArgumentNullException.ThrowIfNull(orchestrator);
 
         _routeAssemblyService = routeAssemblyService;
         _orchestrator         = orchestrator;
+        // 未注入日志时退化为空实现，保持可测试性
         _logger               = logger ?? NullLogger<EngineRuntime>.Instance;
 
         _logger.LogInformation("EngineRuntime initialized.");
@@ -100,8 +112,13 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// </summary>
     public int PendingRouteCount => _routeIdReservations.Count - _registrationsByRouteId.Count;
 
+    // ============================================================================
+    // 查询快照
+    // ============================================================================
+
     /// <summary>获取路由快照（用于查询接口）。</summary>
     public IReadOnlyList<RouteRuntimeInfo> SnapshotRoutes() {
+        // 只投影元数据，不把持有 socket/串口的 RouteEntry 暴露给 gRPC/UI
         return _registrationsByRouteId.Values
             .Select(r => new RouteRuntimeInfo {
                 RouteId     = r.RouteId,
@@ -114,20 +131,28 @@ public sealed class EngineRuntime : IAsyncDisposable {
 
     /// <summary>获取状态快照（用于流式订阅初始化）。</summary>
     public IReadOnlyList<RouteStatusSnapshot> SnapshotStatuses(string? routeId = null) {
+        // 未指定 RouteId：返回全部路由当前状态，供 WatchRouteStatus 首包填充
         if (string.IsNullOrWhiteSpace(routeId))
             return _routeStatuses.Values.ToList();
 
+        // 指定 RouteId：只回该路由；未登记过则空数组（不是错误，避免订阅方误判）
         return _routeStatuses.TryGetValue(routeId, out RouteStatusSnapshot? snapshot)
             ? new[] { snapshot }
             : Array.Empty<RouteStatusSnapshot>();
     }
 
+    // ============================================================================
+    // 注册 / 注销
+    // ============================================================================
+
     /// <summary>注册路由并完成插件工厂组装。</summary>
     public async Task<OperationResult<string>> RegisterRouteAsync(
         RegisterRouteCommand command, CancellationToken cancellationToken) {
 
+        // 命令体缺失无法解析协议/地址，拒绝空引用进入装配
         ArgumentNullException.ThrowIfNull(command);
 
+        // RouteId 是后续读写的句柄，缺失则无法在登记表中落位
         if (string.IsNullOrWhiteSpace(command.RouteId))
             return OperationResult<string>.Fail("route_id is required", KernelErrorCode.InvalidArgument);
 
@@ -139,6 +164,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
         if (command.Station?.Contains('|') == true)
             return OperationResult<string>.Fail("station must not contain '|'", KernelErrorCode.InvalidArgument);
 
+        // 去掉首尾空白，避免 "PLC1" 与 "PLC1 " 被当成两条不同路由
         string resolvedRouteId = command.RouteId.Trim();
 
         // 分支1：原子占位 RouteId。TryAdd 失败即表示已注册或另一请求正在注册中。
@@ -156,6 +182,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 .AssembleAsync(command, cancellationToken)
                 .ConfigureAwait(false);
 
+            // 选工厂/建链/造驱动任一失败：保留错误码原样返回，不把半成品写入路由表
             if (!assemble.Success) {
                 _logger.LogError("RegisterRoute failed to assemble route '{RouteId}': {Error}", resolvedRouteId, assemble.ErrorMessage);
                 return OperationResult<string>.Fail(assemble.ErrorMessage, assemble.ErrorCode);
@@ -165,6 +192,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
 
             // 分支3：原子占位 RouteKey（协议+地址+站号），拒绝指向同一物理设备的重复路由。
             if (!_routeIdByKey.TryAdd(assembled.RouteKey, resolvedRouteId)) {
+                // 物理连接已建好但键冲突：必须回滚，否则 socket/串口句柄无人释放
                 await assembled.RollbackAsync(cancellationToken).ConfigureAwait(false);
                 _logger.LogWarning("RegisterRoute rejected: RouteKey '{RouteKey}' already exists.", assembled.RouteKey);
                 return OperationResult<string>.Fail($"route already exists: {assembled.RouteKey}", KernelErrorCode.RouteBusy);
@@ -172,12 +200,14 @@ public sealed class EngineRuntime : IAsyncDisposable {
 
             // 分支4：注册到 Router；失败时先归还 RouteKey 占位，再回滚连接资源。
             if (!_orchestrator.TryRegister(assembled.RouteEntry)) {
+                // 编排器拒绝（通常是路由表里已有同一 RouteKey）：先还键，再断链
                 _routeIdByKey.TryRemove(assembled.RouteKey, out _);
                 await assembled.RollbackAsync(cancellationToken).ConfigureAwait(false);
                 _logger.LogWarning("RegisterRoute: router rejected registration for '{RouteId}'.", resolvedRouteId);
                 return OperationResult<string>.Fail("router rejected route registration", KernelErrorCode.RouteBusy);
             }
 
+            // 把 RouteId 与 RouteEntry / 端点绑定，后续读写经此定位物理连接
             var registration = new RouteRuntimeRegistration(
                 resolvedRouteId,
                 assembled.RouteKey,
@@ -191,6 +221,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
             _registrationsByRouteId[resolvedRouteId] = registration;
             reservationCommitted = true;
 
+            // 首次登记视为上线，推给 WatchRouteStatus 订阅方（UI 设备列表立即变绿）
             PublishStatus(resolvedRouteId, online: true, KernelErrorCode.None, string.Empty);
             _logger.LogInformation("RegisterRoute succeeded: '{RouteId}' ({RouteKey}).", resolvedRouteId, assembled.RouteKey);
             return OperationResult<string>.Ok(resolvedRouteId);
@@ -206,16 +237,20 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 完成后广播一次终态下线事件，使所有订阅方感知该路由已消失。
     /// </summary>
     public async Task<OperationResult> UnregisterRouteAsync(string routeId, CancellationToken cancellationToken) {
+        // RouteId 是注销句柄，空值无法定位登记项
         if (string.IsNullOrWhiteSpace(routeId))
             return OperationResult.InvalidArgument("route_id is required");
 
+        // 从 Host 侧登记表摘除；未命中说明该路由从未注册或已被别人注销
         if (!_registrationsByRouteId.TryRemove(routeId, out RouteRuntimeRegistration? reg))
             return OperationResult.Fail($"route not found: {routeId}", KernelErrorCode.RouteNotFound);
 
+        // 归还 RouteKey 占位，使同一物理设备可被重新登记
         _routeIdByKey.TryRemove(reg.RouteKey, out _);
         // 释放 RouteId 占位，使同名路由可被重新注册（更新设备参数即依赖此路径）。
         _routeIdReservations.TryRemove(routeId, out _);
 
+        // 编排器「先摘表、再 Dispose」：避免并发读写拿到已关闭的 socket/串口
         bool disposed = await _orchestrator.TryRemoveAndDisposeAsync(reg.RouteKey, cancellationToken)
             .ConfigureAwait(false);
 
@@ -238,6 +273,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 重启宿主会因串口被占用而连不上。DI 容器在关闭时会调用本方法。
     /// </remarks>
     public async ValueTask DisposeAsync() {
+        // 先复制键列表：Unregister 会改字典，直接遍历 Keys 会抛 InvalidOperationException
         string[] routeIds = _registrationsByRouteId.Keys.ToArray();
         if (routeIds.Length == 0) return;
 
@@ -245,6 +281,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
 
         foreach (string routeId in routeIds) {
             try {
+                // 逐条走统一注销入口，保证摘表、释放、终态广播语义一致
                 await UnregisterRouteAsync(routeId, CancellationToken.None).ConfigureAwait(false);
             } catch (Exception ex) {
                 // 退出阶段最大努力释放：单条路由失败不应阻断其余路由的关闭
@@ -263,6 +300,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 界面上表现为「设备已被别人删除，但本机仍显示在线」。
     /// </remarks>
     private void PublishFinalOffline(string routeId) {
+        // 终态快照：Online=false + RouteNotFound，让所有订阅 UI 立刻把该设备标为已删除
         var snapshot = new RouteStatusSnapshot {
             RouteId      = routeId,
             Online       = false,
@@ -271,10 +309,12 @@ public sealed class EngineRuntime : IAsyncDisposable {
             TimestampUtc = DateTimeOffset.UtcNow
         };
 
+        // 与 PublishStatus 共用同一把锁，避免并发 I/O 把幽灵快照写回去
         lock (_statusPublishLock) {
             _routeStatuses.TryRemove(routeId, out _);
         }
 
+        // 扇出给 gRPC 流；订阅方异常在 RaiseStatusChanged 内隔离
         RaiseStatusChanged(snapshot);
     }
 
@@ -287,11 +327,13 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 把一次<b>成功的读取</b>变成失败——一个观察者的问题不该影响被观察的操作。
     /// </remarks>
     private void RaiseStatusChanged(RouteStatusSnapshot snapshot) {
+        // 复制委托快照，避免遍历过程中有人取消订阅导致集合变化
         Action<RouteStatusSnapshot>? handlers = RouteStatusChanged;
         if (handlers is null) return;
 
         foreach (Delegate d in handlers.GetInvocationList()) {
             try {
+                // 逐个调用：单个 gRPC 流故障不得中断其余客户端的状态推送
                 ((Action<RouteStatusSnapshot>)d)(snapshot);
             } catch (Exception ex) {
                 _logger.LogError(ex,
@@ -300,13 +342,19 @@ public sealed class EngineRuntime : IAsyncDisposable {
         }
     }
 
+    // ============================================================================
+    // 读写执行
+    // ============================================================================
+
     /// <summary>通过 route_id 执行读取。</summary>
     public async Task<OperationResult<byte[]>> ReadByRouteIdAsync(
         string routeId, string dataAddress, int length, CancellationToken cancellationToken) {
 
+        // Host 侧登记表未命中：路由从未注册或已被注销
         if (!_registrationsByRouteId.TryGetValue(routeId, out RouteRuntimeRegistration? registration))
             return OperationResult<byte[]>.Fail("route not found", KernelErrorCode.RouteNotFound);
 
+        // 长度非法：协议帧无法构造，提前拒绝以免打出错误报文
         if (length <= 0)
             return OperationResult<byte[]>.Fail("length must be greater than 0", KernelErrorCode.InvalidArgument);
 
@@ -325,9 +373,11 @@ public sealed class EngineRuntime : IAsyncDisposable {
     public async Task<OperationResult> WriteByRouteIdAsync(
         string routeId, string dataAddress, byte[] payload, CancellationToken cancellationToken) {
 
+        // Host 侧登记表未命中：写入目标路由不存在
         if (!_registrationsByRouteId.TryGetValue(routeId, out RouteRuntimeRegistration? registration))
             return OperationResult.Fail("route not found", KernelErrorCode.RouteNotFound);
 
+        // Protobuf / 调用方可能传 null；归一为空数组，由协议驱动决定是否接受零长度写
         byte[] effectivePayload = payload ?? Array.Empty<byte>();
 
         // 写入不做合并，直接进入路由门控——与读共用同一把锁，
@@ -351,6 +401,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
         RouteRuntimeRegistration registration,
         Func<CancellationToken, Task<OperationResult<byte[]>>> ioAction,
         CancellationToken cancellationToken)
+        // 进入 RouteEntry 独占门控：读与写共用同一把锁，并补足串口帧间静默
         => registration.RouteEntry.ExecuteExclusiveAsync(
             ct => RunReadWithPolicyAsync(registration, ioAction, ct),
             cancellationToken);
@@ -361,16 +412,20 @@ public sealed class EngineRuntime : IAsyncDisposable {
         CancellationToken cancellationToken) {
 
         try {
+            // 第一次尝试：协议驱动经 TransportClient 向 PLC 发读请求
             OperationResult<byte[]> result = await ioAction(cancellationToken).ConfigureAwait(false);
             if (result.Success) {
+                // 读成功视为链路健康，把在线状态推给订阅 UI
                 PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
                 return result;
             }
 
+            // IO / 不可用 / 超时：链路可能已断，尝试重连后再读一次
             if (ShouldAttemptReconnect(result.ErrorCode)) {
                 _logger.LogWarning("Route '{RouteId}': IO error {Code}, attempting reconnect.", registration.RouteId, result.ErrorCode);
                 bool reconnected = await TryReconnectAsync(registration, cancellationToken).ConfigureAwait(false);
                 if (reconnected) {
+                    // 重连成功：在同一独占期内立刻重试，避免把窗口让给其他读写
                     OperationResult<byte[]> retry = await ioAction(cancellationToken).ConfigureAwait(false);
                     PublishStatus(registration.RouteId, retry.Success, retry.ErrorCode, retry.Success ? string.Empty : retry.ErrorMessage);
                     if (!retry.Success)
@@ -379,10 +434,12 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 }
             }
 
+            // 不可重连的业务错误，或重连失败：标为离线并原样返回
             PublishStatus(registration.RouteId, online: false, result.ErrorCode, result.ErrorMessage);
             _logger.LogWarning("Route '{RouteId}': IO failed: {Code} {Error}", registration.RouteId, result.ErrorCode, result.ErrorMessage);
             return result;
         } catch (Exception ex) {
+            // 协议驱动抛出未包装异常：视为传输故障，标离线，避免异常冲出内核
             _logger.LogError(ex, "Route '{RouteId}': unhandled exception in IO action.", registration.RouteId);
             PublishStatus(registration.RouteId, online: false, KernelErrorCode.TransportIoError, ex.Message);
             return OperationResult<byte[]>.Fail(ex.Message, KernelErrorCode.TransportIoError);
@@ -394,6 +451,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
         RouteRuntimeRegistration registration,
         Func<CancellationToken, Task<OperationResult>> ioAction,
         CancellationToken cancellationToken)
+        // 写路径同样进入独占门控，与读互斥，防止请求字节在同一流上交织
         => registration.RouteEntry.ExecuteExclusiveAsync(
             ct => RunWriteWithPolicyAsync(registration, ioAction, ct),
             cancellationToken);
@@ -404,16 +462,20 @@ public sealed class EngineRuntime : IAsyncDisposable {
         CancellationToken cancellationToken) {
 
         try {
+            // 第一次尝试：协议驱动向 PLC 写入寄存器/线圈
             OperationResult result = await ioAction(cancellationToken).ConfigureAwait(false);
             if (result.Success) {
+                // 写成功视为链路健康
                 PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
                 return result;
             }
 
+            // IO / 不可用 / 超时：先重连再写，避免把一次掉线当成业务失败
             if (ShouldAttemptReconnect(result.ErrorCode)) {
                 _logger.LogWarning("Route '{RouteId}': write IO error {Code}, attempting reconnect.", registration.RouteId, result.ErrorCode);
                 bool reconnected = await TryReconnectAsync(registration, cancellationToken).ConfigureAwait(false);
                 if (reconnected) {
+                    // 重连成功后在同一独占期内立刻重试本次写入
                     OperationResult retry = await ioAction(cancellationToken).ConfigureAwait(false);
                     PublishStatus(registration.RouteId, retry.Success, retry.ErrorCode, retry.Success ? string.Empty : retry.ErrorMessage);
                     if (!retry.Success)
@@ -422,15 +484,21 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 }
             }
 
+            // 不可重连或重连失败：标离线，把原始错误交给调用方
             PublishStatus(registration.RouteId, online: false, result.ErrorCode, result.ErrorMessage);
             _logger.LogWarning("Route '{RouteId}': write failed: {Code} {Error}", registration.RouteId, result.ErrorCode, result.ErrorMessage);
             return result;
         } catch (Exception ex) {
+            // 未包装异常视为传输故障，避免冲出内核把 gRPC 调用打成 UNKNOWN
             _logger.LogError(ex, "Route '{RouteId}': unhandled exception in write IO action.", registration.RouteId);
             PublishStatus(registration.RouteId, online: false, KernelErrorCode.TransportIoError, ex.Message);
             return OperationResult.Fail(ex.Message, KernelErrorCode.TransportIoError);
         }
     }
+
+    // ============================================================================
+    // 重连与状态发布
+    // ============================================================================
 
     /// <remarks>
     /// <see cref="KernelErrorCode.Cancelled"/> 刻意<b>不在</b>重连之列：
@@ -444,21 +512,26 @@ public sealed class EngineRuntime : IAsyncDisposable {
 
     private async Task<bool> TryReconnectAsync(RouteRuntimeRegistration registration, CancellationToken cancellationToken) {
         try {
+            // 先断开旧连接：半开 socket / 被占用的串口句柄必须释放，否则 Connect 会失败
             await registration.RouteEntry.TransportClient.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            // 用登记时保存的端点重新握手（TCP 三次握手或重新打开串口）
             OperationResult reconnect = await registration.RouteEntry.TransportClient
                 .ConnectAsync(registration.Endpoint, cancellationToken)
                 .ConfigureAwait(false);
 
             if (reconnect.Success) {
                 _logger.LogInformation("Route '{RouteId}': reconnected successfully.", registration.RouteId);
+                // 重连成功立即标上线，UI 不必等到下一次读写才变绿
                 PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
                 return true;
             }
 
             _logger.LogWarning("Route '{RouteId}': reconnect failed: {Error}", registration.RouteId, reconnect.ErrorMessage);
+            // 重连失败：把传输层错误码原样推给订阅方
             PublishStatus(registration.RouteId, online: false, reconnect.ErrorCode, reconnect.ErrorMessage);
             return false;
         } catch (Exception ex) {
+            // Disconnect/Connect 抛异常：视为传输故障，不让异常冲出独占门控
             _logger.LogError(ex, "Route '{RouteId}': reconnect threw exception.", registration.RouteId);
             PublishStatus(registration.RouteId, online: false, KernelErrorCode.TransportIoError, ex.Message);
             return false;
@@ -475,6 +548,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 时间戳语义因此是「状态变为当前值的时刻」，而非「最近一次 I/O 时刻」。
     /// </remarks>
     private void PublishStatus(string routeId, bool online, KernelErrorCode errorCode, string errorMessage) {
+        // 归一 null，便于与快照中的空字符串做序数比较
         string message = errorMessage ?? string.Empty;
         RouteStatusSnapshot? published = null;
 
@@ -488,6 +562,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 return;
             }
 
+            // 状态确有变化：写入新快照，时间戳取「变为当前值」的此刻
             published = new RouteStatusSnapshot {
                 RouteId      = routeId,
                 Online       = online,
@@ -498,6 +573,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
             _routeStatuses[routeId] = published;
         }
 
+        // 锁外扇出，避免订阅方（gRPC 流写入）把状态锁拖死
         RaiseStatusChanged(published);
     }
 
@@ -523,6 +599,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
             TransportId      = transportId;
             RouteEntry       = routeEntry;
             IsSerialRoute    = isSerialRoute;
+            // 负间隔无物理含义，钳到 0；实际节流以 RouteEntry.MinIoIntervalMs 为准
             MinIoIntervalMs  = Math.Max(0, minIoIntervalMs);
         }
 

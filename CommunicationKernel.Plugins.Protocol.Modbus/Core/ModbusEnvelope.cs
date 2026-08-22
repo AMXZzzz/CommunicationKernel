@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ModbusEnvelope.cs
+// 层级: 插件层 / 协议
+// 作用: 抽象 TCP/RTU/ASCII 三种外层封装（MBAP / CRC16 / LRC），供驱动注入。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 
@@ -40,6 +46,10 @@ public abstract class ModbusEnvelope {
     public abstract OperationResult<byte[]> Unwrap(byte[] frame, ModbusFramedRequest request);
 }
 
+// ============================================================================
+// Modbus TCP：MBAP
+// ============================================================================
+
 /// <summary>Modbus TCP 的 MBAP 封装。事务 ID 由本实例线程安全自增。</summary>
 public sealed class ModbusTcpEnvelope : ModbusEnvelope {
     private int _transactionIdCounter;
@@ -49,6 +59,7 @@ public sealed class ModbusTcpEnvelope : ModbusEnvelope {
 
     /// <inheritdoc />
     public override ModbusFramedRequest Wrap(byte unitId, byte[] pdu) {
+        // 事务 ID 自增后写入 MBAP，响应时必须按此配对，防止粘包/迟到帧错位
         ushort tid = NextTransactionId();
         return new ModbusFramedRequest(ModbusTcpFraming.Wrap(tid, unitId, pdu), unitId, tid);
     }
@@ -59,10 +70,15 @@ public sealed class ModbusTcpEnvelope : ModbusEnvelope {
 
     /// <summary>取下一个事务 ID（0 保留，从 1 开始循环）。</summary>
     private ushort NextTransactionId() {
+        // 截到 16 位；0 在部分网关会被当成“无事务”而跳过，因此跳过 0
         int next = Interlocked.Increment(ref _transactionIdCounter) & 0xFFFF;
         return (ushort)(next == 0 ? 1 : next);
     }
 }
+
+// ============================================================================
+// Modbus RTU：CRC16
+// ============================================================================
 
 /// <summary>Modbus RTU 的 CRC16 封装。</summary>
 public sealed class ModbusRtuEnvelope : ModbusEnvelope {
@@ -77,6 +93,10 @@ public sealed class ModbusRtuEnvelope : ModbusEnvelope {
     public override OperationResult<byte[]> Unwrap(byte[] frame, ModbusFramedRequest request)
         => ModbusRtuFraming.Unwrap(frame, request.UnitId);
 }
+
+// ============================================================================
+// Modbus ASCII：LRC
+// ============================================================================
 
 /// <summary>Modbus ASCII 的 LRC 文本封装。</summary>
 public sealed class ModbusAsciiEnvelope : ModbusEnvelope {

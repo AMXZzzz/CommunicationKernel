@@ -1,4 +1,9 @@
-﻿<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls.VariableImportPanel"
+﻿<!--
+  文件: VariableImportPanel.xaml
+  层级: UI 层 — WPF Views
+  作用: 导入变量弹层：文件选择、范围、预览与清空确认。
+-->
+<UserControl x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls.VariableImportPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Width="440">

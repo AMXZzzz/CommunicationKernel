@@ -25,9 +25,13 @@ namespace CommunicationKernel.Host.Sdk
     /// </summary>
     public sealed class RouteReconcileGate
     {
+        // 同一路由两次实际调用之间的最小间隔
         private readonly TimeSpan _minInterval;
+
+        // 时间源：生产用 UtcNow，测试注入假时钟即可验证节流
         private readonly Func<DateTime> _clock;
 
+        // 保护 _inflight / _lastAttempt 的互斥锁；检查与登记必须在同一把锁内
         private readonly object _lock = new object();
 
         /// <summary>正在进行中的调用，Key = 路由 ID。</summary>
@@ -48,9 +52,16 @@ namespace CommunicationKernel.Host.Sdk
         /// </param>
         public RouteReconcileGate(TimeSpan minInterval, Func<DateTime> clock = null)
         {
+            // 负间隔没有意义，钳到零，避免时间比较反转
             _minInterval = minInterval < TimeSpan.Zero ? TimeSpan.Zero : minInterval;
+
+            // 未注入时钟则用 UTC；测试可注入假时钟，不必真等 minInterval
             _clock       = clock ?? (() => DateTime.UtcNow);
         }
+
+        // ============================================================================
+        // 入闸
+        // ============================================================================
 
         /// <summary>
         /// 对 <paramref name="routeId"/> 执行一次受闸门约束的调用。
@@ -63,9 +74,13 @@ namespace CommunicationKernel.Host.Sdk
         /// </returns>
         public Task<bool> RunAsync(string routeId, Func<Task<bool>> operation)
         {
+            // 空路由 ID 无法入闸，直接失败，避免污染字典
             if (string.IsNullOrWhiteSpace(routeId)) return Task.FromResult(false);
+
+            // 无实际操作可执行，同样直接失败
             if (operation is null) return Task.FromResult(false);
 
+            // 检查在途、节流、登记必须在同一把锁下，否则两个线程会各发一次
             lock (_lock)
             {
                 // 分支1：已有在途调用——复用它。
@@ -74,21 +89,31 @@ namespace CommunicationKernel.Host.Sdk
                 if (_inflight.TryGetValue(routeId, out Task<bool> existing))
                     return existing;
 
-                // 分支2：距上次调用不足最小间隔——直接判失败，不发起调用
+                // 读取当前时刻，与上次发起时间比较
                 DateTime now = _clock();
+
+                // 分支2：距上次调用不足最小间隔——直接判失败，不发起调用
                 if (_lastAttempt.TryGetValue(routeId, out DateTime last)
                     && now - last < _minInterval)
                 {
                     return Task.FromResult(false);
                 }
 
+                // 记录本次发起时刻，后续请求据此节流
                 _lastAttempt[routeId] = now;
 
+                // 启动实际调用并登记在途，后来者会命中分支1
                 Task<bool> attempt = InvokeAsync(routeId, operation);
                 _inflight[routeId] = attempt;
+
+                // 返回在途任务：调用方 await 的是同一份结果
                 return attempt;
             }
         }
+
+        // ============================================================================
+        // 执行并摘除在途
+        // ============================================================================
 
         /// <summary>执行操作，无论成败都把自己从在途表摘掉。</summary>
         private async Task<bool> InvokeAsync(string routeId, Func<Task<bool>> operation)
@@ -100,14 +125,17 @@ namespace CommunicationKernel.Host.Sdk
                 // 留下一条永远摘不掉的在途记录，该路由此后再也无法重注册。
                 await Task.Yield();
 
+                // 真正发起重注册（通常是 HostClient.RegisterRouteAsync）
                 return await operation().ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
+                // 取消视为本轮失败，不向外抛，以免打断调用方的重试循环
                 return false;
             }
             finally
             {
+                // 无论成败都释放在途槽位，否则该路由再也进不了闸门
                 lock (_lock)
                 {
                     _inflight.Remove(routeId);

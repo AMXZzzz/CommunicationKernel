@@ -3,18 +3,20 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Core.Abstractions.Results;
 
+// -----------------------------------------------------------------------------
+// 文件: ITransportClient.cs
+// 层级: Communication.Transport / Abstractions
+// 作用: 抽象“通讯介质客户端”的最小能力边界。
+// 说明:
+//   1) 该接口只关心连接生命周期与字节流收发，不包含协议语义。
+//   2) 上层协议驱动通过该接口访问串口/WiFi/蓝牙/TCP 等介质。
+//   3) 返回统一 OperationResult 以保证跨层错误语义一致。
+// -----------------------------------------------------------------------------
+
 namespace CommunicationKernel.Communication.Transport.Abstractions;
 
 /// <summary>
-/// -----------------------------------------------------------------------------
-/// 文件: ITransportClient.cs
-/// 层级: Communication.Transport / Abstractions
-/// 作用: 抽象“通讯介质客户端”的最小能力边界。
-/// 说明:
-/// 1) 该接口只关心连接生命周期与字节流收发，不包含协议语义。
-/// 2) 上层协议驱动通过该接口访问串口/WiFi/蓝牙/TCP 等介质。
-/// 3) 返回统一 <see cref="OperationResult"/> 以保证跨层错误语义一致。
-/// -----------------------------------------------------------------------------
+/// 通讯介质客户端：连接生命周期与字节流收发，不含协议语义。
 /// </summary>
 public interface ITransportClient : IAsyncDisposable {
     /// <summary>

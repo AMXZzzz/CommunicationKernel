@@ -5,60 +5,115 @@ option csharp_namespace = "CommunicationKernel.EngineHost.Grpc.V1";
 
 // -----------------------------------------------------------------------------
 // 文件: engine_host.proto
-// 作用: EngineHost gRPC 对外契约（协议无关模型）。
+// 层级: Host.App / gRPC 契约
+// 作用: EngineHost 对外契约（协议无关模型）。
 // 说明:
 // 1) RegisterRoute 用于一次性注册路由并完成插件组装。
 // 2) Read/Write 只使用 route_id，避免 UI 端依赖协议细节字段。
 // 3) WatchRouteStatus 提供实时状态流，支持多 UI 监控 PLC 状态。
 // -----------------------------------------------------------------------------
+
 service EngineHostApi {
+  // ============================================================================
+  // 健康 / 诊断
+  // ============================================================================
+
+  // 健康检查：返回宿主版本与当前已注册路由数
   rpc Health (HealthRequest) returns (HealthResponse);
+
+  // 诊断信息：含占位中（尚未装配完成）的路由数，用于排查卡住的 ConnectAsync
   rpc GetDiagnostics (DiagnosticsRequest) returns (DiagnosticsResponse);
 
+  // ============================================================================
+  // 路由生命周期
+  // ============================================================================
+
+  // 注册路由：装配协议驱动 + 传输连接，成功后即可按 route_id 读写
   rpc RegisterRoute (RegisterRouteRequest) returns (RegisterRouteResponse);
+
+  // 注销路由：从路由表摘除并关闭 TCP/串口句柄
   rpc RemoveRoute   (RemoveRouteRequest)   returns (RemoveRouteResponse);
+
+  // 查询已注册路由（可按 route_id / 协议 / 介质 / 地址过滤）
   rpc QueryRoutes   (QueryRoutesRequest)   returns (QueryRoutesResponse);
 
+  // ============================================================================
+  // 发现（供 UI 渲染表单，无需内置协议知识）
+  // ============================================================================
+
+  // 列出宿主已加载的协议插件描述符（与是否已注册路由无关）
   rpc QueryProtocols (QueryProtocolsRequest) returns (QueryProtocolsResponse);
+
+  // 列出「宿主所在机器」上的串口（不是上位机本机 COM 口）
   rpc QuerySerialPorts (QuerySerialPortsRequest) returns (QuerySerialPortsResponse);
 
+  // ============================================================================
+  // 读写
+  // ============================================================================
+
+  // 按 route_id + 数据地址读取；length 单位为字节
   rpc Read  (ReadRequest)  returns (ReadResponse);
+
+  // 按 route_id + 数据地址写入原始字节
   rpc Write (WriteRequest) returns (WriteResponse);
 
+  // ============================================================================
+  // 状态推流
+  // ============================================================================
+
+  // 订阅路由在线/离线事件；route_id 为空则订阅全部
   rpc WatchRouteStatus (WatchRouteStatusRequest) returns (stream RouteStatusEvent);
 }
 
+// Health 无入参
 message HealthRequest {}
 
 message HealthResponse {
+  // true 表示宿主进程可接受 RPC
   bool ok = 1;
+  // 宿主版本字符串，供 UI 顶栏显示
   string host_version = 2;
+  // 当前已完成装配的路由数
   int32 route_count = 3;
 }
 
+// Diagnostics 无入参
 message DiagnosticsRequest {}
 
 message DiagnosticsResponse {
+  // 本次诊断请求的关联 ID
   string request_id = 1;
+  // 已完成装配的路由数
   int32 route_count = 2;
+  // 宿主版本
   string host_version = 3;
-  // 已注册但尚未完成装配的路由数（占位中）
+  // 已占位但尚未完成装配的路由数（ConnectAsync 卡住时会持续 > 0）
   int32 pending_route_count = 4;
 }
 
 message RegisterRouteRequest {
+  // 调用方指定的路由 ID（大小写不敏感，全局唯一）
   string route_id = 1;
+  // 协议插件 ID，必须与 QueryProtocols 返回的 protocol_id 一致
   string protocol_id = 2;
+  // 传输插件 ID（可空，服务端按 transport_kind 匹配工厂）
   string transport_id = 3;
+  // 介质："Tcp" 或 "Serial"
   string transport_kind = 4;
 
+  // TCP 目标 IP / 主机名
   string address = 5;
+  // TCP 端口（Serial 路由忽略）
   int32 port = 6;
+  // 站号 / 从站地址（协议不需要时可空）
   string station = 7;
 
+  // 串口设备名（Windows COM3 / Linux /dev/ttyUSB0）
   string serial_port = 8;
+  // 波特率（Serial 路由使用）
   int32 baud_rate = 9;
 
+  // 串口帧间最小静默间隔（毫秒）；0 表示使用服务端默认
   int32 min_io_interval_ms = 10;
 
   // 串口线路参数。留空/为 0 时服务端取默认值 8N1。
@@ -70,13 +125,18 @@ message RegisterRouteRequest {
 }
 
 message RegisterRouteResponse {
+  // 装配 + 连接是否成功
   bool success = 1;
+  // KernelErrorCode 的字符串形式
   string error_code = 2;
+  // 失败原因（成功时为空）
   string error_message = 3;
+  // 实际生效的 route_id（成功时回显）
   string route_id = 4;
 }
 
 message QueryRoutesRequest {
+  // 以下字段均为可选过滤器；空字符串表示不过滤
   string route_id = 1;
   string protocol_id = 2;
   string transport_kind = 3;
@@ -96,12 +156,16 @@ message RouteItem {
 }
 
 message QueryRoutesResponse {
+  // 当前匹配的路由清单
   repeated RouteItem routes = 1;
 }
 
 message ReadRequest {
+  // 目标路由
   string route_id = 1;
+  // 协议地址字符串（如 "40001"、"DB1.DBB0"、"D100"）
   string data_address = 2;
+  // 读取长度，单位字节
   int32 length = 3;
 }
 
@@ -109,12 +173,14 @@ message ReadResponse {
   bool success = 1;
   string error_code = 2;
   string error_message = 3;
+  // 成功时的原始字节；失败时为空
   bytes data = 4;
 }
 
 message WriteRequest {
   string route_id = 1;
   string data_address = 2;
+  // 要写入的原始字节
   bytes data = 3;
 }
 
@@ -189,13 +255,16 @@ message QuerySerialPortsResponse {
 }
 
 message WatchRouteStatusRequest {
+  // 空字符串 = 订阅全部路由；非空 = 只推该 route_id
   string route_id = 1;
 }
 
 message RouteStatusEvent {
   string route_id = 1;
+  // true = 最近一次 I/O 成功
   bool online = 2;
   string error_code = 3;
   string error_message = 4;
+  // 状态变为当前值的 UTC 毫秒时间戳（不是最近一次 I/O 时刻）
   int64 timestamp_unix_ms = 5;
 }

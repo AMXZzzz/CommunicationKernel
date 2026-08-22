@@ -51,6 +51,7 @@ internal static class MewtocolAddress
     /// <returns>1-99 范围内的站号。</returns>
     internal static byte ResolveDefaultStation(string? station)
     {
+        // 空站号回落到协议缺省值 1，避免整条路由因未填站号而不可用
         if (string.IsNullOrWhiteSpace(station))
             return FallbackStation;
 
@@ -69,19 +70,26 @@ internal static class MewtocolAddress
     internal static OperationResult<MewtocolAddressInfo> Parse(
         string address, byte defaultStation = FallbackStation)
     {
+        // 空地址无法映射到任何触点/寄存器
         if (string.IsNullOrWhiteSpace(address))
             return OperationResult<MewtocolAddressInfo>.Fail(
                 "address is empty", KernelErrorCode.InvalidArgument);
         try
         {
+            // 去掉首尾空白后按区号前缀分流
             return DoParse(address.Trim(), defaultStation);
         }
         catch (Exception ex)
         {
+            // ParseInt 对非法数字抛 ArgumentException，在此统一转为 Fail
             return OperationResult<MewtocolAddressInfo>.Fail(
                 $"invalid MEWTOCOL address '{address}': {ex.Message}", KernelErrorCode.InvalidArgument);
         }
     }
+
+    // ============================================================================
+    // 内部解析
+    // ============================================================================
 
     private static OperationResult<MewtocolAddressInfo> DoParse(string raw, byte defaultStation)
     {
@@ -92,6 +100,7 @@ internal static class MewtocolAddress
         int colonIdx = raw.IndexOf(':');
         if (colonIdx > 0 && colonIdx <= 2)
         {
+            // 冒号前 1-2 位数字才认定为站号，排除区号里可能出现的冒号
             if (byte.TryParse(raw[..colonIdx], out byte parsedStation) && parsedStation is >= 1 and <= 99)
             {
                 station = parsedStation;
@@ -99,6 +108,7 @@ internal static class MewtocolAddress
             }
         }
 
+        // 区号匹配不区分大小写
         string a = raw.ToUpperInvariant();
 
         // 分支2：X 区（外部输入触点）
@@ -137,6 +147,7 @@ internal static class MewtocolAddress
     /// </summary>
     private static OperationResult<MewtocolAddressInfo> ParseR(byte station, string body)
     {
+        // R 后面必须有字号
         if (body.Length == 0)
             return OperationResult<MewtocolAddressInfo>.Fail(
                 "R address body is empty", KernelErrorCode.InvalidArgument);
@@ -162,6 +173,7 @@ internal static class MewtocolAddress
 
     private static int ParseInt(string s)
     {
+        // 非法或负数无法作为 MEWTOCOL 字号/触点号
         if (!int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) || v < 0)
             throw new ArgumentException($"invalid number: '{s}'");
         return v;

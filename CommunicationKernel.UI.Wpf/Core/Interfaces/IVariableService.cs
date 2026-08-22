@@ -1,9 +1,10 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: Core/Interfaces/IVariableService.cs
-// 层级: UI层 — 核心接口
-// 作用: 定义变量管理服务的抽象接口，供 VariablePageViewModel 依赖注入使用。
-//       具体实现（LocalVariableStore）在内存中管理变量列表，写入时通过 gRPC 发送。
+// 层级: UI 层 — WPF 核心接口
+// 作用: 变量管理抽象，供 VariablePageViewModel 注入；写入走 gRPC WriteAsync。
+// -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;

@@ -2,18 +2,11 @@
 
 // -----------------------------------------------------------------------------
 // 文件: Services/GrpcProtocolResolver.cs
-// 层级: UI 层 — 服务实现
-// 作用: IProtocolResolver 的 gRPC 实现。协议清单一律来自 Host.App，
-//       UI 层不内置任何协议知识。
+// 层级: UI 层 — WPF 服务实现
+// 作用: IProtocolResolver 的 gRPC 实现。协议清单一律来自 Host.App，UI 不内置协议知识。
 // 离线策略:
-//       上一次成功获取的服务端清单被缓存到本地 JSON 文件，
-//       宿主不可达时用它填充下拉框，并把状态标记为「离线缓存」。
+//       上一次成功获取的服务端清单缓存到本地 JSON，宿主不可达时用它填下拉框。
 //       从未成功获取过时返回空列表，由界面提示用户检查连接。
-// 为什么不硬编码兜底列表:
-//       硬编码等于把协议 ID、展示名、介质、站号需求全部复制到 UI 源码里，
-//       新增一个协议插件就要改 UI 并重新发布客户端，插件架构的收益被抵消；
-//       且两份清单必然漂移（历史上就发生过 UI 用展示名当 ProtocolId 回传，
-//       导致服务端匹配不到工厂、每次添加设备都静默失败）。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -58,12 +51,13 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <param name="client">已初始化的 gRPC 客户端。</param>
         public GrpcProtocolResolver(HostClient client)
         {
+            // gRPC 客户端必填，协议清单一律向 Host.App 查询
             _client = client ?? throw new ArgumentNullException(nameof(client));
 
-            // 先加载本地缓存，保证界面立即有内容可显示
+            // 先加载本地缓存，保证设备编辑面板立刻有下拉内容
             LoadCache();
 
-            // 后台拉取服务端实时清单
+            // 后台拉取服务端实时清单，成功后覆盖缓存
             _ = Task.Run(() => RefreshAsync(CancellationToken.None));
         }
 
@@ -76,14 +70,17 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <inheritdoc />
         public ProtocolDescriptorDto FindById(string protocolId)
         {
+            // 空 ID 无法匹配，编辑面板应保持未选中
             if (string.IsNullOrWhiteSpace(protocolId))
                 return null;
 
             foreach (ProtocolDescriptorDto d in _cached)
             {
+                // 忽略大小写比较 ProtocolId，还原已保存设备的协议下拉项
                 if (string.Equals(d.ProtocolId, protocolId, StringComparison.OrdinalIgnoreCase))
                     return d;
             }
+            // 清单中没有该 ID（插件已卸载或缓存过期）
             return null;
         }
 
@@ -96,11 +93,13 @@ namespace CommunicationKernel.UI.Wpf.Services
 
             try
             {
+                // 向 Host.App 拉取当前已加载的协议插件清单
                 IReadOnlyList<ProtocolDescriptorDto> serverList =
                     await _client.QueryProtocolsAsync(ct).ConfigureAwait(false);
 
                 if (serverList is { Count: > 0 })
                 {
+                    // 服务端有协议：整体替换缓存并标记为实时
                     _cached      = new List<ProtocolDescriptorDto>(serverList);
                     _sourceState = ProtocolSourceState.Live;
                     SaveCache(serverList);
@@ -111,6 +110,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                     _sourceState = ProtocolSourceState.Unavailable;
                 }
 
+                // 通知设备编辑面板刷新下拉框
                 ProtocolsChanged?.Invoke();
             }
             catch (Exception)
@@ -119,31 +119,36 @@ namespace CommunicationKernel.UI.Wpf.Services
                 if (_cached.Count > 0 && _sourceState != ProtocolSourceState.Live)
                     _sourceState = ProtocolSourceState.Cached;
 
+                // 即使失败也通知界面，以便显示「离线缓存」提示
                 ProtocolsChanged?.Invoke();
             }
             finally
             {
+                // 释放刷新闸门，允许下次手动重试
                 Interlocked.Exchange(ref _refreshing, 0);
             }
         }
 
-        // =====================================================================
+        // ============================================================================
         // 本地缓存
-        // =====================================================================
+        // ============================================================================
 
         private void LoadCache()
         {
             try
             {
+                // 从未成功拉取过则没有缓存文件
                 if (!File.Exists(CachePath))
                     return;
 
+                // 读取并反序列化上次成功的协议清单
                 string json = File.ReadAllText(CachePath, Encoding.UTF8);
                 List<ProtocolDescriptorDto> loaded =
                     JsonSerializer.Deserialize<List<ProtocolDescriptorDto>>(json, JsonOpts);
 
                 if (loaded is { Count: > 0 })
                 {
+                    // 有有效缓存：先给界面用，状态标为离线缓存
                     _cached      = loaded;
                     _sourceState = ProtocolSourceState.Cached;
                 }
@@ -158,10 +163,12 @@ namespace CommunicationKernel.UI.Wpf.Services
         {
             try
             {
+                // 确保缓存目录存在
                 string dir = Path.GetDirectoryName(CachePath);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
+                // 先写临时文件再覆盖，避免写入中断留下半截 JSON
                 string tmp = CachePath + ".tmp";
                 File.WriteAllText(tmp, JsonSerializer.Serialize(protocols, JsonOpts), Encoding.UTF8);
                 File.Move(tmp, CachePath, overwrite: true);

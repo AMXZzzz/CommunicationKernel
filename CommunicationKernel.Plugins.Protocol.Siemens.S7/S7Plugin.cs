@@ -44,6 +44,7 @@ public sealed class SiemensS7_1200ProtocolDriverFactory : IProtocolDriverFactory
 
     /// <inheritdoc />
     public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        // Remote TSAP 0x0300 = Rack0 / Slot0（S7-1200 缺省连接参数）
         new SiemensS7ProtocolDriver(Metadata, remoteTsap: 0x0300);
 }
 
@@ -68,6 +69,7 @@ public sealed class SiemensS7_200SmartProtocolDriverFactory : IProtocolDriverFac
 
     /// <inheritdoc />
     public IProtocolDriver CreateDriver(ProtocolDriverContext? context = null) =>
+        // Remote TSAP 0x0200；V 区在帧层映射为 DB1
         new SiemensS7ProtocolDriver(Metadata, remoteTsap: 0x0200);
 }
 
@@ -150,6 +152,7 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
     public async Task<OperationResult<byte[]>> ReadAsync(
         ITransportClient client, string address, int length, CancellationToken cancellationToken) {
 
+        // 首次读写前必须完成 COTP CR + S7 Setup Communication
         OperationResult handshake = await EnsureHandshakeAsync(client, cancellationToken).ConfigureAwait(false);
         if (!handshake.Success)
             return OperationResult<byte[]>.Fail(handshake.ErrorMessage, handshake.ErrorCode);
@@ -157,6 +160,7 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
         OperationResult<byte[]> buildResult = BuildReadFrame(address, length);
         if (!buildResult.Success) return buildResult;
 
+        // TPKT 头自带总长，传输层按 TryGetFrameLength 收齐一帧
         OperationResult<byte[]> response =
             await client.SendAndReceiveAsync(buildResult.Value, TryGetFrameLength, cancellationToken)
                 .ConfigureAwait(false);
@@ -182,6 +186,7 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
         if (!response.Success)
             return OperationResult.Fail(response.ErrorMessage, response.ErrorCode);
 
+        // 校验 S7 错误类与 Item 返回码 0xFF
         return S7Frame.ParseWriteResponse(response.Value);
     }
 
@@ -195,6 +200,7 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
     internal static bool TryGetFrameLength(ReadOnlySpan<byte> received, out int totalLength) {
         totalLength = 0;
 
+        // TPKT 头 4 字节尚未收齐，继续等
         if (received.Length < 4)
             return false;
 

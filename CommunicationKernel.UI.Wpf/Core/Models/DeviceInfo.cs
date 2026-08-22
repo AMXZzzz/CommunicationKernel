@@ -1,10 +1,10 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
 // 文件: Core/Models/DeviceInfo.cs
-// 层级: UI层 — 核心模型
-// 作用: 设备/路由的 UI 数据模型，实现 INotifyPropertyChanged 以支持 WPF 数据绑定。
-//       属性值来自 gRPC RouteDto（Id/Protocol/Ip/Port/Station/TransportKind）
-//       以及本地存储（Name/Model/IsDualLane 等不在 gRPC 中持久化的字段）。
+// 层级: UI 层 — WPF 核心模型
+// 作用: 设备/路由的 UI 数据模型，绑定设备卡片与编辑面板；部分字段来自 gRPC RouteDto。
+// -----------------------------------------------------------------------------
 
 using System;
 using System.ComponentModel;
@@ -20,9 +20,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
     /// </summary>
     public sealed class DeviceInfo : INotifyPropertyChanged
     {
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // INotifyPropertyChanged 实现
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>WPF 数据绑定引擎订阅此事件侦测属性变更。</summary>
         public event PropertyChangedEventHandler PropertyChanged;
@@ -37,19 +37,19 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         /// <returns>true = 值已改变；false = 值未改变。</returns>
         private bool SetField<T>(ref T field, T value, [CallerMemberName] string name = null)
         {
-            // 使用默认相等比较，值相同则跳过通知
+            // 值未变则跳过，避免设备卡片无谓刷新
             if (System.Collections.Generic.EqualityComparer<T>.Default.Equals(field, value))
                 return false;
 
-            // 更新字段并触发通知
+            // 更新字段并通知绑定引擎
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
             return true;
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 后备字段
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         private string _id             = string.Empty;
         private string _name           = string.Empty;
@@ -67,9 +67,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         private DeviceStatusType _statusType = DeviceStatusType.Offline;
         private bool   _isDualLane;
 
-        // -------------------------------------------------------------------------
-        // 属性 — 来自 gRPC RouteDto
-        // -------------------------------------------------------------------------
+        // ============================================================================
+        // 属性 — 来自 gRPC RouteDto / 本地元数据
+        // ============================================================================
 
         /// <summary>
         /// 路由唯一标识，对应 RouteDto.RouteId。
@@ -140,9 +140,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
             get => _station;
             set
             {
-                // 更新字符串字段
+                // 更新字符串站号
                 SetField(ref _station, value);
-                // 同步解析为 int，供数字类型使用
+                // 能解析成整数时同步 StationNo，供数字站号协议使用
                 if (int.TryParse(value, out int n))
                     StationNo = n;
             }
@@ -198,9 +198,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
             set => SetField(ref _extraSettingsJson, value ?? "{}");
         }
 
-        // -------------------------------------------------------------------------
-        // 属性 — 运行时状态（通知属性，由 WatchRouteStatus 流更新）
-        // -------------------------------------------------------------------------
+        // ============================================================================
+        // 属性 — 运行时状态（由 WatchRouteStatus 流更新）
+        // ============================================================================
 
         /// <summary>
         /// 是否已连接（通信正常）。
@@ -213,7 +213,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
             {
                 // 更新连接标志
                 SetField(ref _isConnected, value);
-                // 连接状态改变时同步触发 StatusText 的 UI 更新
+                // 连接变化时同步刷新状态文字绑定
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
             }
         }
@@ -227,9 +227,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
             get => _statusType;
             set
             {
-                // 更新状态枚举值
+                // 更新状态枚举
                 SetField(ref _statusType, value);
-                // 状态改变时同步触发 StatusText 的 UI 更新
+                // 状态变化时同步刷新状态文字绑定
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusText)));
             }
         }
@@ -242,7 +242,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         {
             get
             {
-                // 根据状态枚举返回对应的中文显示文字
+                // 按状态枚举返回设备卡片上的中文文案
                 switch (_statusType)
                 {
                     case DeviceStatusType.Success:
@@ -260,9 +260,9 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
             }
         }
 
-        // -------------------------------------------------------------------------
+        // ============================================================================
         // 属性 — 本地标志（不在 gRPC 中）
-        // -------------------------------------------------------------------------
+        // ============================================================================
 
         /// <summary>
         /// 是否为双轨设备，本地标志，不通过 gRPC 传输。
@@ -275,7 +275,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
             {
                 // 更新双轨标志
                 SetField(ref _isDualLane, value);
-                // 同步触发 Lane 属性的 UI 更新
+                // 同步刷新轨道文字绑定
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Lane)));
             }
         }

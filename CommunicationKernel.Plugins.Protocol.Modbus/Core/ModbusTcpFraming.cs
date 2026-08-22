@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+// 文件: ModbusTcpFraming.cs
+// 层级: 插件层 / 协议
+// 作用: Modbus TCP 封装与解封（7 字节 MBAP 头 + PDU）。
+// -----------------------------------------------------------------------------
+
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 
@@ -24,6 +30,10 @@ public static class ModbusTcpFraming {
     /// <summary>Length 字段之前的固定部分长度（事务 ID + 协议 ID + 长度字段本身）。</summary>
     private const int LengthFieldEnd = 6;
 
+    // ============================================================================
+    // 封装
+    // ============================================================================
+
     /// <summary>
     /// 将 PDU 封装为完整 MBAP 帧。
     /// </summary>
@@ -36,6 +46,10 @@ public static class ModbusTcpFraming {
         Buffer.BlockCopy(pdu, 0, frame, HeaderLength, pdu.Length);
         return frame;
     }
+
+    // ============================================================================
+    // 帧长探测
+    // ============================================================================
 
     /// <summary>
     /// 帧长探测：读满 6 字节 MBAP 前缀后即可由 Length 字段确定总长。
@@ -55,9 +69,14 @@ public static class ModbusTcpFraming {
             return true;
         }
 
+        // 总长 = 6 字节前缀 + Length 声明的后续字节
         totalLength = LengthFieldEnd + declared;
         return true;
     }
+
+    // ============================================================================
+    // 解封
+    // ============================================================================
 
     /// <summary>
     /// 校验 MBAP 头并剥离外层封装，返回 PDU。
@@ -73,22 +92,26 @@ public static class ModbusTcpFraming {
     public static OperationResult<byte[]> Unwrap(
         byte[]? frame, ushort expectedTransactionId, byte expectedUnitId) {
 
+        // 至少要有 MBAP(7) + 功能码(1)
         if (frame is null || frame.Length < HeaderLength + 1)
             return OperationResult<byte[]>.Fail(
                 $"Modbus TCP 响应过短：至少需要 {HeaderLength + 1} 字节，实际 {frame?.Length ?? 0} 字节",
                 KernelErrorCode.ProtocolError);
 
+        // 事务 ID 必须与请求一致，否则是粘包或迟到响应
         ushort transactionId = (ushort)((frame[0] << 8) | frame[1]);
         if (transactionId != expectedTransactionId)
             return OperationResult<byte[]>.Fail(
                 $"事务 ID 不匹配：请求 {expectedTransactionId}，响应 {transactionId}（响应错位或迟到）",
                 KernelErrorCode.ProtocolError);
 
+        // Protocol ID 固定 0x0000，非 0 说明不是 Modbus TCP
         ushort protocolId = (ushort)((frame[2] << 8) | frame[3]);
         if (protocolId != 0)
             return OperationResult<byte[]>.Fail(
                 $"协议 ID 应为 0，实际 {protocolId}", KernelErrorCode.ProtocolError);
 
+        // 从站号配对，避免网关把别的从站响应转过来
         if (frame[6] != expectedUnitId)
             return OperationResult<byte[]>.Fail(
                 $"从站号不匹配：请求 {expectedUnitId}，响应 {frame[6]}",
@@ -101,6 +124,7 @@ public static class ModbusTcpFraming {
                 $"MBAP 长度字段与实际帧长不符：声明 PDU {pduLength} 字节，实际可用 {frame.Length - HeaderLength} 字节",
                 KernelErrorCode.ProtocolError);
 
+        // 剥掉 7 字节 MBAP，剩下纯 PDU
         byte[] pdu = new byte[pduLength];
         Buffer.BlockCopy(frame, HeaderLength, pdu, 0, pduLength);
         return OperationResult<byte[]>.Ok(pdu);

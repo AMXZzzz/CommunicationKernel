@@ -1,5 +1,11 @@
 #nullable disable
 
+// -----------------------------------------------------------------------------
+// 文件: Views/Pages/Variable/Controls/VariableDeviceList.xaml.cs
+// 层级: UI 层 — WPF Views
+// 作用: 左侧设备列表；选中后发出 DeviceSelected，尽量保持原选中项。
+// -----------------------------------------------------------------------------
+
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -24,9 +30,14 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         private string _selectedId;
 
         public VariableDeviceList () {
+            // 解析 XAML 并把行集合绑到 ListBox
             InitializeComponent();
             listDevices.ItemsSource = _items;
         }
+
+        // ============================================================================
+        // 加载
+        // ============================================================================
 
         /// <summary>重新加载设备与变量数量；尽量保持选中。</summary>
         public void Reload () {
@@ -42,6 +53,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
 
             txtCount.Text = _items.Count.ToString();
 
+            // 优先还原刷新前的选中项
             if (!string.IsNullOrEmpty(keep)) {
                 var m = _items.FirstOrDefault(x => x.Id == keep);
                 if (m != null) {
@@ -77,6 +89,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             return TryFindResource(key) as Brush
                    ?? new SolidColorBrush(Color.FromRgb(0x9D, 0x9D, 0x9D));
         }
+
+        // ============================================================================
+        // 行模型
+        // ============================================================================
 
         private sealed class Row {
             public string Id { get; set; }
