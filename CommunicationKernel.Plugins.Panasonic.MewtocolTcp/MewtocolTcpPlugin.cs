@@ -125,15 +125,48 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
 
     /// <inheritdoc />
     public OperationResult<byte[]> BuildReadFrame(string address, int length) {
+        OperationResult<MewtocolReadPlan> plan = PlanRead(address, length);
+        return plan.Success
+            ? OperationResult<byte[]>.Ok(plan.Value.Frame)
+            : OperationResult<byte[]>.Fail(plan.ErrorMessage, plan.ErrorCode);
+    }
+
+    /// <summary>一次读请求的计划：帧 + 响应解析所需的判定结果。</summary>
+    private readonly record struct MewtocolReadPlan(byte[] Frame, bool IsBit, int WordCount);
+
+    /// <summary>
+    /// 规划一次读取：解析地址、决定命令类型、构建帧。
+    /// </summary>
+    /// <remarks>
+    /// <b>数据区只由地址决定，与读取长度无关。</b>
+    /// 历史实现写作 <c>addr.IsBit || length == 1</c>——读一个字节的 DT 寄存器
+    /// 会被转成 RCS 单点读，返回的是完全不同数据区的位值，且全程 Success = true。
+    /// 这与 Modbus 侧曾经的 <c>|| length == 1</c> 是同一个缺陷模式。
+    /// <para>
+    /// 判定结果随帧一并返回，避免解析响应时重新解析地址再判一次——
+    /// 两处独立判定必须永远保持同步，是同类缺陷的温床。
+    /// </para>
+    /// </remarks>
+    private OperationResult<MewtocolReadPlan> PlanRead(string address, int length) {
+        if (length <= 0)
+            return OperationResult<MewtocolReadPlan>.Fail(
+                $"读取长度必须大于 0，实际 {length}", KernelErrorCode.InvalidArgument);
+
         OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address, _defaultStation);
         if (!parsed.Success)
-            return OperationResult<byte[]>.Fail(parsed.ErrorMessage, parsed.ErrorCode);
+            return OperationResult<MewtocolReadPlan>.Fail(parsed.ErrorMessage, parsed.ErrorCode);
 
         MewtocolAddressInfo addr = parsed.Value;
-        byte[] frame = (addr.IsBit || length == 1)
-            ? MewtocolFrame.BuildReadContact(addr)
-            : MewtocolFrame.BuildReadData(addr, (length + 1) / 2);
-        return OperationResult<byte[]>.Ok(frame);
+
+        // 位地址走 RCS 读单点；字地址走 RD 读数据寄存器
+        if (addr.IsBit)
+            return OperationResult<MewtocolReadPlan>.Ok(
+                new MewtocolReadPlan(MewtocolFrame.BuildReadContact(addr), IsBit: true, WordCount: 0));
+
+        // length 单位为字节，向上取整到整字
+        int wordCount = (length + 1) / 2;
+        return OperationResult<MewtocolReadPlan>.Ok(
+            new MewtocolReadPlan(MewtocolFrame.BuildReadData(addr, wordCount), IsBit: false, wordCount));
     }
 
     /// <inheritdoc />
@@ -152,19 +185,21 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
     public async Task<OperationResult<byte[]>> ReadAsync(
         ITransportClient client, string address, int length, CancellationToken cancellationToken) {
 
-        OperationResult<byte[]> buildResult = BuildReadFrame(address, length);
-        if (!buildResult.Success) return buildResult;
+        OperationResult<MewtocolReadPlan> plan = PlanRead(address, length);
+        if (!plan.Success)
+            return OperationResult<byte[]>.Fail(plan.ErrorMessage, plan.ErrorCode);
+
+        MewtocolReadPlan p = plan.Value;
 
         OperationResult<byte[]> response =
-            await client.SendAndReceiveAsync(buildResult.Value, TryGetFrameLength, cancellationToken)
+            await client.SendAndReceiveAsync(p.Frame, TryGetFrameLength, cancellationToken)
                 .ConfigureAwait(false);
         if (!response.Success) return response;
 
-        OperationResult<MewtocolAddressInfo> parsed = MewtocolAddress.Parse(address, _defaultStation);
-        bool isBit = !parsed.Success || parsed.Value.IsBit || length == 1;
-        return isBit
+        // 复用构建时的判定，不再重新解析地址——两处独立判定必然漂移
+        return p.IsBit
             ? MewtocolFrame.ParseReadContactResponse(response.Value)
-            : MewtocolFrame.ParseReadDataResponse(response.Value, (length + 1) / 2);
+            : MewtocolFrame.ParseReadDataResponse(response.Value, p.WordCount);
     }
 
     /// <inheritdoc />
