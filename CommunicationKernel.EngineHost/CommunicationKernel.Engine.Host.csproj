@@ -1,8 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <ProjectReference Include="..\CommunicationKernel.Engine.Router\CommunicationKernel.Engine.Router.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
+    <!-- 只依赖引擎；路由层与抽象层由引擎传递引用。
+         本项目现在是"引擎 + gRPC 端点"的薄壳，业务逻辑全在 Engine 内。 -->
+    <ProjectReference Include="..\CommunicationKernel.Engine\CommunicationKernel.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,9 +37,16 @@
     <PluginProject Include="..\CommunicationKernel.Plugins.Transport.Tcp\CommunicationKernel.Plugins.Transport.Tcp.csproj" />
     <PluginProject Include="..\CommunicationKernel.Plugins.Transport.SerialPort\CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
 
+    <!--
+      GlobalPropertiesToRemove：插件是类库，不带 RuntimeIdentifier。
+      宿主以 -r linux-arm64 发布时，若把 RID 传播给插件工程，
+      MSBuild 会去 bin/Release/net8.0/linux-arm64/ 找它们的输出——
+      那个目录根本不存在，发布直接失败（树莓派部署因此完全不可行）。
+    -->
     <ProjectReference Include="@(PluginProject)"
                       ReferenceOutputAssembly="false"
-                      Private="false" />
+                      Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishReadyToRun" />
   </ItemGroup>
 
   <!--
@@ -53,7 +61,10 @@
   -->
   <Target Name="CopyPluginsToOutput" AfterTargets="Build">
     <!-- 取各插件工程的主输出程序集路径（此时它们已由 ProjectReference 保证构建完成） -->
-    <MSBuild Projects="@(PluginProject)" Targets="GetTargetPath">
+    <!-- RemoveProperties 同上：查询插件输出路径时必须按「无 RID 的类库」解析 -->
+    <MSBuild Projects="@(PluginProject)"
+             Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishReadyToRun">
       <Output TaskParameter="TargetOutputs" ItemName="_PluginAssembly" />
     </MSBuild>
 
@@ -120,6 +131,30 @@
     <Copy SourceFiles="@(_PluginRuntimeAsset)"
           DestinationFiles="@(_PluginRuntimeAsset->'$(OutDir)plugins\runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    把 plugins 目录一并带进发布产物。
+
+    上面两个目标挂在 Build 上，拷贝目的地是 $(OutDir)；而 dotnet publish
+    的输出目录是 $(PublishDir)，两者不同——不补这一步，发布产物里没有任何插件，
+    宿主启动后加载到 0 个协议，且不报错（插件加载失败是静默的）。
+    树莓派部署正是走 publish 路径，因此这一步是该场景的必需项。
+
+    直接从已就绪的 $(OutDir)plugins 复制：publish 在 build 之后执行，
+    那里的内容已经过上面两个目标的正确处理（含 RID 资产与排除规则）。
+  -->
+  <Target Name="CopyPluginsToPublishDir" AfterTargets="Publish">
+    <ItemGroup>
+      <_DeployedPluginFile Include="$(OutDir)plugins\**\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_DeployedPluginFile)"
+          DestinationFiles="@(_DeployedPluginFile->'$(PublishDir)plugins\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <Message Importance="high"
+             Text="已将 @(_DeployedPluginFile->Count()) 个插件文件复制到发布目录 $(PublishDir)plugins" />
   </Target>
 
 </Project>

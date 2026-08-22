@@ -43,3 +43,6 @@ CommunicationKernel.Plugins.Siemens.S7_200Smart/
 # 需要归档请打 tag，而不是长期留在工作树里。
 # ============================================================================
 old/
+
+# 发布产物（dotnet publish -o ./publish/...）
+publish/

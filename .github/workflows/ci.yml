@@ -148,6 +148,243 @@ jobs:
 
           Write-Host "插件部署校验通过：$($dlls.Count) 个 DLL，契约无泄漏，RID 资产完整"
 
+  linux-build-and-test:
+    name: Linux 构建与测试（跨平台子集）
+    # 部署目标包含树莓派与 Linux，后端必须在 Linux 上验证。
+    # UI.Wpf 是 net8.0-windows，只能在 Windows 构建，故此处只构建跨平台子集。
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 构建引擎与插件（不含 WPF）
+        run: |
+          for p in \
+            CommunicationKernel.Engine/CommunicationKernel.Engine.csproj \
+            CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj \
+            CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj
+          do
+            echo "::group::$p"
+            dotnet build "$p" --configuration Release
+            echo "::endgroup::"
+          done
+
+      - name: 测试
+        run: dotnet test CommunicationKernel.Tests --configuration Release
+
+      # 引擎必须能脱离 ASP.NET 独立消费——这是 SDK 化的核心承诺。
+      # 用一个只引用引擎的空项目验证依赖闭包。
+      - name: 校验引擎不拖入 ASP.NET
+        run: |
+          mkdir -p /tmp/sdkprobe
+          cat > /tmp/sdkprobe/sdkprobe.csproj <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <OutputType>Exe</OutputType>
+              <TargetFramework>net8.0</TargetFramework>
+            </PropertyGroup>
+            <ItemGroup>
+              <ProjectReference Include="$(GITHUB_WORKSPACE)/CommunicationKernel.Engine/CommunicationKernel.Engine.csproj" />
+            </ItemGroup>
+          </Project>
+          EOF
+          sed -i "s|\$(GITHUB_WORKSPACE)|$GITHUB_WORKSPACE|" /tmp/sdkprobe/sdkprobe.csproj
+          echo 'System.Console.WriteLine(typeof(CommunicationKernel.Engine.HostRuntime).FullName);' > /tmp/sdkprobe/Program.cs
+          dotnet build /tmp/sdkprobe/sdkprobe.csproj
+
+          if grep -q '"Microsoft\.AspNetCore' /tmp/sdkprobe/obj/project.assets.json; then
+            echo "::error::引擎的依赖闭包中出现 Microsoft.AspNetCore.*——嵌入式消费者会被拖进整个 ASP.NET Core"
+            grep -o '"Microsoft\.AspNetCore[^"]*"' /tmp/sdkprobe/obj/project.assets.json | sort -u
+            exit 1
+          fi
+          echo "引擎依赖闭包干净，可独立嵌入"
+
+  publish-linux-arm64:
+    name: 树莓派发布产物验证
+    # 只验证「能产出」，不要求在 ARM 上跑测试（CI 无 ARM 运行器）。
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 发布 linux-arm64
+        run: >
+          dotnet publish CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj
+          --configuration Release
+          --runtime linux-arm64
+          --self-contained true
+          --output ./publish/linux-arm64
+
+      - name: 校验树莓派产物形态
+        # 逐项校验而非首个失败即退出：一次运行报出全部缺失，
+        # 避免「修一个、再跑一次、又报下一个」的往返。
+        run: |
+          root=./publish/linux-arm64
+          fail=0
+
+          # 1) System.IO.Ports 在 Linux 上依赖原生库 libSystem.IO.Ports.Native.so。
+          #    缺失时串口首次打开才会失败，且错误信息不指向缺库。
+          if [ -z "$(find $root -name 'libSystem.IO.Ports.Native.so' -print -quit)" ]; then
+            echo "::error::缺少 libSystem.IO.Ports.Native.so，树莓派上串口不可用"
+            fail=1
+          fi
+
+          # 2) 插件必须进入「发布」目录。
+          #    插件部署 Target 挂在 Build 上，目的地是 $(OutDir)；
+          #    而 publish 的输出目录不同——曾出现「构建目录有插件、
+          #    发布目录 0 个」且 publish 本身不报任何错的情况。
+          for dll in \
+            CommunicationKernel.Plugins.Modbus.Tcp \
+            CommunicationKernel.Plugins.Modbus.Rtu \
+            CommunicationKernel.Plugins.Modbus.Ascii \
+            CommunicationKernel.Plugins.Modbus.Core \
+            CommunicationKernel.Plugins.Panasonic.MewtocolTcp \
+            CommunicationKernel.Plugins.Siemens.S7 \
+            CommunicationKernel.Plugins.Transport.Tcp \
+            CommunicationKernel.Plugins.Transport.SerialPort
+          do
+            if [ ! -f "$root/plugins/$dll.dll" ]; then
+              echo "::error::发布产物缺少插件 $dll.dll"
+              fail=1
+            fi
+          done
+
+          # 3) 四个共享契约必须留在宿主根目录，且绝不出现在 plugins 下。
+          #    出现在 plugins 下时插件会加载到自己那一份类型，
+          #    IsAssignableFrom 判定失败，所有工厂静默注册不上。
+          for dll in \
+            CommunicationKernel.Core.Abstractions \
+            CommunicationKernel.Communication.Protocol \
+            CommunicationKernel.Communication.Transport \
+            CommunicationKernel.Plugin.Runtime
+          do
+            if [ ! -f "$root/$dll.dll" ]; then
+              echo "::error::宿主根目录缺少共享契约 $dll.dll"
+              fail=1
+            fi
+            if [ -f "$root/plugins/$dll.dll" ]; then
+              echo "::error::共享契约 $dll.dll 泄漏进 plugins 目录"
+              fail=1
+            fi
+          done
+
+          # 4) 自包含发布必须产出可直接执行的 apphost——
+          #    树莓派上通常不预装 .NET 运行时。
+          if [ ! -f "$root/CommunicationKernel.Engine.Host" ]; then
+            echo "::error::缺少自包含 apphost，目标机将需要预装 .NET 运行时才能启动"
+            fail=1
+          fi
+
+          [ $fail -eq 0 ] || exit 1
+          echo "树莓派产物校验通过：插件齐备、契约无泄漏、串口原生库与 apphost 就位"
+
+      - name: 上传发布产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: enginehost-linux-arm64
+          path: ./publish/linux-arm64
+          retention-days: 7
+
+  smoke-test-host:
+    name: 宿主端到端冒烟
+    # 有两类故障单元测试永远抓不到，且都曾真实发生：
+    #   · 明文端点配 Http1AndHttp2 时 Kestrel 退回纯 HTTP/1.1，
+    #     gRPC 被服务端以 HTTP_1_1_REQUIRED 拒绝——整个 gRPC 面是死的，
+    #     而构建、测试、发布校验全绿。
+    #   · 插件加载失败是静默的，服务照常运行，只是协议清单为空。
+    # 两者都只有「真的把宿主跑起来看一眼」才能发现。
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # 用 linux-x64 而非 arm64：runner 是 x64，产物要能就地跑起来。
+      # 插件部署与 RID 资产的正确性由 publish-linux-arm64 作业负责。
+      - name: 发布 linux-x64
+        run: >
+          dotnet publish CommunicationKernel.EngineHost/CommunicationKernel.Engine.Host.csproj
+          --configuration Release
+          --runtime linux-x64
+          --self-contained true
+          --output ./publish/smoke
+
+      - name: 启动宿主并等待就绪
+        run: |
+          cd ./publish/smoke
+          # nohup + setsid：每个 step 是独立 shell，进程需脱离该 shell
+          # 才能活到后续 step
+          setsid nohup ./CommunicationKernel.Engine.Host > $GITHUB_WORKSPACE/host.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/host.pid
+
+          # 轮询而非固定 sleep：CI 机器负载波动大，固定等待要么不够要么浪费
+          for i in $(seq 1 30); do
+            if grep -q "Application started" $GITHUB_WORKSPACE/host.log 2>/dev/null; then
+              echo "宿主已就绪（第 ${i} 次探测）"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::宿主 30 秒内未就绪"
+          cat $GITHUB_WORKSPACE/host.log
+          exit 1
+
+      - name: 校验 gRPC 所需的 HTTP/2 明文可用
+        run: |
+          # --http2-prior-knowledge：不做协议升级协商，直接以 HTTP/2 开场。
+          # 这正是 gRPC 客户端在 http:// 上的行为。
+          version=$(curl -s -o /dev/null -w '%{http_version}' \
+                    --http2-prior-knowledge http://localhost:5000/ || echo "连接失败")
+
+          if [ "$version" != "2" ]; then
+            echo "::error::端点未提供明文 HTTP/2（实测 http_version=$version），gRPC 调用将全部失败。"
+            echo "::error::检查 appsettings.json 的 Kestrel:Endpoints:Grpc:Protocols 是否为 Http2——"
+            echo "::error::明文端点上配 Http1AndHttp2 会让 Kestrel 退回纯 HTTP/1.1。"
+            cat $GITHUB_WORKSPACE/host.log
+            exit 1
+          fi
+          echo "明文 HTTP/2 可用，gRPC 传输前提成立"
+
+      - name: 校验协议插件已在启动时加载
+        run: |
+          # 断言具体协议 ID 而非只看数量：数量对得上但加载错了插件同样是故障。
+          for id in modbus-tcp modbus-rtu modbus-ascii panasonic-mewtocol; do
+            if ! grep -q "$id" $GITHUB_WORKSPACE/host.log; then
+              echo "::error::启动日志中没有协议 $id——插件未加载或加载失败（该失败是静默的）"
+              cat $GITHUB_WORKSPACE/host.log
+              exit 1
+            fi
+          done
+          echo "协议插件在启动时即完成加载"
+
+      - name: 停止宿主
+        if: always()
+        run: |
+          [ -f host.pid ] && kill "$(cat host.pid)" 2>/dev/null || true
+          echo "--- 宿主日志 ---"
+          cat host.log || true
+
   verify-proto-single-source:
     name: 校验 proto 单一来源
     # proto 曾经在三个项目各存一份副本，Web 端长期滞后于服务端且无人察觉。

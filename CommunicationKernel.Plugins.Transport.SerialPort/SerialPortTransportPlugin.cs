@@ -7,17 +7,25 @@
 //   2) SerialPortTransportClient：
 //        ConnectAsync        → 从 TransportEndpoint 读取 SerialPort/BaudRate，
 //                              可通过 Properties 扩展 DataBits/Parity/StopBits。
-//        SendAndReceiveAsync → Write 全部请求字节，ReadTimeout 内循环 ReadAsync，
-//                              静默判断策略与 TCP 相同（InterByteTimeoutMs=50ms）。
+//        SendAndReceiveAsync → Write 全部请求字节，再按协议给出的
+//                              TryGetFrameLength 读满一整帧；
+//                              多读到的字节留作残留供下一帧使用。
 //        DisconnectAsync     → Close + Dispose
-//   3) 读取策略：
-//        FirstByteTimeoutMs = 3000（RTU 从站响应时间要求较严格）
-//        InterByteTimeoutMs = 20（串口字节密集，帧间静默窗口更短）
-//        MaxResponseBytes   = 512
-//   4) Parity/DataBits/StopBits 可通过 endpoint.Properties 定制:
+//   3) 帧边界由协议决定，传输层不猜：
+//        Modbus RTU 传统上靠 3.5 字符静默判帧，但在 USB 转串口、
+//        虚拟串口与 TCP 转串口透传网关上，字节到达时序被驱动重排，
+//        静默窗口不再可靠。现由调用方传入 TryGetFrameLength，
+//        传输层只负责"读够长度"。
+//   4) 超时是"帧不完整"的兜底，不是"帧已结束"的判定：
+//        FirstByteTimeoutMs      = 3000（RTU 从站响应时间要求较严格）
+//        SubsequentByteTimeoutMs = 500 （低波特率下单字节即需约 1 ms，留足余量）
+//        MaxResponseBytes        = 1024（超出视为协议异常，防止无界增长）
+//   5) Parity/DataBits/StopBits 可通过 endpoint.Properties 定制:
 //        "Parity"   → None/Even/Odd/Mark/Space（默认 None）
 //        "DataBits" → 5~8（默认 8）
 //        "StopBits" → 1/1.5/2（默认 1）
+//   6) Linux/树莓派：设备名形如 /dev/ttyUSB0、/dev/ttyAMA0，
+//      进程需属于 dialout 组；详见根目录《部署-Linux与树莓派.md》。
 // -----------------------------------------------------------------------------
 
 using System;
