@@ -19,13 +19,15 @@ namespace CommunicationKernel.Engine.Router.Abstractions;
 /// 2) 本接口只保留路由表与读合并两项真实职责。
 /// -----------------------------------------------------------------------------
 /// </summary>
+/// <remarks>
+/// <b>不暴露子组件。</b>
+/// 曾经同时提供 <c>ConnectionRouter</c> / <c>ReadCoordinator</c> 属性与一组转发方法，
+/// 等于给同一个目的地开了两条路：调用方既可 <c>orchestrator.TryRegister(e)</c>，
+/// 也可 <c>orchestrator.ConnectionRouter.TryRegister(e)</c> 绕过编排器。
+/// 后者会跳过注销时的资源释放等编排语义，只能靠注释「应当替代直接调用」打补丁。
+/// 现在子组件是实现细节，编排器是唯一入口。
+/// </remarks>
 public interface IRouterOrchestrator {
-    /// <summary>路由表。</summary>
-    IConnectionRouter ConnectionRouter { get; }
-
-    /// <summary>读取合并协调器。</summary>
-    IReadCoordinator ReadCoordinator { get; }
-
     /// <summary>当前注册路由数量。</summary>
     int RouteCount { get; }
 
@@ -37,7 +39,7 @@ public interface IRouterOrchestrator {
 
     /// <summary>
     /// 移除路由并释放其传输资源。
-    /// 应当替代直接调用 <see cref="IConnectionRouter.TryRemove"/>。
+    /// 这是注销路由的唯一正确入口——它保证「先摘表、再释放」的顺序。
     /// </summary>
     Task<bool> TryRemoveAndDisposeAsync(RouteKey key, CancellationToken cancellationToken);
 
