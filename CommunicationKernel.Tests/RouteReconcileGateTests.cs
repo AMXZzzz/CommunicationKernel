@@ -4,7 +4,7 @@
 // 作用: 验证宿主重启后自动重注册的两条时序保证。
 //
 // 场景还原：
-//   EngineHost 的路由是纯内存的，进程一重启全部消失。此时一台设备上挂着的
+//   Host.App 的路由是纯内存的，进程一重启全部消失。此时一台设备上挂着的
 //   几十个变量会在同一瞬间全部收到 RouteNotFound。
 //   若逐个发起重注册，宿主一秒内就要处理几十次同一条路由的 RegisterRoute；
 //   若失败后不节流，每个轮询周期都会再来一轮，把失败放大成持续请求风暴。
@@ -15,7 +15,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Client.Grpc;
+using CommunicationKernel.Host.Sdk;
 
 namespace CommunicationKernel.Tests;
 

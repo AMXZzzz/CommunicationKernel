@@ -5,12 +5,12 @@
 // 启动顺序:
 //   WebApplication.CreateBuilder
 //     → AddRazorComponents().AddInteractiveServerComponents()
-//     → AddSingleton<EngineHostGrpcClient>
+//     → AddSingleton<HostClient>
 //     → app.Run()
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.UI.Web.Components;
-using CommunicationKernel.Client.Grpc;
+using CommunicationKernel.Host.Sdk;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -24,14 +24,14 @@ builder.Services.AddRazorComponents()
 
 // gRPC Web 客户端（单例生命周期：整个应用共享一个 gRPC 连接池）
 // gRPC 通道可安全被多个组件并发使用
-builder.Services.AddSingleton<EngineHostGrpcClient>(sp => {
-    ILogger<EngineHostGrpcClient> logger =
-        sp.GetRequiredService<ILogger<EngineHostGrpcClient>>();
+builder.Services.AddSingleton<HostClient>(sp => {
+    ILogger<HostClient> logger =
+        sp.GetRequiredService<ILogger<HostClient>>();
 
-    // 从配置读取 EngineHost 地址（未配置时使用开发默认值）
-    string address = builder.Configuration["EngineHost:Address"] ?? "http://localhost:5000";
+    // 从配置读取 Host.App 地址（未配置时使用开发默认值）
+    string address = builder.Configuration["Host.App:Address"] ?? "http://localhost:5000";
 
-    return new EngineHostGrpcClient(address, logger);
+    return new HostClient(address, logger);
 });
 
 // ============================================================================

@@ -10,17 +10,17 @@
 using CommunicationKernel.Core.Abstractions.Results;
 
 // ---- Siemens S7 internals
-using CommunicationKernel.Plugins.Siemens.S7.Internal;
+using CommunicationKernel.Plugins.Protocol.Siemens.S7.Internal;
 
 // ---- Panasonic Mewtocol internals
-using CommunicationKernel.Plugins.Panasonic.Internal;
+using CommunicationKernel.Plugins.Protocol.Panasonic.Internal;
 
 // ---- Public plugins (Manifest + Factory)
-using CommunicationKernel.Plugins.Modbus.Tcp;
-using CommunicationKernel.Plugins.Modbus.Rtu;
-using CommunicationKernel.Plugins.Modbus.Ascii;
-using CommunicationKernel.Plugins.Siemens.S7;
-using CommunicationKernel.Plugins.Panasonic;
+using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
+using CommunicationKernel.Plugins.Protocol.Modbus.Rtu;
+using CommunicationKernel.Plugins.Protocol.Modbus.Ascii;
+using CommunicationKernel.Plugins.Protocol.Siemens.S7;
+using CommunicationKernel.Plugins.Protocol.Panasonic;
 
 namespace CommunicationKernel.Tests;
 

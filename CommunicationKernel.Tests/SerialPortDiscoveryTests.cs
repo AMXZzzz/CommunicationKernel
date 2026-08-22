@@ -17,8 +17,8 @@ using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine;
-using CommunicationKernel.Plugins.Modbus.Tcp;
+using CommunicationKernel.Engine.Runtime;
+using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 
 namespace CommunicationKernel.Tests;
 

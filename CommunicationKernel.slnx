@@ -6,33 +6,29 @@
   <Project Path="CommunicationKernel.Communication.Protocol/CommunicationKernel.Communication.Protocol.csproj" />
   <Project Path="CommunicationKernel.Communication.Transport/CommunicationKernel.Communication.Transport.csproj" />
 
-  <!-- 插件运行时 -->
-  <Project Path="CommunicationKernel.Plugin.Runtime/CommunicationKernel.Plugin.Runtime.csproj" />
+  <!-- 插件加载器 -->
+  <Project Path="CommunicationKernel.Plugin.Loader/CommunicationKernel.Plugin.Loader.csproj" />
 
   <!-- 路由引擎 -->
   <Project Path="CommunicationKernel.Engine.Router/CommunicationKernel.Engine.Router.csproj" />
 
-  <!-- 引擎：可嵌入的 SDK 核心，不依赖 ASP.NET -->
-  <Project Path="CommunicationKernel.Engine/CommunicationKernel.Engine.csproj" />
+  <!-- 通讯内核库（形态 A 直接引用） -->
+  <Project Path="CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj" />
 
-  <!-- 宿主进程：引擎 + gRPC 端点的薄壳 -->
-  <Project Path="CommunicationKernel.Engine.Host/CommunicationKernel.Engine.Host.csproj" />
+  <!-- 现场宿主进程（形态 B）：托管 Engine.Runtime + gRPC -->
+  <Project Path="CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj" />
 
-  <!-- 协议插件：Modbus（单一程序集内含 TCP / RTU / ASCII 三个变体） -->
-  <Project Path="CommunicationKernel.Plugins.Modbus/CommunicationKernel.Plugins.Modbus.csproj" />
-
-  <!-- 协议插件：松下 -->
-  <Project Path="CommunicationKernel.Plugins.Panasonic/CommunicationKernel.Plugins.Panasonic.csproj" />
-
-  <!-- 协议插件：西门子 -->
-  <Project Path="CommunicationKernel.Plugins.Siemens.S7/CommunicationKernel.Plugins.Siemens.S7.csproj" />
+  <!-- 协议插件 -->
+  <Project Path="CommunicationKernel.Plugins.Protocol.Modbus/CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Protocol.Panasonic/CommunicationKernel.Plugins.Protocol.Panasonic.csproj" />
+  <Project Path="CommunicationKernel.Plugins.Protocol.Siemens.S7/CommunicationKernel.Plugins.Protocol.Siemens.S7.csproj" />
 
   <!-- 传输介质插件 -->
   <Project Path="CommunicationKernel.Plugins.Transport.Tcp/CommunicationKernel.Plugins.Transport.Tcp.csproj" />
   <Project Path="CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
 
-  <!-- 客户端库：WPF 与 Blazor 共用的 EngineHost 访问封装 -->
-  <Project Path="CommunicationKernel.Client.Grpc/CommunicationKernel.Client.Grpc.csproj" />
+  <!-- 连 Host.App 的客户端 SDK（形态 B 的 UI 引用） -->
+  <Project Path="CommunicationKernel.Host.Sdk/CommunicationKernel.Host.Sdk.csproj" />
 
   <!-- 测试 -->
   <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />

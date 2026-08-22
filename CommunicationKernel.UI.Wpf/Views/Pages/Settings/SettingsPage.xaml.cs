@@ -66,7 +66,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Settings {
         /// XAML 绑定会自动展开 pnlRemote 以显示地址配置区。
         /// </summary>
         private void RdoRemote_Checked (object sender, RoutedEventArgs e) {
-            // 远端模式需要配置 EngineHost gRPC 地址
+            // 远端模式需要配置 Host.App gRPC 地址
             _vm.IsRemoteMode = true;
         }
     }

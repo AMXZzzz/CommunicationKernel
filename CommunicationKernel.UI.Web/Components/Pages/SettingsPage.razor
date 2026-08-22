@@ -1,14 +1,14 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Pages/SettingsPage.razor
    层级: UI 层 — 系统设置页（Blazor）
-   作用: 显示 EngineHost 连接配置和连接测试，以及应用版本信息。
+   作用: 显示 Host.App 连接配置和连接测试，以及应用版本信息。
    路由: /settings
    ----------------------------------------------------------------------------- *@
 
 @page "/settings"
 @rendermode InteractiveServer
 
-@inject EngineHostGrpcClient Client
+@inject HostClient Client
 
 <PageTitle>系统设置 — CommunicationKernel</PageTitle>
 
@@ -17,7 +17,7 @@
 
     <!-- 连接设置卡片 -->
     <div class="settings-card">
-        <h3>EngineHost 连接</h3>
+        <h3>Host.App 连接</h3>
 
         <label>gRPC 服务地址</label>
         <input @bind="ServerAddress" placeholder="http://localhost:5000" />

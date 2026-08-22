@@ -17,11 +17,11 @@ using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine;
-using CommunicationKernel.Engine.Models;
+using CommunicationKernel.Engine.Runtime;
+using CommunicationKernel.Engine.Runtime.Models;
 using CommunicationKernel.Engine.Router;
 using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Plugins.Modbus.Tcp;
+using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 
 namespace CommunicationKernel.Tests;
 
@@ -49,7 +49,7 @@ public class SdkEmbeddedUsageTests {
             transportFactories: new ITransportFactory[] { transport },
             protocolFactories:  new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() });
 
-        await using var engine = new HostRuntime(
+        await using var engine = new EngineRuntime(
             assembly,
             new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator()));
 
@@ -94,7 +94,7 @@ public class SdkEmbeddedUsageTests {
             transportFactories: new ITransportFactory[] { new FakeTransportFactory(TransportKind.Serial) },
             protocolFactories:  new IProtocolDriverFactory[] { new ModbusTcpProtocolDriverFactory() });
 
-        await using var engine = new HostRuntime(
+        await using var engine = new EngineRuntime(
             assembly,
             new RouterOrchestrator(new ConnectionRouter(), new ReadCoordinator()));
 

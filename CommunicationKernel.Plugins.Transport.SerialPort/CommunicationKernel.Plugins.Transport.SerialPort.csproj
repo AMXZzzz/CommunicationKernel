@@ -16,7 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Plugin.Runtime\CommunicationKernel.Plugin.Runtime.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugin.Loader\CommunicationKernel.Plugin.Loader.csproj" />
   </ItemGroup>
 
 </Project>

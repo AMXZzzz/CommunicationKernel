@@ -38,7 +38,7 @@ using System.Threading.Tasks;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Plugin.Runtime.Abstractions;
+using CommunicationKernel.Plugin.Loader.Abstractions;
 
 namespace CommunicationKernel.Plugins.Transport.SerialPort;
 

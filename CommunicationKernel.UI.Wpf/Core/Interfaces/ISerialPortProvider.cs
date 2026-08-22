@@ -9,7 +9,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Client.Grpc;
+using CommunicationKernel.Host.Sdk;
 
 namespace CommunicationKernel.UI.Wpf.Core.Interfaces
 {
@@ -17,7 +17,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
     /// 串口清单提供者。
     /// </summary>
     /// <remarks>
-    /// <b>清单来自 EngineHost 所在的机器，不是本机。</b>
+    /// <b>清单来自 Host.App 所在的机器，不是本机。</b>
     /// 宿主部署在树莓派、上位机在办公室 PC 时，本机的 COM1/COM2
     /// 与 PLC 毫无关系——选中后注册必然失败，而错误信息会指向
     /// "打不开 COM1"，把人往完全错误的方向引。

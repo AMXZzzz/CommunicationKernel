@@ -3,7 +3,7 @@
   <!-- ========================================================================
        文件: CommunicationKernel.UI.Wpf.csproj
        层级: UI 层 — WPF 桌面客户端
-       作用: 通过 gRPC 连接 EngineHost，提供桌面端监控与配置界面。
+       作用: 通过 gRPC 连接 Host.App，提供桌面端监控与配置界面。
        依赖: Grpc.Net.Client + Google.Protobuf + Grpc.Tools（生成客户端 stub）
        ======================================================================== -->
 
@@ -37,7 +37,7 @@
          proto 代码生成、通道管理、DTO 全部在该库内完成，
          本项目不再自行引用 Grpc.Tools 生成一份 stub——
          两份生成代码会产生同名类型，且与 Blazor 端各自漂移。 -->
-    <ProjectReference Include="..\CommunicationKernel.Client.Grpc\CommunicationKernel.Client.Grpc.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Host.Sdk\CommunicationKernel.Host.Sdk.csproj" />
   </ItemGroup>
 
 </Project>

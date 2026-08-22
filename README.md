@@ -2,35 +2,28 @@
 
 企业级上位机通信内核（.NET 8），面向多 UI 并发访问同一批 PLC 的场景。
 
-## 架构目标
+## 两种形态
 
-- 多端 UI（WPF/WebUI/Mac/Android/鸿蒙/Linux）并行接入
-- Host 作为统一入口（高性能 gRPC）
-- Router 统一并发调度（同路由串行写、同键读合并、跨路由并行）
-- Protocol / Transport 抽象解耦
-- 插件 DLL 扩展协议与介质能力（重启生效）
-- 全局严格质量门禁：`TreatWarningsAsErrors=true`
+- **形态 A（嵌入）**：你的程序直接引用 `Engine.Runtime`，本进程连 PLC。不用 `Host.App`，也不用 `Host.Sdk`。
+- **形态 B（独立宿主）**：现场跑 `Host.App`；上位机引用 `Host.Sdk`，通过 gRPC 远程读写。
 
 ## 解决方案项目
 
-- `CommunicationKernel.Core.Abstractions`：错误码、结果模型、版本契约
-- `CommunicationKernel.Core.Runtime`：运行时承载（持续完善）
-- `CommunicationKernel.Communication.Transport`：传输层抽象
-- `CommunicationKernel.Communication.Protocol`：协议层抽象
-- `CommunicationKernel.Plugin.Runtime`：插件发现/校验/隔离加载
-- `CommunicationKernel.Engine.Router`：路由与并发调度核心
-- `CommunicationKernel.EngineHost`：Host 门面与 gRPC 服务
-- `CommunicationKernel.Contracts`：跨层 DTO 契约
-- `CommunicationKernel.Tests`：核心行为测试
+| 项目 | 角色 |
+|------|------|
+| `Core.Abstractions` | 错误码、结果模型、版本契约 |
+| `Communication.Protocol` / `Communication.Transport` | 协议 / 传输抽象 |
+| `Plugin.Loader` | 插件发现、校验、隔离加载 |
+| `Engine.Router` | 路由与并发调度 |
+| `Engine.Runtime` | 通讯内核库（形态 A 直接用） |
+| `Host.App` | 现场进程：托管 Runtime + gRPC（形态 B） |
+| `Host.Sdk` | 连 Host.App 的客户端库（形态 B 的 UI） |
+| `Plugins.Protocol.*` | Modbus / Panasonic / Siemens S7 |
+| `Plugins.Transport.*` | Tcp / SerialPort |
+| `UI.Wpf` / `UI.Web` | 上位机界面 |
+| `Tests` | 行为与 API 基线 |
 
-## 当前 gRPC 能力（EngineHost）
-
-- `Health`
-- `GetDiagnostics`
-- `QueryRoutes`
-- `Read`
-- `Write`
-- `RegisterRoute`（当前阶段未启用真实组装，严格返回阶段性失败）
+gRPC 的 protobuf 包名仍是 `CommunicationKernel.EngineHost.Grpc.V1`（线契约，未改）。
 
 ## 构建
 
@@ -38,7 +31,4 @@
 dotnet build CommunicationKernel.slnx
 ```
 
-## 备注
-
-- 本仓库已初始化独立 Git 仓库，并关联远程：
-  - `origin = https://github.com/AMXZzzz/CommunicationKernel.git`
+远程：`https://github.com/AMXZzzz/CommunicationKernel.git`

@@ -8,7 +8,7 @@
 // 调用链:
 //   VariableConfigPage → VariablePageViewModel
 //     → IVariableService.Add/Update/Remove/WriteAsync
-//       → LocalVariableStore → EngineHostGrpcClient
+//       → LocalVariableStore → HostClient
 // -----------------------------------------------------------------------------
 
 using System;

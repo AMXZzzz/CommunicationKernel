@@ -23,7 +23,7 @@
 
     <!--
       默认不打包。只有明确面向 SDK 消费者的库才置 IsPackable=true
-      （目前是 Engine 与 Client.Grpc 及它们的依赖）。
+      （目前是 Engine.Runtime 与 Host.Sdk 及它们的依赖）。
       默认打开的话，WPF 宿主、测试工程、插件都会各产出一个无人使用的 nupkg。
     -->
     <IsPackable>false</IsPackable>

@@ -10,7 +10,7 @@
 @page "/"
 @rendermode InteractiveServer
 
-@inject EngineHostGrpcClient Client
+@inject HostClient Client
 @inject ILogger<Index> Logger
 @implements IAsyncDisposable
 
@@ -32,7 +32,7 @@
 
         <!-- Host 状态 -->
         <div class="summary-card">
-            <div class="summary-label">EngineHost</div>
+            <div class="summary-label">Host.App</div>
             <div class="summary-value @(HostOnline ? "val-green" : "val-red")">
                 @(HostOnline ? "在线" : "离线")
             </div>

@@ -18,7 +18,7 @@ namespace CommunicationKernel.Engine.Router;
 /// - 面向多 UI + 多 PLC 并发场景，路由表读写采用无锁并发字典。
 /// - 该组件只负责路由注册/查询/移除，不负责执行读写。
 /// - Snapshot() 返回活跃 RouteEntry 快照，仅供内部路由层调用；
-///   外部（gRPC/UI）应通过 HostRuntime.SnapshotRoutes() 获取元数据快照。
+///   外部（gRPC/UI）应通过 EngineRuntime.SnapshotRoutes() 获取元数据快照。
 /// -----------------------------------------------------------------------------
 /// </summary>
 public sealed class ConnectionRouter : IConnectionRouter {

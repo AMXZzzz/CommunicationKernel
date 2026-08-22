@@ -4,13 +4,13 @@
 // 文件: App.xaml.cs
 // 层级: UI 层 — WPF 应用程序启动入口（组合根 Composition Root）
 // 作用: 构建 IHost + DI 容器，注册所有服务、ViewModel、Page；
-//       从 settings.json 读取 EngineHost 地址；
+//       从 settings.json 读取 Host.App 地址；
 //       启动主机后预加载设备列表并显示主窗口。
 // 启动顺序:
 //   Application_Startup
 //     → LoadSavedHostAddress() 读取持久化地址
 //     → IHostBuilder.Build()
-//       → DI 注册: EngineHostGrpcClient（使用持久化地址）
+//       → DI 注册: HostClient（使用持久化地址）
 //       → DI 注册: IDeviceService / IVariableService / IProtocolResolver / IAppLogger
 //       → DI 注册: ViewModels（Device / Log / Variable / DataMonitor / Settings）
 //       → DI 注册: Pages（DataMonitor / Device / Variable / Log / Settings）
@@ -93,7 +93,7 @@ public partial class App : Application {
       } catch (Exception ex) {
         // Application_Startup 是 async void：首个 await 之后抛出的异常
         // 会被 post 回同步上下文成为未处理异常，直接闪退且不留任何提示。
-        // 启动失败必须让用户看到原因（最常见的是 EngineHost 地址不可达）。
+        // 启动失败必须让用户看到原因（最常见的是 Host.App 地址不可达）。
         MessageBox.Show(
             "应用启动失败：\n\n" + ex.Message,
             "启动错误", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -150,12 +150,12 @@ public partial class App : Application {
 
         // ── gRPC 客户端（单例）──────────────────────────────────────────
         // 从 settings.json 读取 HostAddress；文件不存在或解析失败时使用默认地址
-        services.AddSingleton<EngineHostGrpcClient>(sp => {
-            ILogger<EngineHostGrpcClient> logger =
-                sp.GetRequiredService<ILogger<EngineHostGrpcClient>>();
+        services.AddSingleton<HostClient>(sp => {
+            ILogger<HostClient> logger =
+                sp.GetRequiredService<ILogger<HostClient>>();
             // 读取持久化地址，避免在 UI 层硬编码服务器地址
             string address = LoadSavedHostAddress();
-            return new EngineHostGrpcClient(address, logger);
+            return new HostClient(address, logger);
         });
 
         // ── 应用日志（单例）──────────────────────────────────────────────
@@ -166,7 +166,7 @@ public partial class App : Application {
         // GrpcDeviceService 封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus / RemoveRoute
         services.AddSingleton<IDeviceService>(sp =>
             new GrpcDeviceService(
-                sp.GetRequiredService<EngineHostGrpcClient>(),
+                sp.GetRequiredService<HostClient>(),
                 sp.GetRequiredService<IAppLogger>()));
         // GrpcDeviceService 同时实现 IRouteReconciler：它持有本地设备配置，
         // 是唯一有能力在宿主重启后把路由重新推回去的组件。
@@ -176,14 +176,14 @@ public partial class App : Application {
             (IRouteReconciler)sp.GetRequiredService<IDeviceService>());
         // LocalVariableStore 维护内存中的变量定义，Write 通过 gRPC 下发
         services.AddSingleton<IVariableService>(sp =>
-            new LocalVariableStore(sp.GetRequiredService<EngineHostGrpcClient>()));
+            new LocalVariableStore(sp.GetRequiredService<HostClient>()));
         // GrpcProtocolResolver 返回支持的协议名称列表
         services.AddSingleton<IProtocolResolver>(sp =>
-            new GrpcProtocolResolver(sp.GetRequiredService<EngineHostGrpcClient>()));
+            new GrpcProtocolResolver(sp.GetRequiredService<HostClient>()));
         // 串口清单提供者：清单来自「宿主所在机器」，不是本机。
         // 宿主跑在树莓派时，操作员要选的是 /dev/ttyUSB0，而不是本机 COM1。
         services.AddSingleton<ISerialPortProvider>(sp =>
-            new GrpcSerialPortProvider(sp.GetRequiredService<EngineHostGrpcClient>()));
+            new GrpcSerialPortProvider(sp.GetRequiredService<HostClient>()));
 
         // ── 页面级 ViewModel（单例）──────────────────────────────────────
         // DevicePageViewModel：设备列表、增删改查、连接/断开
@@ -205,7 +205,7 @@ public partial class App : Application {
             new DataMonitorViewModel(sp.GetRequiredService<IDeviceService>()));
         // SettingsViewModel：地址配置、连接测试、设置持久化
         services.AddSingleton<SettingsViewModel>(sp =>
-            new SettingsViewModel(sp.GetRequiredService<EngineHostGrpcClient>()));
+            new SettingsViewModel(sp.GetRequiredService<HostClient>()));
 
         // ── 页面（Transient：每次导航新建，避免 Frame 缓存问题）──────────
         // DataMonitorPage：注入 DataMonitorViewModel，设备卡片由 ItemsControl 动态生成
@@ -233,7 +233,7 @@ public partial class App : Application {
         services.AddSingleton<VariablePollingService>(sp =>
             new VariablePollingService(
                 sp.GetRequiredService<IVariableService>(),
-                sp.GetRequiredService<EngineHostGrpcClient>(),
+                sp.GetRequiredService<HostClient>(),
                 sp.GetRequiredService<IRouteReconciler>()));
 
         // ── 主窗口（单例）────────────────────────────────────────────────
@@ -286,7 +286,7 @@ public partial class App : Application {
     /// </summary>
     /// <remarks>
     /// 必须使用 <see cref="IAsyncDisposable.DisposeAsync"/> 而非同步 Dispose：
-    /// EngineHostGrpcClient 只实现了 IAsyncDisposable，
+    /// HostClient 只实现了 IAsyncDisposable，
     /// 对这类单例调用 ServiceProvider.Dispose() 会抛
     /// InvalidOperationException（"type only implements IAsyncDisposable"），
     /// 在 async void 中即表现为退出时的未处理异常崩溃。
