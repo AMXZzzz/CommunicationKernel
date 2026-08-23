@@ -1,195 +1,246 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Pages/Index.razor
-   层级: UI 层 — MES 监控页（Blazor）
-   作用: 展示所有路由的在线状态卡片和整线健康摘要。
-         在 OnInitializedAsync 中加载设备列表，
-         并为每个设备启动后台 WatchRouteStatus 流更新在线状态。
-   路由: /
+   层级: UI 层 — MES 监控
+   作用: 以 Host 真实路由 + 本地配置为数据源展示在线状态。
+         整线健康由路由在线率推导，不做假的产线启停。
    ----------------------------------------------------------------------------- *@
 
 @page "/"
-@rendermode InteractiveServer
+@inject HostSession Session
+@inject WebDeviceStore Devices
+@implements IDisposable
 
-@inject HostClient Client
-@inject ILogger<Index> Logger
-@implements IAsyncDisposable
+<PageTitle>MES 监控 — CommunicationKernel</PageTitle>
 
-<PageTitle>MES监控 — CommunicationKernel</PageTitle>
+<div class="page page-mes">
+    <div class="toolbar">
+        <h2 class="page-title">MES 监控</h2>
+        <button class="btn ghost" type="button" @onclick="RefreshAsync" disabled="@_busy">刷新</button>
+        <div class="toolbar-right">
+            @if (Session.Online)
+            {
+                @* 脉冲徽标只在真的连着 Host 时出现——离线还闪「实时」是假信号 *@
+                <span class="live">实时</span>
+            }
+            <span class="toolbar-count">在线 @OnlineCount / @Cards.Count</span>
+        </div>
+    </div>
 
-<div class="page-mes">
+    <div class="page-body">
+    <div class="health-strip @HealthClass">
+        <div class="health-main">
+            <span class="health-dot"></span>
+            <span class="health-label">整线健康</span>
+            <span class="health-val">@HealthText</span>
+        </div>
+        <div class="health-meta">
+            在线 @OnlineCount / @Cards.Count
+            @if (!Session.Online)
+            {
+                <span>· Host 离线</span>
+            }
+        </div>
+    </div>
 
-    <!-- 摘要栏 -->
     <div class="summary-bar">
-        <!-- 在线设备数 -->
         <div class="summary-card">
             <div class="summary-label">在线 / 总计</div>
             <div class="summary-value">
                 <span class="val-green">@OnlineCount</span>
                 <span class="val-sep"> / </span>
-                <span>@TotalCount</span>
+                <span>@Cards.Count</span>
             </div>
         </div>
-
-        <!-- Host 状态 -->
         <div class="summary-card">
             <div class="summary-label">Host.App</div>
-            <div class="summary-value @(HostOnline ? "val-green" : "val-red")">
-                @(HostOnline ? "在线" : "离线")
+            <div class="summary-value @(Session.Online ? "val-green" : "val-red")">
+                @(Session.Online ? "在线" : "离线")
             </div>
-            <div class="summary-sub">v@HostVersion</div>
+            <div class="summary-sub">@Session.Address</div>
         </div>
-
-        <!-- 报警 -->
         <div class="summary-card">
-            <div class="summary-label">报警状态</div>
+            <div class="summary-label">报警</div>
             <div class="summary-value @(HasAlarm ? "val-red" : "val-green")">
-                @(HasAlarm ? "有报警" : "正常")
+                @(HasAlarm ? OfflineCount + " 台离线" : "正常")
             </div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">协议</div>
+            <div class="summary-value">@ProtocolCount</div>
+            <div class="summary-sub">当前路由涉及</div>
         </div>
     </div>
 
-    <!-- 设备卡片 -->
-    <div class="section-title">设备状态</div>
-    <div class="device-grid">
-        @foreach (var card in Cards) {
-            <!-- 每张卡片：路由名称 + 地址 + 协议 + 在线状态条 -->
-            <div class="device-card">
-                <div class="card-name">@card.RouteId</div>
-                <div class="card-addr">@card.Address:@card.Port</div>
-                <div class="card-proto">@card.ProtocolId</div>
-                <div class="card-status @(card.Online ? "online" : "offline")">
-                    @(card.Online ? "在线" : "离线")
+    @if (Alarms.Count > 0)
+    {
+        <div class="alarm-panel">
+            <div class="alarm-hd">离线 / 故障（来自 WatchRouteStatus，不是模拟）</div>
+            @foreach (MesCard card in Alarms)
+            {
+                RouteStatusDto? st = Session.GetStatus(card.RouteId);
+                <div class="alarm-row">
+                    <span class="alarm-name">@card.Name</span>
+                    <span class="mono">@card.RouteId</span>
+                    <span class="alarm-msg">@(st?.ErrorCode) @(st?.ErrorMessage)</span>
                 </div>
-            </div>
-        }
-        @if (!Cards.Any()) {
-            <!-- 空状态：无设备时展示提示 -->
-            <div class="empty-hint">
-                暂无设备，请前往「设备管理」注册 PLC 路由。
-            </div>
-        }
+            }
+        </div>
+    }
+
+    <div class="section-row">
+        <div class="section-title">设备状态</div>
+        <span class="toolbar-count">卡片来自宿主路由 + 本地待对账配置</span>
+    </div>
+
+    @if (Cards.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-title">暂无设备</div>
+            <div class="empty-hint">到「设备管理」注册 PLC 路由。本地已保存的配置会在 Host 恢复后自动对账。</div>
+            <a class="btn primary" href="/devices">去添加设备</a>
+        </div>
+    }
+    else
+    {
+        <div class="device-grid">
+            @foreach (MesCard card in Cards)
+            {
+                RouteStatusDto? st = Session.GetStatus(card.RouteId);
+                bool online = st?.Online == true;
+                <div class="mes-card @(online ? "is-on" : "is-off")">
+                    <div class="mes-hd">
+                        <span class="proto-bar @UiHelpers.ProtocolBarClass(card.ProtocolId)"></span>
+                        <div class="mes-titles">
+                            <div class="card-name">@card.Name</div>
+                            <div class="card-proto">@card.ProtocolId</div>
+                        </div>
+                        <span class="card-status @(online ? "online" : "offline")">@(online ? "在线" : "离线")</span>
+                        <span class="card-led @(online ? "online" : "offline")"></span>
+                    </div>
+                    <div class="mes-body">
+                        <div class="kv"><span>路由</span><span class="mono">@card.RouteId</span></div>
+                        <div class="kv"><span>连接</span><span class="addr">@card.Endpoint</span></div>
+                        <div class="kv"><span>传输</span><span>@card.TransportKind</span></div>
+                        @if (!card.OnHost)
+                        {
+                            <div class="kv"><span>状态</span><span>本地待对账</span></div>
+                        }
+                        @if (st is not null && !string.IsNullOrWhiteSpace(st.ErrorMessage) && !online)
+                        {
+                            <div class="kv err"><span>错误</span><span>@st.ErrorCode · @st.ErrorMessage</span></div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
     </div>
 </div>
 
 @code {
+    private bool _busy;
+    private List<MesCard> _cards = new();
 
-    // -------------------------------------------------------------------------
-    // 状态（Blazor 自动 StateHasChanged 刷新 DOM）
-    // -------------------------------------------------------------------------
+    private IReadOnlyList<MesCard> Cards => _cards;
+    private IReadOnlyList<MesCard> Alarms => _cards.Where(c => !Session.IsRouteOnline(c.RouteId)).ToList();
+    private int OnlineCount => _cards.Count(c => Session.IsRouteOnline(c.RouteId));
+    private int OfflineCount => _cards.Count - OnlineCount;
+    private bool HasAlarm => OfflineCount > 0 && _cards.Count > 0;
+    private int ProtocolCount => _cards.Select(c => c.ProtocolId).Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
-    /// <summary>设备卡片列表（来自 QueryRoutes）。</summary>
-    private List<DeviceCard> Cards { get; set; } = new();
-
-    private bool   HostOnline  { get; set; }
-    private string HostVersion { get; set; } = "--";
-    private bool   HasAlarm    { get; set; }
-    private int    OnlineCount => Cards.Count(c => c.Online);
-    private int    TotalCount  => Cards.Count;
-
-    /// <summary>取消 WatchRouteStatus 后台任务的令牌源。</summary>
-    private CancellationTokenSource? _watchCts;
-
-    // -------------------------------------------------------------------------
-    // 生命周期
-    // -------------------------------------------------------------------------
-
-    protected override async Task OnInitializedAsync() {
-        // 1. Health 检查
-        var (ok, version, _) = await Client.HealthAsync().ConfigureAwait(false);
-        HostOnline  = ok;
-        HostVersion = version;
-
-        // 2. 加载设备列表
-        IReadOnlyList<RouteDto> routes = await Client.QueryRoutesAsync().ConfigureAwait(false);
-        Cards = routes.Select(r => new DeviceCard {
-            RouteId    = r.RouteId,
-            ProtocolId = r.ProtocolId,
-            Address    = r.Address,
-            Port       = r.Port,
-            Online     = false,   // 初始离线，等待流推送
-        }).ToList();
-
-        // 通知 Blazor 更新 DOM
-        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
-
-        // 3. 为每个设备启动状态流监听
-        StartWatching();
-    }
-
-    // -------------------------------------------------------------------------
-    // 状态流监听
-    // -------------------------------------------------------------------------
-
-    /// <summary>为所有卡片启动后台状态流任务，独立 Task 互不干扰。</summary>
-    private void StartWatching() {
-        _watchCts = new CancellationTokenSource();
-        CancellationToken ct = _watchCts.Token;
-
-        foreach (DeviceCard card in Cards) {
-            string routeId = card.RouteId;
-
-            // 每个路由一个独立后台任务。
-            //
-            // 共享客户端的 WatchRouteStatusAsync 自带断线重连：流断掉后按退避重连，
-            // 并在断开瞬间回调 onDisconnected。本项目此前那份客户端没有这一层——
-            // 流一断卡片就永远停在最后一次已知状态，界面显示"在线"而实际早已断开，
-            // 这比显示离线危险得多。
-            _ = Task.Run(async () => {
-                try {
-                    await Client.WatchRouteStatusAsync(
-                        routeId,
-                        onStatus: async dto => {
-                            DeviceCard? target = Cards.FirstOrDefault(c => c.RouteId == dto.RouteId);
-                            if (target is not null)
-                                target.Online = dto.Online;
-
-                            HasAlarm = Cards.Any(c => !c.Online);
-                            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
-                        },
-                        onDisconnected: async () => {
-                            // 流已断：必须立刻置为离线，不能留着旧的"在线"
-                            DeviceCard? target = Cards.FirstOrDefault(c => c.RouteId == routeId);
-                            if (target is not null)
-                                target.Online = false;
-
-                            HasAlarm = Cards.Any(c => !c.Online);
-                            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
-                        },
-                        ct: ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) {
-                    // 正常取消，静默退出
-                }
-                catch (Exception ex) {
-                    Logger.LogError(ex, "WatchRouteStatus 异常: {RouteId}", routeId);
-                }
-            }, ct);
+    private string HealthText
+    {
+        get
+        {
+            if (!Session.Online) return "Host 离线";
+            if (Cards.Count == 0) return "待命";
+            if (OfflineCount == 0) return "运行";
+            return "告警";
         }
     }
 
-    // -------------------------------------------------------------------------
-    // IAsyncDisposable — 组件卸载时取消所有监听任务
-    // -------------------------------------------------------------------------
-
-    public async ValueTask DisposeAsync() {
-        if (_watchCts is not null) {
-            // 取消所有后台 Task
-            await _watchCts.CancelAsync().ConfigureAwait(false);
-            _watchCts.Dispose();
+    private string HealthClass
+    {
+        get
+        {
+            if (!Session.Online) return "is-down";
+            if (Cards.Count == 0) return "is-idle";
+            if (OfflineCount == 0) return "is-run";
+            return "is-alarm";
         }
     }
 
-    // -------------------------------------------------------------------------
-    // 内部模型
-    // -------------------------------------------------------------------------
-
-    /// <summary>设备卡片数据容器（简单 class，不需要 INotifyPropertyChanged，
-    /// Blazor Server 通过 StateHasChanged 全量刷新）。</summary>
-    private sealed class DeviceCard {
-        public string RouteId    { get; init; } = string.Empty;
-        public string ProtocolId { get; init; } = string.Empty;
-        public string Address    { get; init; } = string.Empty;
-        public int    Port       { get; init; }
-        public bool   Online     { get; set; }  // mutable，由流更新
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnChanged;
+        Rebuild();
     }
+
+    private void OnChanged() => _ = InvokeAsync(() =>
+    {
+        Rebuild();
+        StateHasChanged();
+    });
+
+    private async Task RefreshAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Session.ProbeAsync().ConfigureAwait(true);
+            if (Session.Online)
+                await Session.RefreshRoutesAsync().ConfigureAwait(true);
+            Rebuild();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Rebuild() => _cards = BuildCards();
+
+    private List<MesCard> BuildCards()
+    {
+        Dictionary<string, WebDeviceRecord> local = Devices.GetAll()
+            .ToDictionary(d => d.RouteId, d => d, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, MesCard> map = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (RouteDto r in Session.Routes)
+        {
+            local.TryGetValue(r.RouteId, out WebDeviceRecord? rec);
+            map[r.RouteId] = ToCard(r, rec, onHost: true);
+        }
+
+        foreach (WebDeviceRecord rec in local.Values)
+        {
+            if (map.ContainsKey(rec.RouteId)) continue;
+            map[rec.RouteId] = ToCard(null, rec, onHost: false);
+        }
+
+        return map.Values.ToList();
+    }
+
+    private static MesCard ToCard(RouteDto? r, WebDeviceRecord? rec, bool onHost)
+    {
+        string id = r?.RouteId ?? rec?.RouteId ?? string.Empty;
+        string name = rec is not null && !string.IsNullOrWhiteSpace(rec.Name) ? rec.Name : id;
+        string protocol = r?.ProtocolId ?? rec?.ProtocolId ?? string.Empty;
+        string transport = r?.TransportKind ?? rec?.TransportKind ?? string.Empty;
+        bool serial = string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase);
+        string endpoint = serial
+            ? (r?.SerialPort ?? rec?.SerialPort ?? "串口")
+            : (r is not null ? r.Address + ":" + r.Port : (rec?.Address ?? "") + ":" + (rec?.Port ?? 0));
+        return new MesCard(id, name, protocol, transport, endpoint, onHost);
+    }
+
+    public void Dispose() => Session.Changed -= OnChanged;
+
+    private sealed record MesCard(
+        string RouteId,
+        string Name,
+        string ProtocolId,
+        string TransportKind,
+        string Endpoint,
+        bool OnHost);
 }

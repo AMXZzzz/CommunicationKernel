@@ -1,26 +1,21 @@
 @* -----------------------------------------------------------------------------
    文件: Components/_Imports.razor
-   作用: Blazor 全局 using 声明，所有组件自动继承。
+   作用: Blazor 全局 using，所有组件自动继承。
    ----------------------------------------------------------------------------- *@
 
-@* Blazor 核心 *@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Microsoft.JSInterop
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
 
-@* DI / Logging *@
 @using Microsoft.Extensions.DependencyInjection
 @using Microsoft.Extensions.Logging
 
-@* 本项目命名空间 *@
 @using CommunicationKernel.UI.Web.Components
 @using CommunicationKernel.UI.Web.Components.Layout
 @using CommunicationKernel.UI.Web.Components.Pages
-
-@* 共享 gRPC 客户端：HostClient 与各 DTO。
-   此前本项目自持一份 HostClient，长期缺 RegisterRoute /
-   RemoveRoute / QueryProtocols，且没有断线重连。 *@
+@using CommunicationKernel.UI.Web.Services
 @using CommunicationKernel.Host.Sdk
