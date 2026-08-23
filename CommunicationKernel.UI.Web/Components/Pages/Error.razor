@@ -1,0 +1,13 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Pages/Error.razor
+   作用: 生产环境异常页（UseExceptionHandler 映射到 /Error）。
+   ----------------------------------------------------------------------------- *@
+@page "/Error"
+
+<PageTitle>出错了</PageTitle>
+
+<div class="empty-state">
+    <div class="empty-title">服务端出现未处理异常</div>
+    <div class="empty-hint">请查看通讯日志，或重启 Web UI 后重试。</div>
+    <a class="btn primary" href="/">返回监控</a>
+</div>

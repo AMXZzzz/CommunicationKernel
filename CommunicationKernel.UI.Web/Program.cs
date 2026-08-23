@@ -1,18 +1,12 @@
 // -----------------------------------------------------------------------------
 // 文件: Program.cs
 // 层级: UI 层 — Blazor Server 应用程序入口
-// 作用: 注册 gRPC 客户端、Blazor 组件，配置路由和中间件管道。
-// 启动顺序:
-//   WebApplication.CreateBuilder
-//     → AddRazorComponents().AddInteractiveServerComponents()
-//     → AddSingleton<HostClient>
-//     → builder.Build()
-//     → 中间件管道
-//     → app.Run()
+// 作用: 注册会话、日志、设备/变量持久化，配置中间件与组件路由。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.UI.Web.Components;
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.UI.Web.Services;
+using Microsoft.AspNetCore.Components.Server;
 
 // 读取 appsettings / 环境变量，准备 DI 与配置
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -21,40 +15,51 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // 服务注册
 // ============================================================================
 
+// 操作员日志：先建 Store，再挂到 Logging，保证页面与 ILogger 共用一份缓冲
+AppLogStore logStore = new();
+builder.Services.AddSingleton(logStore);
+builder.Logging.AddProvider(new AppLogLoggerProvider(logStore));
+
 // Blazor Server 组件和交互支持
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// gRPC Web 客户端（单例生命周期：整个应用共享一个 gRPC 连接池）
-// gRPC 通道可安全被多个组件并发使用
-builder.Services.AddSingleton<HostClient>(sp => {
-    ILogger<HostClient> logger =
-        sp.GetRequiredService<ILogger<HostClient>>();
-
-    // 从配置读取 Host.App 地址（未配置时使用开发默认值）
-    string address = builder.Configuration["Host.App:Address"] ?? "http://localhost:5000";
-
-    return new HostClient(address, logger);
+// 断线保留电路，避免操作员刷新前短暂掉线就把页面状态清掉
+builder.Services.Configure<CircuitOptions>(options =>
+{
+    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
+    options.DetailedErrors = builder.Environment.IsDevelopment();
 });
+
+// 本地持久化（地址 / 设备 / 变量）
+builder.Services.AddSingleton<WebSettingsStore>();
+builder.Services.AddSingleton<WebDeviceStore>();
+builder.Services.AddSingleton<WebVariableStore>();
+
+// 会话：单例即 HostedService，避免两份 HostClient
+builder.Services.AddSingleton<HostSession>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<HostSession>());
+
+// 变量轮询：Host 离线时跳过
+builder.Services.AddHostedService<VariablePoller>();
 
 // ============================================================================
 // 构建应用
 // ============================================================================
 
-// 冻结服务容器，生成可运行的 WebApplication
 WebApplication app = builder.Build();
 
 // 生产环境：异常处理中间件（开发环境 Blazor 有内置错误 UI）
 if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 
-// 静态文件（wwwroot 下的 CSS、图片等）
+// 静态文件（wwwroot 下的 CSS、图片、脚本）
 app.UseStaticFiles();
 
 // 防 CSRF（Blazor 表单组件需要）
 app.UseAntiforgery();
 
-// Blazor 组件路由
+// Blazor 组件路由（含 Interactive Server）
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

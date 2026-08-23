@@ -25,6 +25,26 @@
 
 gRPC 的 protobuf 包名仍是 `CommunicationKernel.EngineHost.Grpc.V1`（线契约，未改）。
 
+## Web 上位机（UI.Web）
+
+Blazor Server 操作员客户端。只持有 `route_id` 与 Host.Sdk DTO，不解析协议：
+
+| 页 | 数据来源 |
+|---|---|
+| MES 监控 | `HostSession` 路由清单 + `WatchRouteStatus` 在线率 |
+| 设备管理 | `QueryProtocols` / `QuerySerialPorts` / `RegisterRoute` / `RemoveRoute` |
+| 变量配置 | 本地 `web-variables.json` + `Read` / `Write` |
+| 通讯日志 | 进程内 `AppLogStore` |
+| 系统设置 | 与 WPF 共用 `settings.json` 的 `HostAddress` |
+
+进程内单例 `HostSession`：5 秒健康检查、全站一条状态流、Host 恢复后按 `web-devices.json` 对账。传输介质取值 `Tcp` / `Serial`。
+
+```bash
+dotnet run --project CommunicationKernel.UI.Web
+```
+
+默认连 `http://localhost:5000`（`appsettings.json` 的 `Host.App:Address`，可被已保存的 settings.json 覆盖）。
+
 ## 构建
 
 ```bash

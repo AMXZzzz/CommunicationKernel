@@ -1,283 +1,373 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Pages/VariablesPage.razor
-   层级: UI 层 — 变量配置页（Blazor）
-   作用: 管理 PLC 变量读写，支持逐条和批量操作。
-   路由: /variables
+   层级: UI 层 — 变量配置
+   作用: 本地变量表 + gRPC 读写/轮询。地址原样下发，UI 不解析协议格式。
    ----------------------------------------------------------------------------- *@
 
 @page "/variables"
-@rendermode InteractiveServer
-
-@inject HostClient Client
+@inject HostSession Session
+@inject WebVariableStore Store
+@inject WebDeviceStore Devices
+@inject AppLogStore Log
+@implements IDisposable
 
 <PageTitle>变量配置 — CommunicationKernel</PageTitle>
 
 <div class="page-var">
-
-    <!-- 工具栏 -->
     <div class="toolbar">
         <h2 class="page-title">变量配置</h2>
-        <button class="btn primary" @onclick="ReadAllAsync"
-                disabled="@(Variables.Count == 0 || IsBusy)">
-            ▶ 批量读取
-        </button>
-        <button class="btn ghost" @onclick="ShowAddForm">＋ 添加变量</button>
-        @if (IsBusy) {
-            <span class="busy-hint">处理中...</span>
-        }
+        <button class="btn primary" type="button" @onclick="ReadVisibleAsync" disabled="@(_busy || Visible.Count == 0 || !Session.Online)">批量读取</button>
+        <button class="btn ghost" type="button" @onclick="OpenAdd">添加变量</button>
+        <button class="btn ghost" type="button" @onclick="Export">导出 JSON</button>
+        <label class="btn ghost file-btn">
+            导入
+            <InputFile OnChange="ImportAsync" accept=".json,application/json" />
+        </label>
+        @if (_busy) { <span class="busy-hint">处理中…</span> }
     </div>
 
-    @if (!string.IsNullOrEmpty(StatusMessage)) {
-        <div class="status-msg @StatusColor">@StatusMessage</div>
+    @if (!string.IsNullOrEmpty(_banner))
+    {
+        <div class="status-msg @_bannerClass">@_banner</div>
     }
 
-    <!-- 变量表格 -->
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>名称</th>
-                <th>路由 ID</th>
-                <th>地址</th>
-                <th>长度(B)</th>
-                <th>当前值</th>
-                <th>写入值</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var row in Variables) {
-                <!-- 错误行添加红色背景样式 -->
-                <tr class="@(row.IsError ? "row-error" : string.Empty)">
-                    <td>@row.Name</td>
-                    <td class="addr">@row.RouteId</td>
-                    <td class="mono">@row.Address</td>
-                    <td>@row.Length</td>
-                    <!-- 当前值以等宽绿色显示 -->
-                    <td class="val-green mono">@row.Value</td>
-                    <td>
-                        <!-- 写入值输入框，@bind 双向绑定 -->
-                        <input class="write-input" @bind="row.WriteValue"
-                               placeholder="十六进制值" />
-                    </td>
-                    <td>
-                        <!-- 读取此行 -->
-                        <button class="btn-sm ghost"
-                                @onclick="() => ReadOneAsync(row)"
-                                disabled="@IsBusy">
-                            读取
-                        </button>
-                        <!-- 写入此行 -->
-                        <button class="btn-sm primary"
-                                @onclick="() => WriteOneAsync(row)"
-                                disabled="@(IsBusy || string.IsNullOrWhiteSpace(row.WriteValue))">
-                            写入
-                        </button>
-                        <!-- 删除此行 -->
-                        <button class="btn-sm danger"
-                                @onclick="() => DeleteRow(row)">
-                            删除
-                        </button>
-                    </td>
-                </tr>
+    <div class="var-layout">
+        <aside class="device-panel">
+            <div class="panel-hd">设备 <span class="count">@RouteChoices.Count</span></div>
+            <button class="dev-item @(_filterRoute == "" ? "active" : null)" type="button" @onclick='() => _filterRoute = ""'>
+                <span class="n">全部</span>
+                <span class="sub">@Store.GetAll().Count 条变量</span>
+            </button>
+            @foreach (RouteChoice r in RouteChoices)
+            {
+                <button class="dev-item @(_filterRoute == r.RouteId ? "active" : null)" type="button" @onclick="() => _filterRoute = r.RouteId">
+                    <span class="n">
+                        <span class="dot @(Session.IsRouteOnline(r.RouteId) ? "on" : "off")"></span>
+                        @r.Name
+                    </span>
+                    <span class="sub">@r.ProtocolId</span>
+                </button>
             }
-            @if (!Variables.Any()) {
-                <tr>
-                    <td colspan="7" class="empty-cell">暂无变量，点击「添加变量」。</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+        </aside>
 
-    <!-- 添加变量表单 -->
-    @if (ShowForm) {
-        <div class="add-form-overlay" @onclick="HideAddForm">
+        <section class="var-panel">
+            @if (Visible.Count == 0)
+            {
+                <div class="empty-state"><div class="empty-hint">没有变量。添加时请选择已注册的路由 ID。</div></div>
+            }
+            else
+            {
+                <table class="data-table var-table">
+                    <thead>
+                        <tr>
+                            <th>名称</th>
+                            <th>路由</th>
+                            <th>地址</th>
+                            <th>类型</th>
+                            <th>当前值</th>
+                            <th>写入</th>
+                            <th>轮询</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (WebVariable row in Visible)
+                        {
+                            <tr class="@(row.IsError ? "row-error" : null)">
+                                <td class="name">@row.Name</td>
+                                <td class="addr">@row.RouteId</td>
+                                <td class="mono">@row.Address</td>
+                                <td><span class="type-pill">@row.DataType</span></td>
+                                <td class="val-green mono" title="@row.LastUpdated">@row.DisplayValue</td>
+                                <td class="write-cell">
+                                    <input class="write-input" @bind="row.WriteText" placeholder="值" />
+                                    <button class="btn-sm primary" type="button" @onclick="() => WriteAsync(row)" disabled="@(_busy || !Session.Online)">写</button>
+                                    <button class="btn-sm ghost" type="button" @onclick="() => ReadAsync(row)" disabled="@(_busy || !Session.Online)">读</button>
+                                </td>
+                                <td>
+                                    <label class="poll-toggle">
+                                        <input type="checkbox" checked="@row.Polling" @onchange="e => TogglePoll(row, e)" />
+                                    </label>
+                                </td>
+                                <td>
+                                    <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </section>
+    </div>
+
+    @if (_showForm)
+    {
+        <div class="add-form-overlay" @onclick="() => _showForm = false">
             <div class="add-form" @onclick:stopPropagation>
                 <div class="form-hd">
                     <h3>添加变量</h3>
-                    <button class="close-btn" @onclick="HideAddForm">✕</button>
+                    <button class="close-btn" type="button" @onclick="() => _showForm = false">×</button>
                 </div>
-
-                <label>变量名 *</label>
-                <input @bind="EditName" placeholder="例如: 传送带速度" />
-
+                <label>名称 *</label>
+                <input @bind="_name" placeholder="传送带速度" />
                 <label>路由 ID *</label>
-                <input @bind="EditRouteId" placeholder="例如: plc-001" />
-
-                <label>协议地址 *</label>
-                <input @bind="EditAddress" placeholder="例如: DB10.DBW0 / 40001" />
-
-                <label>读取长度 (字节)</label>
-                <input type="number" @bind="EditLength" />
-
+                @if (RouteChoices.Count > 0)
+                {
+                    <select @bind="_routeId">
+                        @foreach (RouteChoice r in RouteChoices)
+                        {
+                            <option value="@r.RouteId">@r.Name</option>
+                        }
+                    </select>
+                }
+                else
+                {
+                    <input @bind="_routeId" placeholder="先到设备管理注册路由" />
+                }
+                <label>地址 *</label>
+                <input @bind="_address" placeholder="由协议插件解释，例如 40001 / DB1.DBW0" />
+                <label>数据类型</label>
+                <select @bind="_dataType" @bind:after="OnTypeChanged">
+                    @foreach (string t in DataTypes)
+                    {
+                        <option value="@t">@t</option>
+                    }
+                </select>
+                <label>读取字节数</label>
+                <input type="number" @bind="_length" min="1" />
+                <label>扫描周期 (ms)</label>
+                <input type="number" @bind="_scan" min="200" />
                 <div class="form-actions">
-                    <button class="btn ghost" @onclick="HideAddForm">取消</button>
-                    <button class="btn primary" @onclick="AddVariable"
-                            disabled="@(string.IsNullOrWhiteSpace(EditName))">
-                        添加
-                    </button>
+                    <button class="btn ghost" type="button" @onclick="() => _showForm = false">取消</button>
+                    <button class="btn primary" type="button" @onclick="Add">添加</button>
                 </div>
             </div>
         </div>
     }
 
+    @if (!string.IsNullOrEmpty(_exportJson))
+    {
+        <div class="add-form-overlay" @onclick="() => _exportJson = string.Empty">
+            <div class="add-form wide" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>导出 JSON</h3>
+                    <button class="close-btn" type="button" @onclick="() => _exportJson = string.Empty">×</button>
+                </div>
+                <textarea class="export-box" readonly>@_exportJson</textarea>
+            </div>
+        </div>
+    }
+
+    @if (_pendingRemove is not null)
+    {
+        <div class="add-form-overlay center" @onclick="() => _pendingRemove = null">
+            <div class="add-form confirm-box" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>删除变量</h3>
+                    <button class="close-btn" type="button" @onclick="() => _pendingRemove = null">×</button>
+                </div>
+                <p>删除 <span class="mono">@_pendingRemove.Name</span>（@_pendingRemove.RouteId @_pendingRemove.Address）。只影响本机配置。</p>
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="() => _pendingRemove = null">取消</button>
+                    <button class="btn danger" type="button" @onclick="ConfirmRemove">确认删除</button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
+    private static readonly string[] DataTypes = { "Bool", "Int16", "UInt16", "Int32", "UInt32", "Float", "Hex" };
 
-    // -------------------------------------------------------------------------
-    // 变量行模型
-    // -------------------------------------------------------------------------
+    private bool _busy;
+    private bool _showForm;
+    private string _banner = string.Empty;
+    private string _bannerClass = "status-info";
+    private string _filterRoute = string.Empty;
+    private string _exportJson = string.Empty;
+    private WebVariable? _pendingRemove;
 
-    /// <summary>变量行数据容器，Blazor 通过 StateHasChanged 刷新。</summary>
-    private sealed class VariableRow {
-        public string Name       { get; init; } = string.Empty;
-        public string RouteId    { get; set;  } = string.Empty;
-        public string Address    { get; set;  } = string.Empty;
-        public int    Length     { get; set;  } = 2;
-        public string Value      { get; set;  } = "--";
-        public string WriteValue { get; set;  } = string.Empty;
-        public bool   IsError    { get; set;  }
-        public string LastUpdated { get; set; } = string.Empty;
+    private string _name = string.Empty;
+    private string _routeId = string.Empty;
+    private string _address = string.Empty;
+    private string _dataType = "Int16";
+    private int _length = 2;
+    private int _scan = 1000;
+
+    private IReadOnlyList<WebVariable> Visible =>
+        string.IsNullOrEmpty(_filterRoute)
+            ? Store.GetAll()
+            : Store.GetAll().Where(v => string.Equals(v.RouteId, _filterRoute, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private IReadOnlyList<RouteChoice> RouteChoices => BuildRouteChoices();
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnChanged;
+        Store.Changed += OnChanged;
+        if (RouteChoices.Count > 0)
+            _routeId = RouteChoices[0].RouteId;
     }
 
-    // -------------------------------------------------------------------------
-    // 状态
-    // -------------------------------------------------------------------------
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
 
-    private List<VariableRow> Variables    { get; set; } = new();
-    private bool              IsBusy       { get; set; }
-    private string            StatusMessage { get; set; } = string.Empty;
-    private string            StatusColor   { get; set; } = string.Empty;
-    private bool              ShowForm      { get; set; }
-
-    // 表单字段
-    private string EditName    { get; set; } = string.Empty;
-    private string EditRouteId { get; set; } = string.Empty;
-    private string EditAddress { get; set; } = string.Empty;
-    private int    EditLength  { get; set; } = 2;
-
-    // -------------------------------------------------------------------------
-    // 操作
-    // -------------------------------------------------------------------------
-
-    /// <summary>读取单行变量。</summary>
-    private async Task ReadOneAsync(VariableRow row) {
-        IsBusy = true;
-        try {
-            ReadResultDto r = await Client.ReadAsync(row.RouteId, row.Address, row.Length)
-                .ConfigureAwait(false);
-
-            if (r.Success) {
-                // 字节数组 → 十六进制字符串
-                row.Value    = r.Data.Length > 0
-                    ? BitConverter.ToString(r.Data).Replace('-', ' ')
-                    : "(空)";
-                row.IsError  = false;
-                row.LastUpdated = DateTime.Now.ToString("HH:mm:ss");
-            }
-            else {
-                row.Value   = $"ERR:{r.ErrorCode}";
-                row.IsError = true;
-            }
+    private List<RouteChoice> BuildRouteChoices()
+    {
+        Dictionary<string, RouteChoice> map = new(StringComparer.OrdinalIgnoreCase);
+        foreach (RouteDto r in Session.Routes)
+            map[r.RouteId] = new RouteChoice(r.RouteId, r.RouteId, r.ProtocolId);
+        foreach (WebDeviceRecord d in Devices.GetAll())
+        {
+            string name = string.IsNullOrWhiteSpace(d.Name) ? d.RouteId : d.Name;
+            if (map.TryGetValue(d.RouteId, out RouteChoice existing))
+                map[d.RouteId] = existing with { Name = name };
+            else
+                map[d.RouteId] = new RouteChoice(d.RouteId, name, d.ProtocolId);
         }
-        finally {
-            IsBusy = false;
+        foreach (WebVariable v in Store.GetAll())
+        {
+            if (map.ContainsKey(v.RouteId)) continue;
+            map[v.RouteId] = new RouteChoice(v.RouteId, v.RouteId, string.Empty);
         }
+        return map.Values.ToList();
     }
 
-    /// <summary>写入单行变量：解析 WriteValue 十六进制字符串并写入。</summary>
-    private async Task WriteOneAsync(VariableRow row) {
-        // 解析十六进制（去空格后按两位切割）
-        if (!TryParseHex(row.WriteValue, out byte[] data)) {
-            StatusMessage = "写入值格式错误，请输入十六进制，例如: 00 FF 01";
-            StatusColor   = "status-error";
+    private void OpenAdd()
+    {
+        _showForm = true;
+        if (RouteChoices.Count > 0 && string.IsNullOrEmpty(_routeId))
+            _routeId = RouteChoices[0].RouteId;
+    }
+
+    private void OnTypeChanged() => _length = ValueCodec.DefaultLength(_dataType);
+
+    private void Add()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_routeId) || string.IsNullOrWhiteSpace(_address))
+        {
+            _banner = "名称、路由、地址为必填";
+            _bannerClass = "status-error";
             return;
         }
-
-        IsBusy = true;
-        try {
-            WriteResultDto r = await Client.WriteAsync(row.RouteId, row.Address, data)
-                .ConfigureAwait(false);
-
-            if (r.Success) {
-                StatusMessage = $"写入成功: {row.Name} @ {row.Address}";
-                StatusColor   = "status-ok";
-                row.IsError   = false;
-            }
-            else {
-                StatusMessage = $"写入失败: [{r.ErrorCode}] {r.ErrorMessage}";
-                StatusColor   = "status-error";
-                row.IsError   = true;
-            }
-        }
-        finally {
-            IsBusy = false;
-        }
-    }
-
-    /// <summary>批量读取所有变量（顺序执行，不并发）。</summary>
-    private async Task ReadAllAsync() {
-        IsBusy = true;
-        int success = 0;
-        try {
-            foreach (VariableRow row in Variables) {
-                ReadResultDto r = await Client.ReadAsync(row.RouteId, row.Address, row.Length)
-                    .ConfigureAwait(false);
-
-                if (r.Success) {
-                    row.Value   = r.Data.Length > 0 ? BitConverter.ToString(r.Data).Replace('-', ' ') : "(空)";
-                    row.IsError = false;
-                    success++;
-                }
-                else {
-                    row.Value   = $"ERR:{r.ErrorCode}";
-                    row.IsError = true;
-                }
-            }
-            StatusMessage = $"批量读取完成: {success}/{Variables.Count} 成功";
-            StatusColor   = success == Variables.Count ? "status-ok" : "status-warn";
-        }
-        finally {
-            IsBusy = false;
-        }
-    }
-
-    private void AddVariable() {
-        // 名称是必填，其它字段允许空
-        if (string.IsNullOrWhiteSpace(EditName))
-            return;
-        Variables.Add(new VariableRow {
-            Name    = EditName,
-            RouteId = EditRouteId,
-            Address = EditAddress,
-            Length  = EditLength,
+        Store.Add(new WebVariable
+        {
+            Name = _name.Trim(),
+            RouteId = _routeId.Trim(),
+            Address = _address.Trim(),
+            DataType = _dataType,
+            Length = Math.Max(1, _length),
+            ScanRateMs = Math.Max(200, _scan),
         });
-        HideAddForm();
+        _showForm = false;
+        _name = string.Empty;
+        _address = string.Empty;
     }
 
-    private void DeleteRow(VariableRow row) => Variables.Remove(row);
-
-    private void ShowAddForm() => ShowForm = true;
-
-    private void HideAddForm() {
-        ShowForm   = false;
-        EditName   = string.Empty;
-        EditAddress = string.Empty;
+    private void TogglePoll(WebVariable row, ChangeEventArgs e)
+    {
+        row.Polling = e.Value is true;
+        Store.Update(row);
     }
 
-    // -------------------------------------------------------------------------
-    // 辅助
-    // -------------------------------------------------------------------------
-
-    private static bool TryParseHex(string input, out byte[] data) {
-        string clean = input.Replace(" ", "").Trim();
-        // 空串或奇数长度不是合法十六进制
-        if (clean.Length == 0 || clean.Length % 2 != 0) { data = Array.Empty<byte>(); return false; }
-        try {
-            data = Enumerable.Range(0, clean.Length / 2)
-                .Select(i => Convert.ToByte(clean.Substring(i * 2, 2), 16)).ToArray();
-            return true;
+    private async Task ReadAsync(WebVariable row)
+    {
+        _busy = true;
+        try
+        {
+            ReadResultDto r = await Session.Client.ReadAsync(row.RouteId, row.Address, Math.Max(1, row.Length)).ConfigureAwait(true);
+            if (r.Success)
+                Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType), false);
+            else
+                Store.ApplyRead(row.Id, r.ErrorCode, true);
         }
-        catch { data = Array.Empty<byte>(); return false; }
+        finally { _busy = false; }
     }
+
+    private async Task WriteAsync(WebVariable row)
+    {
+        if (!ValueCodec.TryEncode(row.WriteText, row.DataType, row.Length, out byte[] data, out string err))
+        {
+            _banner = err;
+            _bannerClass = "status-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            WriteResultDto r = await Session.Client.WriteAsync(row.RouteId, row.Address, data).ConfigureAwait(true);
+            if (r.Success)
+            {
+                _banner = "写入成功 " + row.Name;
+                _bannerClass = "status-ok";
+                Log.Info("Variables", "写入 " + row.RouteId + " " + row.Address);
+            }
+            else
+            {
+                _banner = "写入失败: [" + r.ErrorCode + "] " + r.ErrorMessage;
+                _bannerClass = "status-error";
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ReadVisibleAsync()
+    {
+        _busy = true;
+        int ok = 0;
+        try
+        {
+            IReadOnlyList<WebVariable> rows = Visible;
+            foreach (WebVariable row in rows)
+            {
+                ReadResultDto r = await Session.Client.ReadAsync(row.RouteId, row.Address, Math.Max(1, row.Length)).ConfigureAwait(true);
+                if (r.Success)
+                {
+                    Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType), false);
+                    ok++;
+                }
+                else
+                    Store.ApplyRead(row.Id, r.ErrorCode, true);
+            }
+            _banner = "读取完成 " + ok + "/" + rows.Count;
+            _bannerClass = ok == rows.Count ? "status-ok" : "status-warn";
+        }
+        finally { _busy = false; }
+    }
+
+    private void Export() => _exportJson = Store.ExportJson();
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            await using Stream stream = e.File.OpenReadStream(512 * 1024);
+            using StreamReader reader = new(stream);
+            string json = await reader.ReadToEndAsync().ConfigureAwait(true);
+            int n = Store.ImportJson(json, replace: false);
+            _banner = "已导入 " + n + " 条";
+            _bannerClass = "status-ok";
+        }
+        catch (Exception ex)
+        {
+            _banner = "导入失败: " + ex.Message;
+            _bannerClass = "status-error";
+        }
+    }
+
+    private void AskRemove(WebVariable row) => _pendingRemove = row;
+
+    private void ConfirmRemove()
+    {
+        if (_pendingRemove is null) return;
+        Store.Remove(_pendingRemove.Id);
+        _pendingRemove = null;
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnChanged;
+        Store.Changed -= OnChanged;
+    }
+
+    private sealed record RouteChoice(string RouteId, string Name, string ProtocolId);
 }
