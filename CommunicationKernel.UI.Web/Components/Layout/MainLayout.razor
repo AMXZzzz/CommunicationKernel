@@ -1,94 +1,97 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Layout/MainLayout.razor
-   层级: UI 层 — Blazor 主布局组件
-   作用: 实现深色工业主题的整体布局：顶部标题栏 + 左侧导航 + 主内容区。
-         参考 app_full_ui.html 的视觉风格和导航结构。
-   继承: LayoutComponentBase
+   层级: UI 层 — 主布局
+   作用: 顶栏 / 侧栏 / 状态栏。Host 在线状态来自 HostSession，不再靠 CascadingParameter。
    ----------------------------------------------------------------------------- *@
 
 @inherits LayoutComponentBase
+@inject HostSession Session
 @inject NavigationManager Nav
+@implements IDisposable
 
 <div class="app-shell">
-
-    <!-- 顶部标题栏 -->
-    <div class="titlebar">
-        <span class="app-logo">⬡</span>
+    <header class="titlebar">
+        <button class="nav-toggle" type="button" @onclick="ToggleNav" aria-label="导航">
+            <span></span><span></span><span></span>
+        </button>
+        <svg class="app-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="3" rx="1"/>
+            <rect x="3" y="10.5" width="12" height="3" rx="1"/>
+            <rect x="3" y="17" width="16" height="3" rx="1"/>
+        </svg>
         <span class="app-name">CommunicationKernel</span>
-        <span class="title-status">— @PageTitle</span>
+        <span class="title-status">@PageTitle</span>
         <div class="titlebar-right">
-            <!-- Host 在线状态（由布局管理，各页面可注入更新） -->
-            <span class="status-dot @(HostOnline ? "online" : "offline")"></span>
-            <span class="status-text">@(HostOnline ? "已连接" : "未连接")</span>
+            <span class="status-dot @(Session.Online ? "online" : "offline")"></span>
+            <span class="status-text">
+                @(Session.Online ? "Host 已连接" : "Host 离线")
+            </span>
+            <span class="status-addr" title="@Session.Address">@ShortAddress</span>
         </div>
-    </div>
+    </header>
+
+    @if (!Session.Online)
+    {
+        <div class="offline-banner">
+            无法连接 Host.App（@Session.Address）。请确认宿主已启动，或到「系统设置」修改地址。
+        </div>
+    }
 
     <div class="main-area">
-
-        <!-- 左侧导航栏 -->
-        <nav class="sidebar">
-            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All"
-                     ActiveClass="active" @onclick='() => SetTitle("MES监控")'>
-                ⊞ MES监控
-            </NavLink>
-            <NavLink class="nav-item" href="/variables"
-                     ActiveClass="active" @onclick='() => SetTitle("变量配置")'>
-                ≡ 变量配置
-            </NavLink>
-            <NavLink class="nav-item" href="/devices"
-                     ActiveClass="active" @onclick='() => SetTitle("设备管理")'>
-                ⬡ 设备管理
-            </NavLink>
-            <NavLink class="nav-item" href="/log"
-                     ActiveClass="active" @onclick='() => SetTitle("通讯日志")'>
-                ▤ 通讯日志
-            </NavLink>
-            <NavLink class="nav-item" href="/settings"
-                     ActiveClass="active" @onclick='() => SetTitle("系统设置")'>
-                ⚙ 系统设置
-            </NavLink>
+        <nav class="sidebar @(NavOpen ? "open" : null)">
+            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" @onclick="CloseNav">MES 监控</NavLink>
+            <NavLink class="nav-item" href="/devices" @onclick="CloseNav">设备管理</NavLink>
+            <NavLink class="nav-item" href="/variables" @onclick="CloseNav">变量配置</NavLink>
+            <NavLink class="nav-item" href="/log" @onclick="CloseNav">通讯日志</NavLink>
+            <NavLink class="nav-item" href="/settings" @onclick="CloseNav">系统设置</NavLink>
         </nav>
-
-        <!-- 主内容区，渲染当前路由组件 -->
+        @if (NavOpen)
+        {
+            <div class="nav-backdrop" @onclick="CloseNav"></div>
+        }
         <main class="page-content">
             @Body
         </main>
     </div>
 
-    <!-- 底部状态栏 -->
-    <div class="statusbar">
-        <span>@StatusMessage</span>
-        <span class="version">v@HostVersion</span>
-    </div>
+    <footer class="statusbar">
+        <span>@(Session.Online ? "就绪 · " + Session.RouteCount + " 条路由" : (Session.LastError.Length > 0 ? Session.LastError : "未连接"))</span>
+        <span class="version">Host @Session.HostVersion</span>
+    </footer>
 </div>
 
 @code {
-    // -------------------------------------------------------------------------
-    // 状态属性（由子页面组件通过 CascadingValue 或 EventCallback 更新）
-    // -------------------------------------------------------------------------
+    private bool NavOpen { get; set; }
 
-    /// <summary>当前页面标题，显示在标题栏。</summary>
-    private string PageTitle  { get; set; } = "MES监控";
+    private string PageTitle => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0] switch
+    {
+        "" or "/" => "MES 监控",
+        "devices" => "设备管理",
+        "variables" => "变量配置",
+        "log" => "通讯日志",
+        "settings" => "系统设置",
+        _ => "通讯调试工具",
+    };
 
-    /// <summary>Host 是否在线（由健康检查更新）。</summary>
-    [CascadingParameter]
-    public bool HostOnline    { get; set; }
-
-    /// <summary>Host 版本（由健康检查更新）。</summary>
-    [CascadingParameter]
-    public string HostVersion { get; set; } = "--";
-
-    /// <summary>底部状态栏消息。</summary>
-    private string StatusMessage { get; set; } = "就绪";
-
-    // -------------------------------------------------------------------------
-    // 辅助方法
-    // -------------------------------------------------------------------------
-
-    /// <summary>导航按钮点击时更新标题。</summary>
-    private void SetTitle(string title) {
-        PageTitle = title;
-        // 通知 Blazor 重新渲染
-        StateHasChanged();
+    private string ShortAddress
+    {
+        get
+        {
+            string a = Session.Address ?? string.Empty;
+            return a.Replace("http://", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("https://", "", StringComparison.OrdinalIgnoreCase);
+        }
     }
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+    }
+
+    private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void ToggleNav() => NavOpen = !NavOpen;
+    private void CloseNav() => NavOpen = false;
+
+    public void Dispose() => Session.Changed -= OnSessionChanged;
 }

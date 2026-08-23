@@ -1,204 +1,446 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Pages/DevicesPage.razor
-   层级: UI 层 — 设备管理页（Blazor）
-   作用: 展示路由设备列表，支持通过表单注册新路由。
-   路由: /devices
+   层级: UI 层 — 设备管理
+   作用: 协议清单来自 QueryProtocols，串口来自 QuerySerialPorts，禁止内置协议名。
    ----------------------------------------------------------------------------- *@
 
 @page "/devices"
-@rendermode InteractiveServer
-
-@inject HostClient Client
+@inject HostSession Session
+@inject WebDeviceStore Store
+@inject AppLogStore Log
 @inject ILogger<DevicesPage> Logger
+@implements IDisposable
 
 <PageTitle>设备管理 — CommunicationKernel</PageTitle>
 
 <div class="page-dev">
-
-    <!-- 工具栏 -->
     <div class="toolbar">
         <h2 class="page-title">设备管理</h2>
-        <button class="btn ghost" @onclick="RefreshAsync">↻ 刷新</button>
-        <button class="btn primary" @onclick="ShowAddForm">＋ 添加设备</button>
-        @if (IsBusy) {
-            <span class="busy-hint">处理中...</span>
-        }
+        <button class="btn ghost" type="button" @onclick="RefreshAsync" disabled="@_busy">刷新</button>
+        <button class="btn ghost" type="button" @onclick="ReconcileAsync" disabled="@(_busy || !Session.Online)">对账</button>
+        <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@(!Session.Online || _busy)">添加设备</button>
+        @if (_busy) { <span class="busy-hint">处理中…</span> }
+        <span class="toolbar-count">@Rows.Count 台</span>
     </div>
 
-    <!-- 状态消息 -->
-    @if (!string.IsNullOrEmpty(StatusMessage)) {
-        <div class="status-msg @StatusColor">@StatusMessage</div>
+    @if (!string.IsNullOrEmpty(_banner))
+    {
+        <div class="status-msg @_bannerClass">@_banner</div>
     }
 
-    <!-- 设备列表表格 -->
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>路由 ID</th>
-                <th>协议</th>
-                <th>传输</th>
-                <th>地址</th>
-                <th>端口</th>
-                <th>站号</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var route in Routes) {
-                <tr>
-                    <td class="route-id">@route.RouteId</td>
-                    <td>@route.ProtocolId</td>
-                    <td>@route.TransportKind</td>
-                    <td class="addr">@route.Address</td>
-                    <td>@route.Port</td>
-                    <td>@route.Station</td>
-                </tr>
+    @if (Rows.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-title">还没有路由</div>
+            <div class="empty-hint">协议下拉来自宿主已加载的插件。Host 离线时不能注册，但本地配置仍会显示。</div>
+        </div>
+    }
+    else
+    {
+        <div class="device-grid">
+            @foreach (DeviceRow row in Rows)
+            {
+                bool online = Session.IsRouteOnline(row.RouteId);
+                <div class="mes-card @(online ? "is-on" : "is-off")">
+                    <div class="mes-hd">
+                        <span class="proto-bar @UiHelpers.ProtocolBarClass(row.ProtocolId)"></span>
+                        <div class="mes-titles">
+                            <div class="card-name">@row.Name</div>
+                            <div class="card-proto">@row.ProtocolId</div>
+                        </div>
+                        <span class="card-status @(online ? "online" : "offline")">@(online ? "在线" : "离线")</span>
+                    </div>
+                    <div class="mes-body">
+                        <div class="kv"><span>路由</span><span class="mono">@row.RouteId</span></div>
+                        <div class="kv"><span>连接</span><span class="addr">@row.Endpoint</span></div>
+                        <div class="kv"><span>站号</span><span>@(string.IsNullOrEmpty(row.Station) ? "—" : row.Station)</span></div>
+                        @if (!row.OnHost)
+                        {
+                            <div class="kv"><span>宿主</span><span>本地待对账</span></div>
+                        }
+                    </div>
+                    <div class="card-ft">
+                        <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)" disabled="@_busy">注销</button>
+                    </div>
+                </div>
             }
-            @if (!Routes.Any()) {
-                <tr>
-                    <td colspan="6" class="empty-cell">
-                        暂无路由，点击「添加设备」注册 PLC。
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+        </div>
+    }
 
-    <!-- 添加设备表单（内联展示，类似 HTML 模板的对话框） -->
-    @if (ShowForm) {
-        <div class="add-form-overlay" @onclick="HideAddForm">
-            <!-- @onclick:stopPropagation 防止点击内部时关闭 -->
+    @if (_showForm)
+    {
+        <div class="add-form-overlay" @onclick="CloseForm">
             <div class="add-form" @onclick:stopPropagation>
                 <div class="form-hd">
-                    <h3>注册新路由</h3>
-                    <button class="close-btn" @onclick="HideAddForm">✕</button>
+                    <h3>注册路由</h3>
+                    <button class="close-btn" type="button" @onclick="CloseForm">×</button>
                 </div>
 
-                <label>路由 ID *</label>
-                <input @bind="EditRouteId" placeholder="例如: plc-001" />
+                @if (_protocols.Count == 0)
+                {
+                    <p class="setting-hint">宿主未返回任何协议插件。请检查 Host.App 的 plugins 目录。</p>
+                }
+                else
+                {
+                    <label>显示名称</label>
+                    <input @bind="_name" placeholder="例如 贴片机-1" />
 
-                <label>协议 ID *</label>
-                <select @bind="EditProtocolId">
-                    <option value="modbus.tcp">modbus.tcp</option>
-                    <option value="modbus.rtu">modbus.rtu</option>
-                    <option value="modbus.ascii">modbus.ascii</option>
-                    <option value="siemens.s7">siemens.s7</option>
-                    <option value="panasonic.mewtocol.tcp">panasonic.mewtocol.tcp</option>
-                </select>
+                    <label>路由 ID *</label>
+                    <input @bind="_routeId" placeholder="plc-001" />
 
-                <label>传输类型</label>
-                <select @bind="EditTransportKind">
-                    <option value="tcp">tcp</option>
-                    <option value="serialport">serialport</option>
-                </select>
+                    <label>协议 *</label>
+                    <select value="@_protocolId" @onchange="OnProtocolChanged">
+                        @foreach (ProtocolDescriptorDto p in _protocols)
+                        {
+                            <option value="@p.ProtocolId">@p.DisplayName</option>
+                        }
+                    </select>
 
-                <label>IP 地址 *</label>
-                <input @bind="EditAddress" placeholder="192.168.1.100" />
+                    <label>传输介质</label>
+                    <select @bind="_transportKind">
+                        @foreach (string t in Transports)
+                        {
+                            <option value="@t">@t</option>
+                        }
+                    </select>
 
-                <label>端口</label>
-                <input type="number" @bind="EditPort" />
+                    @if (IsSerial)
+                    {
+                        <label>串口（宿主机器）</label>
+                        @if (_ports.Count > 0)
+                        {
+                            <select @bind="_serialPort">
+                                @foreach (SerialPortDto port in _ports)
+                                {
+                                    <option value="@port.PortName">@port.Display</option>
+                                }
+                            </select>
+                        }
+                        <input @bind="_serialPort" placeholder="/dev/ttyUSB0 或 COM3" />
+                        <label>波特率</label>
+                        <select @bind="_baudRate">
+                            @foreach (int b in BaudRates)
+                            {
+                                <option value="@b">@b</option>
+                            }
+                        </select>
+                        <label>最小 I/O 间隔 (ms)</label>
+                        <input type="number" @bind="_minIo" min="0" />
+                    }
+                    else
+                    {
+                        <label>IP 地址 *</label>
+                        <input @bind="_address" placeholder="192.168.1.10" />
+                        <label>端口</label>
+                        <input type="number" @bind="_port" />
+                    }
 
-                <label>站号</label>
-                <input @bind="EditStation" placeholder="1" />
+                    @if (NeedsStation)
+                    {
+                        <label>站号 @(SelectedProtocol?.StationHint)</label>
+                        <input @bind="_station" placeholder="1" />
+                    }
 
-                <div class="form-actions">
-                    <button class="btn ghost" @onclick="HideAddForm">取消</button>
-                    <button class="btn primary" @onclick="RegisterAsync"
-                            disabled="@(string.IsNullOrWhiteSpace(EditRouteId) || IsBusy)">
-                        注册
-                    </button>
-                </div>
+                    <div class="form-actions">
+                        <button class="btn ghost" type="button" @onclick="CloseForm">取消</button>
+                        <button class="btn primary" type="button" @onclick="RegisterAsync" disabled="@_busy">注册</button>
+                    </div>
+                }
             </div>
         </div>
     }
 
+    @if (_pendingRemove is not null)
+    {
+        <div class="add-form-overlay center" @onclick="() => _pendingRemove = null">
+            <div class="add-form confirm-box" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>注销路由</h3>
+                    <button class="close-btn" type="button" @onclick="() => _pendingRemove = null">×</button>
+                </div>
+                <p>将从宿主移除 <span class="mono">@_pendingRemove.RouteId</span>，并删除本地配置。此操作不可恢复。</p>
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="() => _pendingRemove = null">取消</button>
+                    <button class="btn danger" type="button" @onclick="ConfirmRemoveAsync" disabled="@_busy">确认注销</button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
+    private static readonly int[] BaudRates = { 9600, 19200, 38400, 57600, 115200 };
 
-    // -------------------------------------------------------------------------
-    // 状态
-    // -------------------------------------------------------------------------
+    private bool _busy;
+    private bool _showForm;
+    private string _banner = string.Empty;
+    private string _bannerClass = "status-info";
+    private DeviceRow? _pendingRemove;
+    private List<ProtocolDescriptorDto> _protocols = new();
+    private List<SerialPortDto> _ports = new();
 
-    private List<RouteDto> Routes        { get; set; } = new();
-    private bool           IsBusy        { get; set; }
-    private string         StatusMessage { get; set; } = string.Empty;
-    private string         StatusColor   { get; set; } = string.Empty;
-    private bool           ShowForm      { get; set; }
+    private string _name = string.Empty;
+    private string _routeId = string.Empty;
+    private string _protocolId = string.Empty;
+    private string _transportKind = "Tcp";
+    private string _address = string.Empty;
+    private int _port = 502;
+    private string _station = "1";
+    private string _serialPort = string.Empty;
+    private int _baudRate = 9600;
+    private int _minIo = 15;
 
-    // 表单字段
-    private string EditRouteId       { get; set; } = string.Empty;
-    private string EditProtocolId    { get; set; } = "modbus.tcp";
-    private string EditTransportKind { get; set; } = "tcp";
-    private string EditAddress       { get; set; } = string.Empty;
-    private int    EditPort          { get; set; } = 502;
-    private string EditStation       { get; set; } = "1";
+    private ProtocolDescriptorDto? SelectedProtocol =>
+        _protocols.FirstOrDefault(p => string.Equals(p.ProtocolId, _protocolId, StringComparison.OrdinalIgnoreCase));
 
-    // -------------------------------------------------------------------------
-    // 生命周期
-    // -------------------------------------------------------------------------
-
-    protected override async Task OnInitializedAsync() {
-        // 初始加载设备列表
-        await RefreshAsync().ConfigureAwait(false);
-    }
-
-    // -------------------------------------------------------------------------
-    // 操作方法
-    // -------------------------------------------------------------------------
-
-    /// <summary>刷新路由列表：调用 QueryRoutes。</summary>
-    private async Task RefreshAsync() {
-        IsBusy = true;
-        try {
-            // 向 Host.App 拉取当前全部路由
-            Routes = (await Client.QueryRoutesAsync().ConfigureAwait(false)).ToList();
-            StatusMessage = $"共 {Routes.Count} 台设备";
-            StatusColor   = "status-info";
-        }
-        finally {
-            IsBusy = false;
+    private IReadOnlyList<string> Transports
+    {
+        get
+        {
+            ProtocolDescriptorDto? p = SelectedProtocol;
+            if (p?.SupportedTransports is { Count: > 0 })
+                return p.SupportedTransports;
+            return new[] { "Tcp" };
         }
     }
 
-    /// <summary>注册新路由：提交表单到 gRPC RegisterRoute。</summary>
-    private async Task RegisterAsync() {
-        // 前端校验：路由 ID 和地址不能为空
-        if (string.IsNullOrWhiteSpace(EditRouteId) ||
-            string.IsNullOrWhiteSpace(EditAddress)) {
-            StatusMessage = "路由 ID 和地址为必填项";
-            StatusColor   = "status-error";
+    private bool IsSerial =>
+        string.Equals(_transportKind, "Serial", StringComparison.OrdinalIgnoreCase);
+
+    private bool NeedsStation => SelectedProtocol?.RequiresStation != false;
+
+    private IReadOnlyList<DeviceRow> Rows => BuildRows();
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnChanged;
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task RefreshAsync()
+    {
+        _busy = true;
+        try
+        {
+            if (Session.Online)
+                await Session.RefreshRoutesAsync().ConfigureAwait(true);
+            _banner = Session.Online ? "共 " + Rows.Count + " 台（含本地未上线路由）" : "Host 离线，显示本地配置";
+            _bannerClass = "status-info";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "刷新设备失败");
+            _banner = "刷新失败: " + ex.Message;
+            _bannerClass = "status-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ReconcileAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Session.ReconcileNowAsync().ConfigureAwait(true);
+            _banner = "已触发对账";
+            _bannerClass = "status-ok";
+        }
+        finally { _busy = false; }
+    }
+
+    private List<DeviceRow> BuildRows()
+    {
+        Dictionary<string, WebDeviceRecord> local = Store.GetAll()
+            .ToDictionary(d => d.RouteId, d => d, StringComparer.OrdinalIgnoreCase);
+        List<DeviceRow> rows = new();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (RouteDto r in Session.Routes)
+        {
+            seen.Add(r.RouteId);
+            local.TryGetValue(r.RouteId, out WebDeviceRecord? rec);
+            rows.Add(ToRow(r, rec, onHost: true));
+        }
+        foreach (WebDeviceRecord rec in Store.GetAll())
+        {
+            if (seen.Contains(rec.RouteId)) continue;
+            rows.Add(ToRow(null, rec, onHost: false));
+        }
+        return rows;
+    }
+
+    private static DeviceRow ToRow(RouteDto? r, WebDeviceRecord? rec, bool onHost)
+    {
+        string id = r?.RouteId ?? rec?.RouteId ?? string.Empty;
+        string name = rec is not null && !string.IsNullOrWhiteSpace(rec.Name) ? rec.Name : id;
+        string protocol = r?.ProtocolId ?? rec?.ProtocolId ?? string.Empty;
+        string transport = r?.TransportKind ?? rec?.TransportKind ?? string.Empty;
+        string station = r?.Station ?? rec?.Station ?? string.Empty;
+        bool serial = string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase);
+        string endpoint = serial
+            ? (r?.SerialPort ?? rec?.SerialPort ?? "串口")
+            : (r is not null ? r.Address + ":" + r.Port : (rec?.Address ?? "") + ":" + (rec?.Port ?? 0));
+        return new DeviceRow(id, name, protocol, transport, station, endpoint, onHost);
+    }
+
+    private async Task OpenAdd()
+    {
+        ResetForm();
+        _showForm = true;
+        _busy = true;
+        try
+        {
+            _protocols = (await Session.Client.QueryProtocolsAsync().ConfigureAwait(true)).ToList();
+            _ports = (await Session.Client.QuerySerialPortsAsync().ConfigureAwait(true)).ToList();
+            if (_protocols.Count > 0)
+            {
+                _protocolId = _protocols[0].ProtocolId;
+                _transportKind = _protocols[0].DefaultTransport;
+            }
+            if (_ports.Count > 0 && string.IsNullOrWhiteSpace(_serialPort))
+                _serialPort = _ports[0].PortName;
+        }
+        catch (Exception ex)
+        {
+            _banner = "加载协议清单失败: " + ex.Message;
+            _bannerClass = "status-error";
+        }
+        finally { _busy = false; }
+    }
+
+    private void ResetForm()
+    {
+        _name = string.Empty;
+        _routeId = string.Empty;
+        _protocolId = string.Empty;
+        _transportKind = "Tcp";
+        _address = string.Empty;
+        _port = 502;
+        _station = "1";
+        _serialPort = string.Empty;
+        _baudRate = 9600;
+        _minIo = 15;
+        _protocols = new List<ProtocolDescriptorDto>();
+        _ports = new List<SerialPortDto>();
+    }
+
+    private void OnProtocolChanged(ChangeEventArgs e)
+    {
+        _protocolId = e.Value?.ToString() ?? string.Empty;
+        ProtocolDescriptorDto? p = SelectedProtocol;
+        if (p is not null)
+            _transportKind = p.DefaultTransport;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task RegisterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_routeId))
+        {
+            _banner = "路由 ID 为必填";
+            _bannerClass = "status-error";
+            return;
+        }
+        if (!IsSerial && string.IsNullOrWhiteSpace(_address))
+        {
+            _banner = "TCP 路由必须填写 IP";
+            _bannerClass = "status-error";
+            return;
+        }
+        if (IsSerial && string.IsNullOrWhiteSpace(_serialPort))
+        {
+            _banner = "串口路由必须填写端口名（来自宿主机器）";
+            _bannerClass = "status-error";
             return;
         }
 
-        IsBusy = true;
-        try {
-            var (success, errCode, errMsg, _) = await Client.RegisterRouteAsync(
-                EditRouteId, EditProtocolId, EditTransportKind,
-                EditAddress, EditPort, EditStation).ConfigureAwait(false);
+        _busy = true;
+        try
+        {
+            string transport = IsSerial ? "Serial" : "Tcp";
+            int minIo = IsSerial ? Math.Max(0, _minIo) : 0;
+            var (ok, code, msg, id) = await Session.Client.RegisterRouteAsync(
+                _routeId.Trim(),
+                _protocolId,
+                transport,
+                IsSerial ? string.Empty : _address.Trim(),
+                IsSerial ? 0 : _port,
+                NeedsStation ? _station.Trim() : string.Empty,
+                IsSerial ? _serialPort.Trim() : string.Empty,
+                IsSerial ? _baudRate : 0,
+                minIo).ConfigureAwait(true);
 
-            if (success) {
-                StatusMessage = $"路由 {EditRouteId} 注册成功";
-                StatusColor   = "status-ok";
-                HideAddForm();
-                // 注册成功后刷新列表
-                await RefreshAsync().ConfigureAwait(false);
+            if (!ok)
+            {
+                _banner = "注册失败: [" + code + "] " + msg;
+                _bannerClass = "status-error";
+                Log.Error("Devices", _banner);
+                return;
             }
-            else {
-                StatusMessage = $"注册失败: [{errCode}] {errMsg}";
-                StatusColor   = "status-error";
-            }
+
+            Store.Upsert(new WebDeviceRecord
+            {
+                RouteId = string.IsNullOrWhiteSpace(id) ? _routeId.Trim() : id,
+                Name = string.IsNullOrWhiteSpace(_name) ? _routeId.Trim() : _name.Trim(),
+                ProtocolId = _protocolId,
+                TransportKind = transport,
+                Address = _address.Trim(),
+                Port = _port,
+                Station = _station.Trim(),
+                SerialPort = _serialPort.Trim(),
+                BaudRate = _baudRate,
+                MinIoIntervalMs = minIo,
+            });
+            Log.Info("Devices", "已注册 " + _routeId);
+            _banner = "路由 " + _routeId + " 已注册";
+            _bannerClass = "status-ok";
+            CloseForm();
+            await Session.RefreshRoutesAsync().ConfigureAwait(true);
         }
-        finally {
-            IsBusy = false;
-        }
+        finally { _busy = false; }
     }
 
-    private void ShowAddForm() => ShowForm = true;
+    private void AskRemove(DeviceRow row) => _pendingRemove = row;
 
-    /// <summary>隐藏表单并清空输入字段。</summary>
-    private void HideAddForm() {
-        ShowForm      = false;
-        EditRouteId   = string.Empty;
-        EditAddress   = string.Empty;
+    private async Task ConfirmRemoveAsync()
+    {
+        if (_pendingRemove is null) return;
+        DeviceRow row = _pendingRemove;
+        _pendingRemove = null;
+        await RemoveAsync(row).ConfigureAwait(true);
     }
+
+    private async Task RemoveAsync(DeviceRow row)
+    {
+        _busy = true;
+        try
+        {
+            if (Session.Online)
+            {
+                var (ok, code, msg) = await Session.Client.RemoveRouteAsync(row.RouteId).ConfigureAwait(true);
+                bool gone = ok || string.Equals(code, "RouteNotFound", StringComparison.OrdinalIgnoreCase);
+                if (!gone)
+                {
+                    _banner = "宿主注销失败: [" + code + "] " + msg + "（本地配置保留）";
+                    _bannerClass = "status-warn";
+                    Log.Warn("Devices", _banner);
+                    return;
+                }
+            }
+
+            Store.Remove(row.RouteId);
+            _banner = "已注销 " + row.RouteId;
+            _bannerClass = "status-ok";
+            Log.Info("Devices", "注销 " + row.RouteId);
+            if (Session.Online)
+                await Session.RefreshRoutesAsync().ConfigureAwait(true);
+        }
+        finally { _busy = false; }
+    }
+
+    public void Dispose() => Session.Changed -= OnChanged;
+
+    private sealed record DeviceRow(
+        string RouteId, string Name, string ProtocolId, string TransportKind, string Station, string Endpoint, bool OnHost);
 }

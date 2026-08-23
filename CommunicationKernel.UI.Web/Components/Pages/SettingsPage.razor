@@ -1,97 +1,113 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Pages/SettingsPage.razor
-   层级: UI 层 — 系统设置页（Blazor）
-   作用: 显示 Host.App 连接配置和连接测试，以及应用版本信息。
-   路由: /settings
+   层级: UI 层 — 系统设置
+   作用: 保存并切换 Host.App 地址；立即重建 gRPC 通道，不必重启进程。
+         「测试连接」用临时客户端探测输入框地址，不碰当前会话。
    ----------------------------------------------------------------------------- *@
 
 @page "/settings"
-@rendermode InteractiveServer
-
-@inject HostClient Client
+@inject HostSession Session
+@inject WebSettingsStore Settings
+@implements IDisposable
 
 <PageTitle>系统设置 — CommunicationKernel</PageTitle>
 
 <div class="page-set">
     <h2 class="page-title">系统设置</h2>
 
-    <!-- 连接设置卡片 -->
     <div class="settings-card">
         <h3>Host.App 连接</h3>
+        <p class="setting-hint">与 WPF 共用同一文件的 HostAddress：@Settings.FilePath</p>
 
-        <label>gRPC 服务地址</label>
-        <input @bind="ServerAddress" placeholder="http://localhost:5000" />
+        <label>gRPC 地址</label>
+        <input @bind="_address" placeholder="http://192.168.1.20:5000" />
 
         <div class="form-actions">
-            <button class="btn primary" @onclick="TestConnectionAsync" disabled="@IsTesting">
-                @(IsTesting ? "测试中..." : "测试连接")
+            <button class="btn ghost" type="button" @onclick="TestAsync" disabled="@_busy">
+                @(_busy ? "请稍候…" : "测试连接")
             </button>
+            <button class="btn primary" type="button" @onclick="SaveAsync" disabled="@_busy">保存并切换</button>
         </div>
 
-        <!-- 连接状态 -->
-        <div class="connect-status @ConnectStatusClass" style="margin-top:12px">
-            @ConnectStatus
-        </div>
-
-        @if (!string.IsNullOrEmpty(HostVersion)) {
-            <div class="setting-hint">Host 版本: @HostVersion</div>
-        }
+        <div class="connect-status @_statusClass" style="margin-top:12px">@_status</div>
+        <div class="setting-hint">当前会话：@Session.Address · Host @Session.HostVersion · 路由 @Session.RouteCount</div>
     </div>
 
-    <!-- 关于卡片 -->
     <div class="settings-card">
         <h3>关于</h3>
-        <p class="setting-desc">CommunicationKernel 通讯调试工具</p>
-        <p class="setting-hint">.NET 8 · gRPC · Blazor Server · 企业级分层架构</p>
+        <p class="setting-desc">CommunicationKernel Web 上位机</p>
+        <p class="setting-hint">Blazor Server · 只持有 route_id · 协议清单来自宿主插件 · 串口枚举发生在宿主机器 · 设备/变量落在本机，Host 重启后对账恢复</p>
     </div>
 </div>
 
 @code {
+    private string _address = string.Empty;
+    private bool _busy;
+    private string _status = "未测试";
+    private string _statusClass = "status-muted";
 
-    // -------------------------------------------------------------------------
-    // 状态
-    // -------------------------------------------------------------------------
-
-    private string ServerAddress       { get; set; } = "http://localhost:5000";
-    private bool   IsTesting           { get; set; }
-    private string ConnectStatus       { get; set; } = "未测试";
-    private string ConnectStatusClass  { get; set; } = "status-muted";
-    private string HostVersion         { get; set; } = string.Empty;
-
-    // -------------------------------------------------------------------------
-    // 操作
-    // -------------------------------------------------------------------------
-
-    /// <summary>连接测试：调用 Health RPC，更新状态显示。</summary>
-    private async Task TestConnectionAsync() {
-        IsTesting     = true;
-        ConnectStatus = "连接中...";
-        ConnectStatusClass = "status-warn";
-
-        try {
-            var (ok, version, routeCount) = await Client.HealthAsync().ConfigureAwait(false);
-
-            if (ok) {
-                // 连接成功
-                ConnectStatus      = $"已连接 · {routeCount} 条路由";
-                ConnectStatusClass = "status-ok";
-                HostVersion        = version;
-            }
-            else {
-                // 服务端异常
-                ConnectStatus      = "服务异常";
-                ConnectStatusClass = "status-error";
-                HostVersion        = string.Empty;
-            }
-        }
-        catch (Exception ex) {
-            // 网络不可达
-            ConnectStatus      = $"连接失败: {ex.Message}";
-            ConnectStatusClass = "status-error";
-            HostVersion        = string.Empty;
-        }
-        finally {
-            IsTesting = false;
-        }
+    protected override void OnInitialized()
+    {
+        _address = Session.Address;
+        _status = Session.Online ? "已连接" : "当前离线";
+        _statusClass = Session.Online ? "status-ok" : "status-muted";
+        Session.Changed += OnChanged;
     }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task TestAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_address))
+        {
+            _status = "地址不能为空";
+            _statusClass = "status-error";
+            return;
+        }
+        _busy = true;
+        _status = "探测中…";
+        _statusClass = "status-warn";
+        try
+        {
+            var (ok, version, count) = await Session.ProbeAddressAsync(_address.Trim()).ConfigureAwait(true);
+            if (ok)
+            {
+                _status = "可连接 · " + count + " 条路由 · " + version;
+                _statusClass = "status-ok";
+            }
+            else
+            {
+                _status = "无响应: " + _address.Trim();
+                _statusClass = "status-error";
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_address))
+        {
+            _status = "地址不能为空";
+            _statusClass = "status-error";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            await Session.SwitchAddressAsync(_address.Trim()).ConfigureAwait(true);
+            _status = Session.Online
+                ? "已切换并连上 · " + Session.RouteCount + " 条路由"
+                : "地址已保存，但新地址暂无响应";
+            _statusClass = Session.Online ? "status-ok" : "status-warn";
+        }
+        catch (Exception ex)
+        {
+            _status = ex.Message;
+            _statusClass = "status-error";
+        }
+        finally { _busy = false; }
+    }
+
+    public void Dispose() => Session.Changed -= OnChanged;
 }

@@ -1,17 +1,14 @@
 /*
  * 文件: wwwroot/app.css
- * 层级: UI 层 — Blazor Web 基础样式
- * 作用: 覆盖 html/body 与 Blazor 错误条（#blazor-error-ui）的默认外观。
+ * 作用: html/body 与 Blazor 错误条。主题在 css/theme.css。
  */
-
-/* Blazor 基础样式覆盖 */
 html, body { height: 100%; margin: 0; padding: 0; }
 #blazor-error-ui {
     background: #450a0a;
-    color: #f87171;
+    color: #fca5a5;
     padding: 8px 16px;
     position: fixed;
-    bottom: 0;
+    bottom: 26px;
     left: 0;
     right: 0;
     z-index: 999;
