@@ -66,7 +66,13 @@ public partial class App : Application {
         InstallGlobalExceptionHandlers();
 
         // 1. 构建主机（含 DI 容器）：注册服务、配置日志
-        _host = Host.CreateDefaultBuilder()
+        //
+        // 必须写全 Microsoft.Extensions.Hosting.Host，不能只写 Host：
+        // 本文件位于 CommunicationKernel.UI.Wpf 命名空间，编译器解析 Host
+        // 时会先逐级向外找，于是命中 Host.Sdk / Host.App 引入的
+        // CommunicationKernel.Host 命名空间，根本轮不到 using 里的那个类。
+        // 工程改名成 Host.* 之后 WPF 就是因此编译不过的。
+        _host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
             .ConfigureServices(ConfigureServices)
             .ConfigureLogging(logging => {
                 // 保留控制台和调试输出（开发期有用）
