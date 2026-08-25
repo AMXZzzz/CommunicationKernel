@@ -1,7 +1,45 @@
-# 部署到 Linux / 树莓派
+﻿# 部署到 Linux / 树莓派
 
 本文覆盖两种部署形态。先确定你属于哪一种，再往下读对应章节——两者的产物、
 依赖和排障方式都不同。
+
+> **最常见的场景直接看这里** → [实战走查：树莓派当现场网关，远端电脑当上位机](#实战走查树莓派当现场网关远端电脑当上位机)
+> 那一节是从发布到验证的完整六步，把散在下面各章的配置串成了一条线。
+
+---
+
+## 目录
+
+- [两种形态对照](#两种形态对照)
+  - [怎么选](#怎么选)
+- [形态 A：把内核当 SDK 嵌进上位机](#形态-a把内核当-sdk-嵌进上位机)
+  - [发布](#发布)
+- [形态 B：独立宿主 Host.App](#形态-b独立宿主-hostapp)
+  - [产物结构](#产物结构)
+- [实战走查：树莓派当现场网关，远端电脑当上位机](#实战走查树莓派当现场网关远端电脑当上位机)
+  - [第 1 步：发布、传输、安装到树莓派](#第-1-步发布传输安装到树莓派)
+  - [第 2 步：改监听地址（最容易漏的一步）](#第-2-步改监听地址最容易漏的一步)
+  - [第 3 步：放行防火墙并确认网络可达](#第-3-步放行防火墙并确认网络可达)
+  - [第 4 步：装成 systemd 服务](#第-4-步装成-systemd-服务)
+  - [第 5 步：PC 侧指向树莓派](#第-5-步pc-侧指向树莓派)
+  - [第 6 步：配设备时注意「串口是谁的串口」](#第-6-步配设备时注意串口是谁的串口)
+  - [验证清单](#验证清单)
+  - [这个场景专属的坑](#这个场景专属的坑)
+- [串口权限](#串口权限)
+  - [树莓派板载串口的额外两步](#树莓派板载串口的额外两步)
+  - [设备名稳定性](#设备名稳定性)
+- [监听地址与暴露面](#监听地址与暴露面)
+- [systemd 服务](#systemd-服务)
+- [升级与回滚](#升级与回滚)
+  - [升级](#升级)
+  - [回滚](#回滚)
+  - [设备配置去哪了](#设备配置去哪了)
+  - [卸载](#卸载)
+- [排障速查](#排障速查)
+
+---
+
+## 两种形态对照
 
 | | 形态 A：SDK 嵌入 | 形态 B：独立宿主 |
 |---|---|---|
@@ -16,10 +54,10 @@
 
 用一句话判断：**跑界面的那台机器，是不是就是接 PLC 那台？**
 
-- **是** → 形态 A。树莓派上跑一个控制程序直连 PLC，不需要 Host.App，也不需要 gRPC。
-- **不是** → 形态 B。最典型的就是「树莓派在车间接 PLC，人在办公室用电脑看」——
-  这种情况请直接跳到 **[实战走查：树莓派当现场网关，远端电脑当上位机](#实战走查树莓派当现场网关远端电脑当上位机)**，
-  那一节是从发布到验证的完整六步，把散在下面各章的配置串成了一条线。
+- **是** → 形态 A，往下读 [形态 A](#形态-a把内核当-sdk-嵌进上位机)。
+  树莓派上跑一个控制程序直连 PLC，不需要 Host.App，也不需要 gRPC。
+- **不是** → 形态 B，直接看 [实战走查](#实战走查树莓派当现场网关远端电脑当上位机)。
+  最典型的就是「树莓派在车间接 PLC，人在办公室用电脑看」。
 
 多台上位机同时访问同一批 PLC 时只能用形态 B——
 形态 A 里每个进程各自持有串口/socket，两个进程会直接抢同一个句柄。
@@ -113,7 +151,6 @@ publish/linux-arm64/
 不抛任何异常**，表现为「协议列表是空的」。CI 有专门的作业守这条。
 
 ---
----
 
 ## 实战走查：树莓派当现场网关，远端电脑当上位机
 
@@ -137,22 +174,93 @@ publish/linux-arm64/
 PC 侧只有 `Host.Sdk`，收发的是 `route_id` 和字节，不认识任何协议。
 这也意味着 PC 换成 Mac、平板或另一台树莓派都不影响——它们都只是 gRPC 客户端。
 
-### 第 1 步：树莓派侧发布并部署
+### 第 1 步：发布、传输、安装到树莓派
+
+分三小步：在**开发机**上发布 → 把整个文件夹传到树莓派 → 装到 `/opt`。
+
+> **安装目录统一用 `/opt/communication-kernel`。**
+> 下面的 systemd 单元、升级脚本、排障命令全部以它为准。
+> 装到 `~/ck` 之类的家目录也能跑，但 systemd 的 `User=` 一换就会因权限问题起不来，
+> 而且家目录在有些镜像上是加密的，开机时 systemd 比解密更早启动，直接找不到文件。
+
+#### 1.1 发布（在开发机上，不是在树莓派上编译）
+
+VS 里：右键 `CommunicationKernel.Host.App` → 发布 → 选「树莓派-linux-arm64」→ 发布。
+
+命令行等价写法：
 
 ```bash
-dotnet publish CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj \
-  -c Release -r linux-arm64 --self-contained true -o ./publish/linux-arm64
+dotnet publish CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj -c Release -r linux-arm64 --self-contained true
 ```
 
-拷到树莓派（`scp -r ./publish/linux-arm64 pi@<树莓派IP>:~/ck`），然后：
+产物在 `CommunicationKernel.Host.App\bin\Release\net8.0\linux-arm64\publish\`,
+约 107 MB（自包含运行时占绝大部分）。
+
+**传之前先确认插件在**，这一步漏了的表现是「协议列表是空的」：
 
 ```bash
-chmod +x ~/ck/CommunicationKernel.Host.App
-sudo usermod -aG dialout $USER   # 要用串口才需要，改完必须重新登录
+ls CommunicationKernel.Host.App/bin/Release/net8.0/linux-arm64/publish/plugins/
 ```
 
-> 64 位系统用 `linux-arm64`，32 位系统（含 Raspberry Pi OS 32 位版）用 `linux-arm`。
-> RID 搞错时报的是 exec 格式错误，不会提示你 RID 不对。
+应当看到 5 个插件 DLL。同时确认**四个共享契约在主目录、不在 `plugins/` 下**——
+`Core.Abstractions`、`Communication.Protocol`、`Communication.Transport`、`Plugin.Loader`。
+原因见[产物结构](#产物结构)。
+
+> 目录里的 `.pdb` 和 `createdump` 不用删。加起来不到 300 KB，
+> 省不下什么，而留着 `.pdb` 能让崩溃堆栈带上行号——现场排查时这个很值。
+
+#### 1.2 传到树莓派
+
+**方式一：PowerShell 里直接 scp**（Windows 10/11 自带 OpenSSH 客户端，无需装任何东西）
+
+```powershell
+scp -r "CommunicationKernel.Host.App\bin\Release\net8.0\linux-arm64\publish\*" pi@192.168.1.50:/tmp/ck-new
+```
+
+传之前先在树莓派上建好中转目录：
+
+```bash
+mkdir -p /tmp/ck-new
+```
+
+**方式二：WinSCP / FileZilla**，协议选 SFTP，拖进 `/tmp/ck-new` 即可。
+
+**方式三：U 盘**。现场没网时用这个：把 `publish` 整个目录拷进 U 盘，插到树莓派上，
+然后 `cp -r /media/pi/<U盘名>/publish/* /tmp/ck-new/`。
+
+#### 1.3 安装到 /opt
+
+```bash
+sudo mkdir -p /opt/communication-kernel
+sudo cp -r /tmp/ck-new/* /opt/communication-kernel/
+sudo chown -R pi:pi /opt/communication-kernel
+sudo chmod +x /opt/communication-kernel/CommunicationKernel.Host.App
+rm -rf /tmp/ck-new
+```
+
+`chmod +x` 不能漏——Windows 文件系统不带 Unix 执行位，
+经 scp/U 盘过来的可执行文件默认是不可执行的，
+直接跑会报 `Permission denied`,而这个错看不出是权限位的问题。
+
+要用串口的话再加一步（**改完必须重新登录才生效**）：
+
+```bash
+sudo usermod -aG dialout pi
+```
+
+#### 1.4 先手动跑一次，确认能起来
+
+装成服务之前先前台跑一次，有问题时错误直接打在屏幕上：
+
+```bash
+cd /opt/communication-kernel && ./CommunicationKernel.Host.App
+```
+
+看到 `Now listening on:` 和 `已加载 N 个协议` 就说明装对了，`Ctrl+C` 停掉，继续第 2 步。
+
+> **RID 选错的表现在这一步暴露**：报 `cannot execute binary file: Exec format error`。
+> 64 位系统（`uname -m` 为 `aarch64`）用 `linux-arm64`,
+> 32 位（`armv7l`）用 `linux-arm`。错误信息本身不会提示你 RID 不对。
 
 ### 第 2 步：改监听地址（最容易漏的一步）
 
@@ -387,6 +495,74 @@ journalctl -u communication-kernel -f
 ```
 
 ---
+
+## 升级与回滚
+
+现场设备装完不是终点——改了配置、换了插件、修了 bug 都要重新部署。
+关键是**升级失败时能立刻退回去**，产线不等人。
+
+### 升级
+
+思路：新版本先落到旁边，停服务 → 换目录 → 起服务。
+停机窗口只有换目录那一瞬间。
+
+```bash
+sudo systemctl stop communication-kernel
+sudo mv /opt/communication-kernel /opt/communication-kernel.bak
+sudo mkdir -p /opt/communication-kernel
+sudo cp -r /tmp/ck-new/* /opt/communication-kernel/
+sudo chown -R pi:pi /opt/communication-kernel
+sudo chmod +x /opt/communication-kernel/CommunicationKernel.Host.App
+sudo systemctl start communication-kernel
+```
+
+**`appsettings.json` 会被新版本覆盖。** 里面有你改过的监听地址，
+升级前先备份、升级后再放回去：
+
+```bash
+sudo cp /opt/communication-kernel.bak/appsettings.json /opt/communication-kernel/appsettings.json
+sudo systemctl restart communication-kernel
+```
+
+> 更省事的做法：不改 `appsettings.json`,改用环境变量把地址写进 systemd 单元的
+> `Environment=` 行（见下方[单元文件](#systemd-服务)）。
+> 那样配置在单元文件里，升级时根本不会被碰到。
+
+### 回滚
+
+升级后起不来，一条命令退回上一版：
+
+```bash
+sudo systemctl stop communication-kernel && sudo rm -rf /opt/communication-kernel && sudo mv /opt/communication-kernel.bak /opt/communication-kernel && sudo systemctl start communication-kernel
+```
+
+确认新版本稳定运行几天后，再删掉备份：
+
+```bash
+sudo rm -rf /opt/communication-kernel.bak
+```
+
+### 设备配置去哪了
+
+**不在树莓派上。** 设备清单、变量表、字节序这些都存在**上位机**本地
+（Windows 下是 `%APPDATA%\CommunicationKernel\`），
+树莓派上的 Host.App 只持有内存态的路由表。
+
+因此：
+
+- 重装/升级树莓派**不会丢任何设备配置**
+- 宿主重启后路由表是空的，上位机会自动对账把设备重新注册上去
+- 反过来，重装上位机所在的电脑**会**丢配置——那台才需要备份
+
+### 卸载
+
+```bash
+sudo systemctl disable --now communication-kernel
+sudo rm /etc/systemd/system/communication-kernel.service
+sudo systemctl daemon-reload
+sudo rm -rf /opt/communication-kernel
+```
+
 
 ## 排障速查
 
