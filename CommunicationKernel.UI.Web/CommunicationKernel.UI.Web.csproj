@@ -11,6 +11,26 @@
     <!-- TreatWarningsAsErrors 由 Directory.Build.props 继承 -->
     <AssemblyName>CommunicationKernel.UI.Web</AssemblyName>
     <RootNamespace>CommunicationKernel.UI.Web</RootNamespace>
+
+    <!--
+      WinExe：直接运行 exe 时不分配控制台窗口。
+
+      这是给操作员用的：双击图标只弹浏览器，不该再冒出一个黑框
+      ——那个框看着像出了错，而且被误关就等于把服务停了。
+
+      代价与补偿：
+        没有控制台，启动失败会变成"什么都不发生"。因此 Program.cs 里
+        用 try/catch 兜住整个启动流程，失败时写日志文件并弹一个消息框。
+        没有那段兜底就不该开 WinExe——静默失败比黑框糟糕得多。
+
+      跨平台：OutputType 只影响 Windows PE 头的子系统标志，
+      Linux 下产物是 ELF，本设置是空操作，不影响树莓派部署。
+
+      注意：从已有终端里 `dotnet run` 时，日志仍会打到那个终端——
+      进程继承了父终端的控制台，与本设置无关。
+      要无控制台启动，用 run-web.cmd 或直接双击发布出来的 exe。
+    -->
+    <OutputType>WinExe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +39,25 @@
          RemoveRoute / QueryProtocols，也没有断线重连。
          proto 已收敛到单一来源，客户端封装没有理由再分裂两份。 -->
     <ProjectReference Include="..\CommunicationKernel.Host.Sdk\CommunicationKernel.Host.Sdk.csproj" />
+  </ItemGroup>
+
+  <!--
+    把 wwwroot 一并复制到生成目录。
+
+    默认行为下 wwwroot 只在 publish 时进产物，build 不复制——
+    因为 `dotnet run` 的 ContentRoot 是项目目录，静态文件从源码原地取。
+    但直接双击 bin 里的 exe 时 ContentRoot 变成 bin 目录，
+    此时找不到 wwwroot，启动日志里只有一行
+    "The WebRootPath was not found ... Static files may be unavailable"，
+    界面照常打开却完全没有样式——看着像 CSS 写坏了，很难联想到是路径问题。
+
+    本项目是 WinExe（双击即用）的操作员工具，"生成完就能双击跑"
+    必须成立，因此补上这条。publish 路径不受影响，那边本来就是对的。
+  -->
+  <ItemGroup>
+    <!-- 用 Update 而非 Include：Web SDK 已隐式把 wwwroot 纳入 Content，
+         Include 会产生重复项并直接报 NETSDK1022。这里只是给已有项加一条元数据。 -->
+    <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
