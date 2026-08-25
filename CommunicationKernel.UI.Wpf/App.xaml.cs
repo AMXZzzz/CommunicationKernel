@@ -4,11 +4,11 @@
 // 文件: App.xaml.cs
 // 层级: UI 层 — WPF 应用程序启动入口（组合根 Composition Root）
 // 作用: 构建 IHost + DI 容器，注册所有服务、ViewModel、Page；
-//       从 settings.json 读取 Host.App 地址；
+//       从 settings.json / 本项目 appsettings.json 读取 Host.App 地址；
 //       启动主机后预加载设备列表并显示主窗口。
 // 启动顺序:
 //   Application_Startup
-//     → LoadSavedHostAddress() 读取持久化地址
+//     → WpfAppSettings.ReadAddress() 读 AppData / appsettings.json
 //     → IHostBuilder.Build()
 //       → DI 注册: HostClient（使用持久化地址）
 //       → DI 注册: IDeviceService / IVariableService / IProtocolResolver / IAppLogger
@@ -21,8 +21,6 @@
 // -----------------------------------------------------------------------------
 
 using System;
-using System.IO;
-using System.Text.Json;
 using System.Windows;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Logging;
@@ -33,6 +31,7 @@ using CommunicationKernel.UI.Wpf.Views.Pages.Log;
 using CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor;
 using CommunicationKernel.UI.Wpf.Views.Pages.Settings;
 using CommunicationKernel.UI.Wpf.Views.Pages.Variable;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -73,6 +72,7 @@ public partial class App : Application {
         // CommunicationKernel.Host 命名空间，根本轮不到 using 里的那个类。
         // 工程改名成 Host.* 之后 WPF 就是因此编译不过的。
         _host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
+            .UseContentRoot(AppContext.BaseDirectory)
             .ConfigureServices(ConfigureServices)
             .ConfigureLogging(logging => {
                 // 保留控制台和调试输出（开发期有用）
@@ -165,12 +165,11 @@ public partial class App : Application {
         // gRPC 客户端（单例）
         // =====================================================================
 
-        // 从 settings.json 读取 HostAddress；文件不存在或解析失败时使用开发默认值
+        // 从 AppData settings.json 读取 HostAddress；没有则用本项目 appsettings.json
         services.AddSingleton<HostClient>(sp => {
             ILogger<HostClient> logger =
                 sp.GetRequiredService<ILogger<HostClient>>();
-            // 读取持久化地址，避免在 UI 层硬编码服务器地址
-            string address = LoadSavedHostAddress();
+            string address = WpfAppSettings.ReadAddress(sp.GetRequiredService<IConfiguration>());
             return new HostClient(address, logger);
         });
 
@@ -242,7 +241,9 @@ public partial class App : Application {
 
         // 地址配置、连接测试、设置持久化
         services.AddSingleton<SettingsViewModel>(sp =>
-            new SettingsViewModel(sp.GetRequiredService<HostClient>()));
+            new SettingsViewModel(
+                sp.GetRequiredService<HostClient>(),
+                sp.GetRequiredService<IConfiguration>()));
 
         // =====================================================================
         // 页面（Transient：每次导航新建，避免 Frame 缓存）
@@ -284,42 +285,6 @@ public partial class App : Application {
 
         // 主窗口注入 IServiceProvider，按导航懒解析页面
         services.AddSingleton<MainWindow>();
-    }
-
-    // =========================================================================
-    // 辅助方法
-    // =========================================================================
-
-    /// <summary>
-    /// 从 AppData/CommunicationKernel/settings.json 读取已保存的 HostAddress。
-    /// 文件不存在、解析失败或地址为空时，返回默认地址 "http://localhost:5000"。
-    /// 与 SettingsViewModel 使用相同路径，保证读写一致。
-    /// </summary>
-    private static string LoadSavedHostAddress() {
-        const string defaultAddress = "http://localhost:5000";
-        try {
-            // 与 SettingsViewModel 使用相同的文件路径
-            string path = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "CommunicationKernel", "settings.json");
-
-            // 首次启动尚无配置文件：走开发默认值
-            if (!File.Exists(path))
-                return defaultAddress;
-
-            // 读取 JSON，取 HostAddress 字段
-            string json = File.ReadAllText(path);
-            using JsonDocument doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("HostAddress", out JsonElement el)) {
-                string addr = el.GetString();
-                // 非空时使用持久化的地址
-                if (!string.IsNullOrWhiteSpace(addr))
-                    return addr;
-            }
-        } catch {
-            // 解析失败时静默回退默认值，不中断启动流程
-        }
-        return defaultAddress;
     }
 
     // =========================================================================

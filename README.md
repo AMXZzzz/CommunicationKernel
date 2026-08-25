@@ -148,7 +148,8 @@ Host.App 仍绑本机 `:5000`，不用改。双击 exe 同样生效，不必加 
 dotnet run --project CommunicationKernel.UI.Wpf
 ```
 
-同样默认连 `http://localhost:5000`。
+同样默认连 `http://localhost:5000`，出厂值在本项目 `appsettings.json` 的 `Host.App:Address`。
+系统设置里保存的地址写入 `%APPDATA%/CommunicationKernel/settings.json`，与 Web 共用，优先于 appsettings。
 
 ## 运行宿主（形态 B）
 
