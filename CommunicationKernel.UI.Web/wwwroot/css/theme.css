@@ -723,3 +723,6 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 
 /* 表格行末的按钮组 */
 .row-btns { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+
+/* 标签里的补充说明（次要信息，不抢标签本身） */
+.label-note { color: var(--text-dim); font-weight: 400; }

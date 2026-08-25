@@ -95,6 +95,7 @@
     CommunicationKernel.Host.Sdk.SerialPortDto.ToString() -> System.String
     CommunicationKernel.Host.Sdk.ValueCodec.Decode(System.Byte[] data, System.String dataType, CommunicationKernel.Host.Sdk.ByteOrder order) -> System.String
     CommunicationKernel.Host.Sdk.ValueCodec.DefaultLength(System.String dataType) -> System.Int32
+    CommunicationKernel.Host.Sdk.ValueCodec.IsVariableLength(System.String dataType) -> System.Boolean
     CommunicationKernel.Host.Sdk.ValueCodec.ParseOrder(System.String value) -> CommunicationKernel.Host.Sdk.ByteOrder
     CommunicationKernel.Host.Sdk.ValueCodec.TryEncode(System.String text, System.String dataType, System.Int32 length, System.Byte[]& data, System.String& error, CommunicationKernel.Host.Sdk.ByteOrder order) -> System.Boolean
     CommunicationKernel.Host.Sdk.ValueCodec.TryEncodeValue(System.Object value, System.String dataType, System.Int32 length, System.Byte[]& data, System.String& error, CommunicationKernel.Host.Sdk.ByteOrder order) -> System.Boolean
