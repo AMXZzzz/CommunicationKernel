@@ -25,6 +25,11 @@ internal static class WebPaths
     /// <summary>Host 地址，字段 HostAddress，与 WPF SettingsViewModel 同一文件。</summary>
     public static string SettingsFile => Path.Combine(Root, "settings.json");
 
+    /// <summary>
+    /// Web 自己的监听端口。单独成文件，避免 WPF 保存 settings.json 时把端口冲掉。
+    /// </summary>
+    public static string ListenFile => Path.Combine(Root, "web-listen.json");
+
     /// <summary>Web 侧设备配置（宿主重启后据此重新注册路由）。</summary>
     public static string DevicesFile => Path.Combine(Root, "web-devices.json");
 

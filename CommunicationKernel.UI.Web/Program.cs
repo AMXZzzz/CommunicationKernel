@@ -28,8 +28,19 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 try
 {
 
+// Host.App 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
+// 而且 Visual Studio / 上次跑宿主时可能把 ASPNETCORE_URLS 留在环境里。
+string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+if (!string.IsNullOrWhiteSpace(inheritedUrls) && ContainsPort(inheritedUrls, WebSettingsStore.HostPort))
+    Environment.SetEnvironmentVariable("ASPNETCORE_URLS", null);
+
 // 读取 appsettings / 环境变量，准备 DI 与配置
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+// 端口来源：设置页 web-listen.json → 命令行 --urls → appsettings Web:ListenPort → 64000。
+// 在代码里 UseUrls，不再靠 appsettings 的 Kestrel:Endpoints（那段会把这里的设置压掉）。
+int listenPort = WebSettingsStore.ResolveListenPort(builder.Configuration, inheritedUrls);
+builder.WebHost.UseUrls("http://0.0.0.0:" + listenPort);
 
 // ============================================================================
 // 服务注册
@@ -90,17 +101,19 @@ app.UseAntiforgery();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-// 监听就绪后再开浏览器。
+// 监听就绪后再开浏览器、记下局域网地址。
 //
 // 必须挂在 ApplicationStarted 上而不是 Run 之前：端口尚未绑定时打开浏览器，
 // 用户看到的是"无法访问此网站"，然后手动刷新才好——那比不开还差。
 //
 // 地址从 IServerAddressesFeature 取实际绑定值，不写死端口：
 // appsettings 或命令行随时可能改端口，写死会打开一个空白页。
-if (builder.Configuration.GetValue("Web:LaunchBrowser", defaultValue: true))
+app.Lifetime.ApplicationStarted.Register(() =>
 {
-    app.Lifetime.ApplicationStarted.Register(() => OpenBrowser(app));
-}
+    LogListenAddresses(app);
+    if (builder.Configuration.GetValue("Web:LaunchBrowser", defaultValue: true))
+        OpenBrowser(app);
+});
 
 // 阻塞监听，直到进程收到停止信号
 app.Run();
@@ -120,6 +133,49 @@ catch (Exception ex)
 // ============================================================================
 // 启动后打开浏览器
 // ============================================================================
+
+/// <summary>
+/// 把实际监听地址和手机可访问的局域网 URL 打到日志。
+/// </summary>
+/// <remarks>
+/// 默认绑 <c>0.0.0.0</c> 之后，操作员最常问的就是「手机打开哪个地址」。
+/// 启动时直接写出来，避免再去跑 ipconfig。
+/// </remarks>
+static void LogListenAddresses(WebApplication app)
+{
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Web.Endpoint");
+    ICollection<string>? addresses = app.Services
+        .GetService<IServer>()?
+        .Features.Get<IServerAddressesFeature>()?
+        .Addresses;
+
+    if (addresses is null || addresses.Count == 0)
+    {
+        logger.LogWarning("无法获取实际监听地址。");
+        return;
+    }
+
+    foreach (string address in addresses)
+        logger.LogInformation("Web 监听 {Address}", address);
+
+    int port = TryGetListenPort(addresses) ?? LanAccess.DefaultPort;
+    foreach (string ip in LanAccess.EnumerateIPv4())
+        logger.LogInformation("同网段设备访问：http://{Address}:{Port}", ip, port);
+}
+
+/// <summary>从绑定地址里取出端口；取不到返回 null。</summary>
+static int? TryGetListenPort(IEnumerable<string> addresses)
+{
+    foreach (string address in addresses)
+    {
+        if (Uri.TryCreate(address.Replace("://0.0.0.0", "://127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                                 .Replace("://[::]", "://127.0.0.1", StringComparison.OrdinalIgnoreCase),
+                          UriKind.Absolute, out Uri? uri)
+            && uri.Port > 0)
+            return uri.Port;
+    }
+    return null;
+}
 
 /// <summary>
 /// 用系统默认浏览器打开本应用的地址。
@@ -156,6 +212,10 @@ static void OpenBrowser(WebApplication app)
         url = url.Replace("://0.0.0.0", "://localhost", StringComparison.OrdinalIgnoreCase)
                  .Replace("://[::]", "://localhost", StringComparison.OrdinalIgnoreCase);
 
+        // 5000 是 Host.App。万一仍绑到了那里，绝不把浏览器带到 gRPC 口上
+        if (ContainsPort(url, WebSettingsStore.HostPort))
+            url = "http://localhost:" + LanAccess.DefaultPort;
+
         // UseShellExecute 是关键：不设它 .NET 会把 URL 当可执行文件去启动而失败
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
@@ -178,11 +238,22 @@ static void OpenBrowser(WebApplication app)
 /// </remarks>
 static void ReportStartupFailure(Exception ex)
 {
+    string extra = string.Empty;
+    if (ex.Message.Contains(":5000", StringComparison.Ordinal)
+        || ex.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase))
+    {
+        extra =
+            "端口 5000 是 Host.App 的，Web 上位机应使用 64000。\n" +
+            "请确认 Host.App 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
+    }
+
     string message =
         "CommunicationKernel Web 上位机启动失败。\n\n" +
+        extra +
         ex.Message + "\n\n" +
         "常见原因：\n" +
-        "· 端口被占用——上一次没退干净，或别的程序占了同一端口\n" +
+        "· 端口被占用——上一次没退干净，或误绑了 Host.App 的 5000 端口\n" +
         "· appsettings.json 语法错误\n\n" +
         "详细信息见日志文件。";
 
@@ -229,3 +300,23 @@ static void ReportStartupFailure(Exception ex)
 /// <summary>Win32 消息框，仅用于启动失败提示。</summary>
 [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+
+/// <summary>
+/// 判断 URL 列表里是否含指定端口，避免把 :5000 误匹配成 :50000。
+/// </summary>
+static bool ContainsPort(string urls, int port)
+{
+    string token = ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    int start = 0;
+    while (start < urls.Length)
+    {
+        int i = urls.IndexOf(token, start, StringComparison.Ordinal);
+        if (i < 0)
+            return false;
+        int after = i + token.Length;
+        if (after >= urls.Length || !char.IsDigit(urls[after]))
+            return true;
+        start = after;
+    }
+    return false;
+}
