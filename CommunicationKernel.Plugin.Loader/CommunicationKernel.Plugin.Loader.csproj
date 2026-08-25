@@ -1,9 +1,22 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    层级: L3 插件宿主层
+    职责: 用 AssemblyLoadContext 隔离加载插件 DLL，按 ProtocolId 返回实例。
+
+    引用纪律 —— 这个工程只需要"契约"与"反射"，不需要任何具体实现：
+      Core.Abstractions        插件必须实现的接口（唯一的共享类型来源）
+
+    这里刻意不引用 Communication.Transport / Communication.Protocol：
+    插件加载器看到的只是 Core.Abstractions 里的接口，它不关心某个插件到底是
+    传输实现还是协议实现——那是调用方按接口类型自行判定的事。
+
+    更要紧的是类型标识陷阱：共享契约程序集必须由默认 ALC 加载且只加载一次，
+    插件目录里绝不能出现它们的副本，否则同名类型会分属两个 ALC 而无法互转。
+    多引用一个工程就多一份被误复制进插件目录的风险，所以这里保持最小面。
+  -->
   <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>

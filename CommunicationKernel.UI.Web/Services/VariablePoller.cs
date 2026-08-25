@@ -13,14 +13,18 @@ public sealed class VariablePoller : IHostedService
 {
     private readonly HostSession _session;
     private readonly WebVariableStore _store;
+
+    /// <summary>变量读写服务。轮询与页面共用同一实现，避免字节序处理再次分叉。</summary>
+    private readonly IWebVariableService _variables;
     private readonly ILogger<VariablePoller> _logger;
     private CancellationTokenSource? _cts;
     private readonly Dictionary<string, DateTime> _nextDue = new();
 
-    public VariablePoller(HostSession session, WebVariableStore store, ILogger<VariablePoller> logger)
+    public VariablePoller(HostSession session, WebVariableStore store, IWebVariableService variables, ILogger<VariablePoller> logger)
     {
         _session = session;
         _store = store;
+        _variables = variables;
         _logger = logger;
     }
 
@@ -84,12 +88,13 @@ public sealed class VariablePoller : IHostedService
                 continue;
             _nextDue[v.Id] = now.AddMilliseconds(rate);
 
-            ReadResultDto result = await _session.Client
-                .ReadAsync(v.RouteId, v.Address, Math.Max(1, v.Length), ct)
-                .ConfigureAwait(false);
+            // 经服务读取：解码时会带上该设备配置的字节序。
+            // 此处曾直接调 ValueCodec.Decode 且漏传字节序，导致轮询列与页面手动读
+            // 对同一个 CDAB 设备显示不同的值，两边还都报成功。
+            VariableReadOutcome result = await _variables.ReadAsync(v, ct).ConfigureAwait(false);
 
             if (result.Success)
-                _store.ApplyRead(v.Id, ValueCodec.Decode(result.Data ?? Array.Empty<byte>(), v.DataType), error: false);
+                _store.ApplyRead(v.Id, result.DisplayValue, error: false);
             else
                 _store.ApplyRead(v.Id, result.ErrorCode, error: true);
         }

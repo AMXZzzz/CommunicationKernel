@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunicationKernel.Host.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Logging;
 using CommunicationKernel.UI.Wpf.Core.Models;
@@ -229,7 +230,7 @@ public sealed class VariablePageViewModel : ViewModelBase {
             return;
         }
 
-        OperationResult result;
+        HostOperationResult result;
         try {
             // 经 gRPC WriteAsync 下发到 PLC
             result = await _variables.WriteAsync(variableId, value, CancellationToken.None)

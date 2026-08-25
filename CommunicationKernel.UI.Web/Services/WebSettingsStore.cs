@@ -4,6 +4,7 @@
 // 作用: 读写 Host.App 地址；文件格式与 WPF settings.json 对齐。
 // -----------------------------------------------------------------------------
 
+using CommunicationKernel.Host.Sdk;
 using System.Text.Json;
 
 namespace CommunicationKernel.UI.Web.Services;
@@ -59,9 +60,13 @@ public sealed class WebSettingsStore
         string normalized = address.Trim();
         lock (_lock)
         {
-            File.WriteAllText(
-                WebPaths.SettingsFile,
-                JsonSerializer.Serialize(new { HostAddress = normalized }, JsonOptions));
+            // 原子写：settings.json 虽小，被截断后同样会让下次启动读不出地址
+            if (!JsonFileStore.SaveObject(
+                    WebPaths.SettingsFile, new { HostAddress = normalized }, out string error))
+            {
+                _log.Warn("Settings", "保存 Host 地址失败: " + error);
+                return;
+            }
         }
         _log.Info("Settings", "已保存 Host 地址: " + normalized);
     }

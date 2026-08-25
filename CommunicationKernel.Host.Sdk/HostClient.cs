@@ -96,11 +96,9 @@ public sealed record SerialPortDto(string PortName, string Description) {
         string.IsNullOrWhiteSpace(Description) ? PortName : $"{PortName}  ({Description})";
 }
 
-/// <summary>读取结果 DTO。</summary>
-public sealed record ReadResultDto(bool Success, string ErrorCode, string ErrorMessage, byte[] Data);
-
-/// <summary>写入结果 DTO。</summary>
-public sealed record WriteResultDto(bool Success, string ErrorCode, string ErrorMessage);
+// 操作结果类型（ReadResultDto / WriteResultDto / RegisterRouteResultDto /
+// RemoveRouteResultDto / HealthResultDto 及其公共基类 HostOperationResult）
+// 定义在 HostResults.cs——它们是对外契约的一部分，与本文件的 gRPC 封装职责分开。
 
 // ============================================================================
 // gRPC 客户端封装
@@ -174,9 +172,9 @@ public sealed class HostClient : IHostClient {
 
     /// <summary>
     /// 调用 EngineHostApi.Health，检测服务是否在线。
-    /// 返回 (ok, hostVersion, routeCount)；网络异常时返回 (false, "", 0)。
+    /// 网络异常时返回 <see cref="HealthResultDto.Offline"/> 而非抛出。
     /// </summary>
-    public async Task<(bool Ok, string HostVersion, int RouteCount)> HealthAsync(
+    public async Task<HealthResultDto> HealthAsync(
         CancellationToken ct = default) {
         try {
             // 发起 Health RPC，设置 5 秒超时防止界面卡死
@@ -185,16 +183,16 @@ public sealed class HostClient : IHostClient {
                 cancellationToken: ct).ConfigureAwait(false);
 
             // 透传服务端字段；业务失败也走这条路径（Ok=false）
-            return (resp.Ok, resp.HostVersion, resp.RouteCount);
+            return new HealthResultDto(resp.Ok, resp.HostVersion, resp.RouteCount);
         }
         catch (RpcException ex) {
             // gRPC 协议级错误（连接拒绝、超时等）
             _logger.LogWarning("Health 调用失败: {Status} {Detail}", ex.Status.StatusCode, ex.Status.Detail);
-            return (false, string.Empty, 0);
+            return HealthResultDto.Offline();
         }
         catch (ObjectDisposedException) {
             // 应用退出时通道已释放，健康轮询可能仍在途：视为离线，不抛出
-            return (false, string.Empty, 0);
+            return HealthResultDto.Offline();
         }
     }
 
@@ -230,7 +228,7 @@ public sealed class HostClient : IHostClient {
     /// 串口共享总线时需要它来满足从站的帧间静默要求。
     /// </param>
     /// <param name="ct">取消令牌。</param>
-    public async Task<(bool Success, string ErrorCode, string ErrorMessage, string RouteId)>
+    public async Task<RegisterRouteResultDto>
         RegisterRouteAsync(
             string routeId,
             string protocolId,
@@ -270,12 +268,12 @@ public sealed class HostClient : IHostClient {
                 _logger.LogInformation("路由已注册: {RouteId}", resp.RouteId);
 
             // 把服务端结果原样交给调用方，不抛异常
-            return (resp.Success, resp.ErrorCode, resp.ErrorMessage, resp.RouteId);
+            return new RegisterRouteResultDto(resp.Success, resp.ErrorCode, resp.ErrorMessage, resp.RouteId);
         }
         catch (RpcException ex) {
             // 传输层失败（宿主未起、截止超时、HTTP/2 被拒）：归为 RPC_ERROR
             _logger.LogError(ex, "RegisterRoute RPC 异常: {RouteId}", routeId);
-            return (false, "RPC_ERROR", ex.Status.Detail, routeId);
+            return new RegisterRouteResultDto(false, "RPC_ERROR", ex.Status.Detail, routeId);
         }
     }
 
@@ -322,10 +320,10 @@ public sealed class HostClient : IHostClient {
 
     /// <summary>
     /// 向 Host.App 注销路由，停止对应的 PLC 连接。
-    /// 返回 (success, errorCode, errorMessage)；
+    /// 结果以 <see cref="RemoveRouteResultDto"/> 返回；
     /// 服务端尚未实现时（Unimplemented）视为成功，由调用方在本地删除。
     /// </summary>
-    public async Task<(bool Success, string ErrorCode, string ErrorMessage)>
+    public async Task<RemoveRouteResultDto>
         RemoveRouteAsync(string routeId, CancellationToken ct = default) {
         try {
             // 注销要等服务端释放 TCP/串口，使用连接类截止时间
@@ -340,20 +338,20 @@ public sealed class HostClient : IHostClient {
                 _logger.LogInformation("路由已删除: {RouteId}", routeId);
 
             // 业务成败原样返回，由 UI 决定是否从本地列表移除
-            return (resp.Success, resp.ErrorCode, resp.ErrorMessage);
+            return new RemoveRouteResultDto(resp.Success, resp.ErrorCode, resp.ErrorMessage);
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented) {
             // 服务端不认识该接口 ≠ 删除成功。
             // 此前把它当成功，会让 UI 移除条目而服务端仍持有该路由与 PLC 连接，
             // 界面与实际状态从此不一致，且该 RouteId 再也无法重新注册。
             _logger.LogError("RemoveRoute 未被服务端实现: {RouteId}", routeId);
-            return (false, "UNIMPLEMENTED",
+            return new RemoveRouteResultDto(false, "UNIMPLEMENTED",
                 "服务端不支持删除路由，请升级 Host.App 后重试");
         }
         catch (RpcException ex) {
             // 传输层失败：返回 RPC_ERROR，由 UI 决定是否重试
             _logger.LogError(ex, "RemoveRoute RPC 异常: {RouteId}", routeId);
-            return (false, "RPC_ERROR", ex.Status.Detail);
+            return new RemoveRouteResultDto(false, "RPC_ERROR", ex.Status.Detail);
         }
     }
 

@@ -9,6 +9,7 @@
 @inject WebVariableStore Store
 @inject WebDeviceStore Devices
 @inject AppLogStore Log
+@inject IWebVariableService Variables
 @implements IDisposable
 
 <PageTitle>变量配置 — CommunicationKernel</PageTitle>
@@ -341,8 +342,10 @@
     /// 字节序是设备属性：同一台 PLC 的所有变量共用一套排列。
     /// 挂到变量上会让操作员逐条去改，还容易改出彼此矛盾的配置。
     /// </remarks>
+    // 字节序查询委托给服务，页面不再自己拼装——读写路径已经全部走服务了，
+    // 这里只剩表单提示文案需要它
     private ByteOrder OrderOf(string routeId) =>
-        ValueCodec.ParseOrder(Devices.Get(routeId)?.ByteOrder);
+        Variables.OrderOf(routeId);
 
     /// <summary>表单里当前所选路由的字节序，用于提示文案。</summary>
     private string CurrentByteOrder => OrderOf(_routeId).ToString();
@@ -412,9 +415,10 @@
         _busy = true;
         try
         {
-            ReadResultDto r = await Session.Client.ReadAsync(row.RouteId, row.Address, Math.Max(1, row.Length)).ConfigureAwait(true);
+            // 字节序由服务按设备配置取用，页面不再自行传参
+            VariableReadOutcome r = await Variables.ReadAsync(row).ConfigureAwait(true);
             if (r.Success)
-                Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType, OrderOf(row.RouteId)), false);
+                Store.ApplyRead(row.Id, r.DisplayValue, false);
             else
                 Store.ApplyRead(row.Id, r.ErrorCode, true);
         }
@@ -423,16 +427,11 @@
 
     private async Task WriteAsync(WebVariable row)
     {
-        if (!ValueCodec.TryEncode(row.WriteText, row.DataType, row.Length, out byte[] data, out string err, OrderOf(row.RouteId)))
-        {
-            _banner = err;
-            _bannerClass = "status-error";
-            return;
-        }
         _busy = true;
         try
         {
-            WriteResultDto r = await Session.Client.WriteAsync(row.RouteId, row.Address, data).ConfigureAwait(true);
+            // 编码失败不会发起 I/O，服务直接返回 PARSE_ERROR
+            HostOperationResult r = await Variables.WriteAsync(row).ConfigureAwait(true);
             if (r.Success)
             {
                 _banner = "写入成功 " + row.Name;
@@ -457,10 +456,10 @@
             IReadOnlyList<WebVariable> rows = Visible;
             foreach (WebVariable row in rows)
             {
-                ReadResultDto r = await Session.Client.ReadAsync(row.RouteId, row.Address, Math.Max(1, row.Length)).ConfigureAwait(true);
+                VariableReadOutcome r = await Variables.ReadAsync(row).ConfigureAwait(true);
                 if (r.Success)
                 {
-                    Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType, OrderOf(row.RouteId)), false);
+                    Store.ApplyRead(row.Id, r.DisplayValue, false);
                     ok++;
                 }
                 else

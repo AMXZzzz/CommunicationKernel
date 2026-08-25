@@ -40,6 +40,13 @@ builder.Services.AddSingleton<WebVariableStore>();
 builder.Services.AddSingleton<HostSession>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HostSession>());
 
+// 设备操作：页面唯一的设备入口，页面不得再直接持有 HostClient 发 gRPC。
+// 对应 WPF 端的 IDeviceService / GrpcDeviceService。
+builder.Services.AddSingleton<IWebDeviceService, WebDeviceService>();
+
+// 变量读写：页面与后台轮询器共用，保证字节序处理不再分叉。
+builder.Services.AddSingleton<IWebVariableService, WebVariableService>();
+
 // 变量轮询：Host 离线时跳过
 builder.Services.AddHostedService<VariablePoller>();
 

@@ -33,15 +33,15 @@ namespace CommunicationKernel.Host.Sdk
         // 健康检查
         // ============================================================================
 
-        /// <summary>健康检查。网络异常时返回 (false, "", 0) 而非抛出。</summary>
-        Task<(bool Ok, string HostVersion, int RouteCount)> HealthAsync(CancellationToken ct = default);
+        /// <summary>健康检查。网络异常时返回 <see cref="HealthResultDto.Offline"/> 而非抛出。</summary>
+        Task<HealthResultDto> HealthAsync(CancellationToken ct = default);
 
         // ============================================================================
         // 路由生命周期
         // ============================================================================
 
         /// <summary>注册一条路由。</summary>
-        Task<(bool Success, string ErrorCode, string ErrorMessage, string RouteId)> RegisterRouteAsync(
+        Task<RegisterRouteResultDto> RegisterRouteAsync(
             string routeId,
             string protocolId,
             string transportKind,
@@ -54,7 +54,7 @@ namespace CommunicationKernel.Host.Sdk
             CancellationToken ct   = default);
 
         /// <summary>注销一条路由。</summary>
-        Task<(bool Success, string ErrorCode, string ErrorMessage)> RemoveRouteAsync(
+        Task<RemoveRouteResultDto> RemoveRouteAsync(
             string routeId, CancellationToken ct = default);
 
         /// <summary>查询路由，所有参数均可为空字符串表示不过滤。</summary>

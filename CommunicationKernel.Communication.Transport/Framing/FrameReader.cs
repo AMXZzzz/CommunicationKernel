@@ -3,16 +3,19 @@ using System.Buffers;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 
 // -----------------------------------------------------------------------------
 // 文件: FrameReader.cs
-// 层级: Communication.Transport / Abstractions
+// 层级: Communication.Transport / Framing
 // 作用: 从任意 Stream 上按协议给出的帧长读取恰好一整帧。
+// 归属: 有状态的具体实现（持有残包缓冲），故不放在 Abstractions——那里只留接口与
+//       委托，以保证「引用 Abstractions 不会拖入实现」这一判断始终成立。
 // -----------------------------------------------------------------------------
 
-namespace CommunicationKernel.Communication.Transport.Abstractions;
+namespace CommunicationKernel.Communication.Transport.Framing;
 
 /// <summary>
 /// 从任意 <see cref="Stream"/> 上按协议给出的帧长读取恰好一整帧。

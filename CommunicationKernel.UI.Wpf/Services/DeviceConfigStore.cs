@@ -179,73 +179,47 @@ namespace CommunicationKernel.UI.Wpf.Services
         // ============================================================================
 
         /// <summary>从磁盘载入；文件缺失或损坏时以空配置起步，不抛异常。</summary>
+        /// <remarks>
+        /// 落盘细节在 Host.Sdk 的 <see cref="JsonFileStore"/> 里，与 Web 端共用同一份实现。
+        /// 收敛的直接起因：Web 端此前是非原子写，掉电会丢掉整份设备配置，
+        /// 而 WPF 这边一直是对的——同样的代码写两遍，只有一遍带防护。
+        /// </remarks>
         private void LoadFromDisk()
         {
-            try
-            {
-                // 首次启动尚无文件，保持空字典即可
-                if (!File.Exists(FilePath)) return;
+            List<DeviceRecord> loaded = JsonFileStore.Load<DeviceRecord>(FilePath, out string error);
 
-                // 读取并反序列化设备列表
-                string json = File.ReadAllText(FilePath);
-                List<DeviceRecord> loaded =
-                    JsonSerializer.Deserialize<List<DeviceRecord>>(json, SerializerOptions);
-
-                // JSON 为 null 时视为空配置
-                if (loaded == null) return;
-
-                foreach (DeviceRecord record in loaded)
-                {
-                    // 跳过损坏条目（缺 RouteId 无法作为字典键）
-                    if (record != null && !string.IsNullOrWhiteSpace(record.Id))
-                        _records[record.Id] = record;
-                }
-
-                // 记录载入条数，便于启动排查
-                _log?.Info("Device", string.Format("已从本地载入 {0} 台设备配置", _records.Count));
-            }
-            catch (Exception ex)
+            if (error != null)
             {
                 // 配置损坏不应阻止程序启动：以空配置继续，用户重新录入即可覆盖。
-                // 这里刻意不删除损坏文件——留着便于事后排查。
-                _log?.Error("Device", "载入本地设备配置失败，将以空配置启动", ex);
+                // 损坏文件刻意保留在磁盘上，便于事后排查。
+                _log?.Error("Device", "载入本地设备配置失败，将以空配置启动: " + error);
+                return;
             }
+
+            foreach (DeviceRecord record in loaded)
+            {
+                // 跳过损坏条目（缺 Id 无法作为字典键）
+                if (record != null && !string.IsNullOrWhiteSpace(record.Id))
+                    _records[record.Id] = record;
+            }
+
+            // 记录载入条数，便于启动排查
+            _log?.Info("Device", string.Format("已从本地载入 {0} 台设备配置", _records.Count));
         }
 
         /// <summary>
         /// 写回磁盘。调用方必须已持有 <see cref="_lock"/>。
         /// </summary>
         /// <remarks>
-        /// 先写临时文件再替换：直接覆盖时若在写入中途断电或崩溃，
-        /// 会留下一个被截断的 JSON，下次启动直接丢失全部设备配置。
+        /// <see cref="JsonFileStore.Save{T}"/> 会先写临时文件再替换：
+        /// 直接覆盖时若在写入中途断电或崩溃，会留下一个被截断的 JSON，
+        /// 下次启动直接丢失全部设备配置。
         /// </remarks>
         private void FlushToDisk()
         {
-            try
-            {
-                // 确保 %APPDATA%\CommunicationKernel 目录存在
-                string directory = Path.GetDirectoryName(FilePath);
-                if (!string.IsNullOrEmpty(directory))
-                    Directory.CreateDirectory(directory);
-
-                // 序列化当前内存快照
-                string json = JsonSerializer.Serialize(
-                    new List<DeviceRecord>(_records.Values), SerializerOptions);
-
-                string tempPath = FilePath + ".tmp";
-                File.WriteAllText(tempPath, json);
-
-                // 目标已存在则原子替换，否则直接改名
-                if (File.Exists(FilePath))
-                    File.Replace(tempPath, FilePath, null);
-                else
-                    File.Move(tempPath, FilePath);
-            }
-            catch (Exception ex)
-            {
+            if (!JsonFileStore.Save(FilePath, _records.Values, out string error))
                 // 落盘失败只影响下次启动的恢复能力，不应中断当前操作
-                _log?.Error("Device", "保存本地设备配置失败", ex);
-            }
+                _log?.Error("Device", "保存本地设备配置失败: " + error);
         }
     }
 }
