@@ -28,13 +28,29 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ImportClear
         }
 
+        /// <summary>页面 ViewModel，单例——切页不重建，因此订阅必须成对退订。</summary>
         private readonly VariablePageViewModel _vm;
+        /// <summary>最近一次导出的文件路径，供成功提示里的「打开目录」使用。</summary>
         private string _lastExportPath;
+        /// <summary>
+        /// 通用消息框当前代表哪一个待决操作。
+        /// </summary>
+        /// <remarks>
+        /// 同一个消息框被导入确认、导出成功等多处复用，
+        /// 按钮回调必须靠本字段判断"这次点的确定是要干什么"，
+        /// 否则点确定会执行上一次遗留的动作。关闭弹层时务必清回 None。
+        /// </remarks>
         private MsgPending _msgPending;
 
         /// <summary>是否已订阅单例 ViewModel 的事件，保证订阅/退订幂等。</summary>
         private bool _vmWired;
 
+        /// <param name="viewModel">页面 ViewModel，由 DI 注入。</param>
+        /// <remarks>
+        /// 子控件拿不到 DI 容器，服务由本页统一注入下去（<c>InjectServicesIntoControls</c>）。
+        /// 事件订阅分两处：<c>WireEvents</c> 挂子控件（生命周期与本页一致，构造时挂即可），
+        /// <c>WireViewModel</c> 挂单例 ViewModel（必须随 Loaded/Unloaded 成对进出）。
+        /// </remarks>
         public VariableConfigPage (VariablePageViewModel viewModel) {
             _vm = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
 
@@ -118,6 +134,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 离开可视树立即退订，防止切页后重复弹框
         private void VariableConfigPage_Unloaded (object sender, RoutedEventArgs e) => UnwireViewModel();
 
+        /// <summary>
+        /// 订阅各子控件的事件。
+        /// </summary>
+        /// <remarks>
+        /// 子控件与本页同生共死，构造时挂一次即可，不需要退订。
+        /// 单例 ViewModel 的订阅不在这里——那部分见 <c>WireViewModel</c>。
+        /// </remarks>
         private void WireEvents () {
             // 左侧选设备 → 刷标题栏和变量表
             deviceList.DeviceSelected += OnDeviceSelected;
@@ -203,6 +226,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(editPanel);
         }
 
+        /// <summary>打开编辑弹层并用已存变量回填；<paramref name="item"/> 为 null 表示新增。</summary>
         public void OpenEdit (VariableItem item) {
             // 无条目或面板未就绪则忽略
             if (item == null || editPanel == null)
@@ -216,6 +240,14 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 收起编辑弹层，遮罩在无其它面板时一并关掉
         private void CloseEdit () => HidePanel(editPanel);
 
+        /// <summary>
+        /// 保存编辑结果。
+        /// </summary>
+        /// <remarks>
+        /// <c>Build()</c> 返回 null 表示面板内的校验没过（名称或地址为空），
+        /// 此时<b>不关弹层</b>——直接关掉会让操作员刚填的内容全部丢失，
+        /// 而且看不出是哪一项没填对。
+        /// </remarks>
         private void SaveEdit () {
             // 面板尚未加载完时不能 Build
             if (editPanel == null)
@@ -231,6 +263,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             CloseEdit();
         }
 
+        /// <summary>删除当前编辑的变量。新增模式下没有可删对象，直接返回。</summary>
         private void DeleteEdit () {
             // 新增模式没有可删 Id
             if (editPanel == null || editPanel.IsNew || string.IsNullOrEmpty(editPanel.EditingId))
@@ -245,6 +278,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 批量
         // ============================================================================
 
+        /// <summary>打开批量添加弹层。未选设备时不打开——批量行必须有归属设备。</summary>
         private void OpenBatch () {
             // 未选设备时不打开，避免批量行没有 DeviceId
             if (!_vm.EnsureDeviceSelected() || batchPanel == null)
@@ -254,8 +288,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(batchPanel);
         }
 
+        /// <summary>收起批量添加弹层。</summary>
         private void CloseBatch () => HidePanel(batchPanel);
 
+        /// <summary>批量入库后关闭弹层；列表刷新由 ViewModel 的 RequestRefresh 触发。</summary>
         private void SaveBatch (IList<VariableItem> items) {
             // 批量入库后关弹层，刷新由 ViewModel 触发
             _vm.SaveBatch(items);
@@ -278,14 +314,25 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(exportPanel);
         }
 
+        /// <summary>收起导出弹层。</summary>
         private void CloseExport () => HidePanel(exportPanel);
 
+        /// <summary>导出成功：先收起导出层，再弹成功框。</summary>
+        /// <remarks>顺序固定——两个弹层同时可见会叠在一起，遮罩层级也会乱。</remarks>
         private void OnExportSucceeded (string path, int count) {
             // 先关导出层，再弹成功框（含「打开目录」）
             CloseExport();
             ShowExportSuccess(path, count);
         }
 
+        /// <summary>
+        /// 弹出导出成功框，附带「打开目录」次按钮。
+        /// </summary>
+        /// <remarks>
+        /// 记住 <see cref="_lastExportPath"/> 是必须的：次按钮的回调拿不到参数，
+        /// 只能从字段读路径。同时把 pending 清成 None——
+        /// 这个框的主按钮只是确认，不该触发任何待决动作。
+        /// </remarks>
         private void ShowExportSuccess (string path, int count) {
             if (msgDialog == null)
                 return;
@@ -305,6 +352,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(msgDialog);
         }
 
+        /// <summary>打开导入弹层，以当前所选设备作为默认导入范围。</summary>
         private void OpenImport () {
             if (importPanel == null)
                 return;
@@ -313,8 +361,17 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(importPanel);
         }
 
+        /// <summary>收起导入弹层。</summary>
         private void CloseImport () => HidePanel(importPanel);
 
+        /// <summary>
+        /// 导入前的覆盖确认。
+        /// </summary>
+        /// <remarks>
+        /// 导入会覆盖当前范围内的变量，且不可撤销，因此必须二次确认。
+        /// 置 <c>MsgPending.ImportClear</c> 让主按钮回调知道该执行导入——
+        /// 消息框是复用的，不靠这个标记就分不清这次的确定是要干什么。
+        /// </remarks>
         private void OnImportConfirmClear (string title, string detail) {
             if (msgDialog == null)
                 return;
@@ -331,6 +388,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(msgDialog);
         }
 
+        /// <summary>导入成功：先刷表与左侧计数，再弹成功框。</summary>
+        /// <remarks>先刷新再弹框——反过来会让操作员点掉提示后才看到数据变化。</remarks>
         private void OnImportSucceeded (int count) {
             // 先刷表和左侧计数，再弹成功框
             RefreshList();
@@ -347,6 +406,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(msgDialog);
         }
 
+        /// <summary>
+        /// 消息框主按钮：取出待决动作并执行。
+        /// </summary>
+        /// <remarks>
+        /// <b>先取出再清空，然后才执行。</b>执行中若再次弹框（例如导入失败提示），
+        /// 残留的 pending 会让那个框的确定又跑一次导入。
+        /// </remarks>
         private void OnMsgPrimary () {
             MsgPending pending = _msgPending;
             _msgPending = MsgPending.None;
@@ -356,12 +422,15 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
                 importPanel?.ExecuteImport();
         }
 
+        /// <summary>消息框取消/关闭：清掉待决动作，避免下次误触发。</summary>
         private void OnMsgClose () {
             // 取消/关框：清掉 pending，避免下次误触发导入
             _msgPending = MsgPending.None;
             HidePanel(msgDialog);
         }
 
+        /// <summary>次按钮，目前只用于「打开导出目录」。</summary>
+        /// <remarks>目录可能在弹框期间被删掉，因此打开前要再确认一次存在性。</remarks>
         private void OnMessageSecondary () {
             // 次按钮只用于「打开导出目录」
             if (string.IsNullOrEmpty(_lastExportPath))
@@ -402,6 +471,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         private void OnPanelInfo (string title, string message) =>
             ShowInfo(title, message);
 
+        /// <summary>弹一个只有确定按钮的信息框。</summary>
         private void ShowInfo (string title, string message) {
             if (msgDialog == null)
                 return;
@@ -417,6 +487,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             ShowPanel(msgDialog);
         }
 
+        /// <summary>点击遮罩空白处关闭全部弹层。</summary>
+        /// <remarks>只响应打在遮罩<b>自身</b>上的点击；打在弹层上的会冒泡上来，
+        /// 不加判断会导致"点弹层内部反而把弹层关了"。</remarks>
         private void EditOverlay_MouseLeftButtonDown (object sender, MouseButtonEventArgs e) {
             // 点遮罩关闭所有弹层（含未完成的导入确认）
             CloseAllPanels();
@@ -435,6 +508,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
                 editOverlay.Visibility = Visibility.Visible;
         }
 
+        /// <summary>隐藏指定弹层，并在没有其它弹层时收起遮罩。</summary>
         private void HidePanel (UIElement panel) {
             if (panel != null)
                 panel.Visibility = Visibility.Collapsed;
@@ -442,6 +516,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             HideOverlayIfIdle();
         }
 
+        /// <summary>收起全部弹层，但<b>不</b>动遮罩与 pending 状态。</summary>
         private void HideAllPanels () {
             SetCollapsed(editPanel);
             SetCollapsed(batchPanel);
@@ -450,6 +525,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             SetCollapsed(msgDialog);
         }
 
+        /// <summary>关闭全部弹层与遮罩，并清掉待决操作。</summary>
+        /// <remarks>清 pending 是关键：不清的话下次弹消息框点确定，
+        /// 会执行上一次遗留的动作（例如意外触发一次清空导入）。</remarks>
         private void CloseAllPanels () {
             // 点遮罩关闭时清掉导入确认 pending
             _msgPending = MsgPending.None;
@@ -458,6 +536,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
                 editOverlay.Visibility = Visibility.Collapsed;
         }
 
+        /// <summary>仅当所有弹层都已收起时才隐藏遮罩。</summary>
+        /// <remarks>逐层关闭时若无条件隐藏遮罩，会在两个弹层之间闪一下露出底下的页面。</remarks>
         private void HideOverlayIfIdle () {
             bool busy =
                 IsShown(editPanel) || IsShown(batchPanel) ||
@@ -469,14 +549,17 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
                 editOverlay.Visibility = Visibility.Collapsed;
         }
 
+        /// <summary>安全收起一个元素；XAML 未加载完时该元素可能为 null。</summary>
         private static void SetCollapsed (UIElement e) {
             if (e != null)
                 e.Visibility = Visibility.Collapsed;
         }
 
+        /// <summary>元素是否处于可见状态；null 视为不可见。</summary>
         private static bool IsShown (UIElement e) =>
             e != null && e.Visibility == Visibility.Visible;
 
+        /// <summary>按当前所选设备重建变量表，并同步刷新左侧的变量计数。</summary>
         private void RefreshList () {
             // 变量表按当前设备重建，左侧同步刷新计数
             variableTable.Load(_vm.SelectedDeviceId);

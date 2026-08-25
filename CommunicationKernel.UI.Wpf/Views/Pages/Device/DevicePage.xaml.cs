@@ -29,7 +29,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
     /// </summary>
     public partial class DevicePage : Page {
 
+        /// <summary>页面 ViewModel，单例——切页不重建，订阅必须成对进出。</summary>
         private readonly DevicePageViewModel _vm;
+        /// <summary>协议清单来源；一律取自宿主已加载的插件，UI 不内置协议名。</summary>
         private readonly IProtocolResolver _protocols;
 
         /// <summary>串口清单提供者；清单来自宿主机器而非本机。</summary>
@@ -38,6 +40,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// <summary>是否已订阅单例 ViewModel 的事件，保证订阅/退订幂等。</summary>
         private bool _vmWired;
 
+        /// <param name="vm">页面 ViewModel，必填。</param>
+        /// <param name="protocols">协议清单解析器。</param>
+        /// <param name="serialPorts">
+        /// 串口清单提供者，可为 null（此时编辑面板退化为手工输入串口名）。
+        /// </param>
         public DevicePage (DevicePageViewModel vm, IProtocolResolver protocols, ISerialPortProvider serialPorts = null) {
             _serialPorts = serialPorts;
             if (vm == null)
@@ -128,12 +135,15 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             _vm.DisplayList.CollectionChanged -= DisplayList_CollectionChanged;
         }
 
+        /// <summary>ViewModel 请求打开新增面板。</summary>
         private void OnRequestOpenAdd () => ShowEditPanel(true, null);
 
+        /// <summary>ViewModel 请求打开编辑面板并回填。</summary>
         private void OnRequestOpenEdit (DeviceInfo info) => ShowEditPanel(false, info);
 
         private void OnRequestShowError (string msg) => ShowWarning("提示", msg ?? "");
 
+        /// <summary>响应 ViewModel 的属性变化，目前用于同步卡片的多选模式。</summary>
         private void OnViewModelPropertyChanged (object sender, PropertyChangedEventArgs e) {
             if (e.PropertyName == nameof(DevicePageViewModel.DeviceCount) && toolBar != null)
                 toolBar.SetCount(_vm.DeviceCount);
@@ -181,6 +191,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             };
         }
 
+        /// <summary>订阅编辑面板的保存/删除/关闭事件。面板与本页同生共死，无需退订。</summary>
         private void WireEditPanel () {
             if (editPanel == null) return;
 
@@ -203,6 +214,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             };
         }
 
+        /// <summary>订阅通用消息框的按钮事件。</summary>
         private void WireMessageDialog () {
             if (msgDialog == null) return;
             msgDialog.CloseRequested += CloseMessageDialog;
@@ -216,8 +228,12 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
         public void OpenAddDevice () => _vm.OpenAdd();
 
+        /// <summary>供外部（卡片双击等）请求编辑某台设备。转交 ViewModel 决定是否放行。</summary>
         public void OpenEditDevice (DeviceInfo info) => _vm.OpenEdit(info);
 
+        /// <summary>展开编辑面板。</summary>
+        /// <param name="isNew">true 为新增，false 为编辑。</param>
+        /// <param name="info">编辑模式下用于回填的设备；新增时为 null。</param>
         private void ShowEditPanel (bool isNew, DeviceInfo info) {
             if (editPanel == null || editOverlay == null) return;
 
@@ -232,6 +248,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             editOverlay.Visibility = Visibility.Visible;
         }
 
+        /// <summary>收起编辑面板，并在没有其它弹层时一并收起遮罩。</summary>
         private void CloseEditPanel () {
             if (editPanel != null)
                 editPanel.Visibility = Visibility.Collapsed;
@@ -246,6 +263,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             ShowMessage(AppMessageKind.Warning, title, message);
         }
 
+        /// <summary>弹出通用消息框。</summary>
         private void ShowMessage (AppMessageKind kind, string title, string message) {
             if (msgDialog == null || editOverlay == null) return;
 
@@ -266,16 +284,20 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             editOverlay.Visibility = Visibility.Visible;
         }
 
+        /// <summary>关闭消息框并收起遮罩。</summary>
         private void CloseMessageDialog () {
             HideMessageDialogOnly();
             HideOverlayIfIdle();
         }
 
+        /// <summary>只收起消息框，保留遮罩——编辑面板可能还开着。</summary>
         private void HideMessageDialogOnly () {
             if (msgDialog != null)
                 msgDialog.Visibility = Visibility.Collapsed;
         }
 
+        /// <summary>仅当编辑面板与消息框都已收起时才隐藏遮罩。</summary>
+        /// <remarks>无条件隐藏会在两个弹层交替时闪一下露出底下的卡片列表。</remarks>
         private void HideOverlayIfIdle () {
             bool busy =
                 (editPanel != null && editPanel.Visibility == Visibility.Visible) ||
