@@ -15,6 +15,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Windows.Input;
 using CommunicationKernel.UI.Wpf.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace CommunicationKernel.UI.Wpf.ViewModels;
 
@@ -30,10 +31,8 @@ public sealed class SettingsViewModel : ViewModelBase {
     // 常量
     // ============================================================================
 
-    /// <summary>持久化 JSON 文件路径（与 App.xaml.cs 中 LoadSavedHostAddress 保持一致）。</summary>
-    private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "CommunicationKernel", "settings.json");
+    /// <summary>操作员保存的地址，与 Web 共用，优先于本项目 appsettings.json。</summary>
+    private static readonly string SettingsPath = WpfAppSettings.AppDataFile;
 
     /// <summary>测试连接超时（秒）。</summary>
     private const int TestTimeoutSeconds = 5;
@@ -45,8 +44,11 @@ public sealed class SettingsViewModel : ViewModelBase {
     /// <summary>gRPC 客户端，用于测试连接（HealthAsync）。</summary>
     private readonly HostClient _client;
 
+    /// <summary>本项目 appsettings.json，出厂默认地址从这里读。</summary>
+    private readonly IConfiguration _config;
+
     // 后备字段
-    private string _hostAddress    = "http://localhost:5000";
+    private string _hostAddress    = WpfAppSettings.FallbackAddress;
     private bool   _isRemoteMode   = false;
     private string _testResultText = string.Empty;
     private string _saveConfirmText = string.Empty;
@@ -126,12 +128,14 @@ public sealed class SettingsViewModel : ViewModelBase {
     // ============================================================================
 
     /// <param name="client">gRPC 客户端，用于测试连接，必须非 null。</param>
-    public SettingsViewModel(HostClient client) {
+    /// <param name="config">本项目 appsettings.json，提供出厂 Host 地址。</param>
+    public SettingsViewModel(HostClient client, IConfiguration config) {
         // 保存 gRPC 客户端引用
         _client = client ?? throw new ArgumentNullException(nameof(client));
+        _config = config ?? throw new ArgumentNullException(nameof(config));
 
-        // 从 settings.json 加载已保存的地址，填充到绑定属性
-        _hostAddress = LoadSavedAddress();
+        // AppData 已保存的优先，否则用 appsettings.json
+        _hostAddress = WpfAppSettings.ReadAddress(_config);
 
         // 绑定命令：测试连接（异步，使用 fire-and-forget 包装）
         TestConnectionCommand = new RelayCommand(ExecuteTestAsync);
@@ -160,7 +164,7 @@ public sealed class SettingsViewModel : ViewModelBase {
 
         // 读取当前输入地址，空值回落到开发默认
         string addr = string.IsNullOrWhiteSpace(_hostAddress)
-            ? "http://localhost:5000"
+            ? WpfAppSettings.ReadAddress(_config)
             : _hostAddress.Trim();
 
         try {
@@ -193,7 +197,7 @@ public sealed class SettingsViewModel : ViewModelBase {
     private void ExecuteSave() {
         // 规范化地址（去空白），空值回落到开发默认
         string addr = string.IsNullOrWhiteSpace(_hostAddress)
-            ? "http://localhost:5000"
+            ? WpfAppSettings.ReadAddress(_config)
             : _hostAddress.Trim();
 
         HostAddress = addr;
@@ -220,42 +224,12 @@ public sealed class SettingsViewModel : ViewModelBase {
     }
 
     // ============================================================================
-    // 持久化辅助
-    // ============================================================================
-
-    /// <summary>
-    /// 从 settings.json 读取已保存的 HostAddress。
-    /// 文件不存在或解析失败时返回默认地址 "http://localhost:5000"。
-    /// </summary>
-    private static string LoadSavedAddress() {
-        const string defaultAddr = "http://localhost:5000";
-        try {
-            // 文件不存在视为首次运行
-            if (!File.Exists(SettingsPath))
-                return defaultAddr;
-
-            // 读取并解析 JSON
-            string json = File.ReadAllText(SettingsPath);
-            using JsonDocument doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("HostAddress", out JsonElement el)) {
-                string addr = el.GetString();
-                // 非空时返回持久化地址
-                if (!string.IsNullOrWhiteSpace(addr))
-                    return addr;
-            }
-        } catch {
-            // 解析失败时静默回退默认值
-        }
-        return defaultAddr;
-    }
-
-    // ============================================================================
     // 内部设置数据模型
     // ============================================================================
 
     /// <summary>settings.json 序列化模型，仅存储 HostAddress。</summary>
     private sealed class AppSettings {
         /// <summary>Host.App gRPC 服务地址。</summary>
-        public string HostAddress { get; set; } = "http://localhost:5000";
+        public string HostAddress { get; set; } = WpfAppSettings.FallbackAddress;
     }
 }
