@@ -62,15 +62,26 @@ public enum ByteOrder
 public static class ValueCodec
 {
     /// <summary>某数据类型默认占用的字节数，供「读取字节数」自动填充。</summary>
-    /// <param name="dataType">Bool / Int16 / UInt16 / Int32 / UInt32 / Float / Int64 / UInt64 / Double。</param>
+    /// <param name="dataType">
+    /// Bool / Int16 / UInt16 / Int32 / UInt32 / Float / Int64 / UInt64 / Double / String / Hex。
+    /// </param>
+    /// <remarks>
+    /// String 与 Hex 是变长的，这里只给一个够用的起始值（16 字节），
+    /// 实际长度由操作员按设备里那段区域的实际大小填。
+    /// </remarks>
     public static int DefaultLength(string dataType) => dataType switch
     {
         "Bool" => 1,
         "Int16" or "UInt16" => 2,
         "Int32" or "UInt32" or "Float" => 4,
         "Int64" or "UInt64" or "Double" => 8,
+        "String" or "Hex" => 16,
         _ => 2,
     };
+
+    /// <summary>该类型是否是变长的（字节数由操作员指定，而非由类型决定）。</summary>
+    public static bool IsVariableLength(string dataType) =>
+        dataType is "String" or "Hex";
 
     /// <summary>把 UI 里存的字符串解析成枚举；无法识别时回落到大端。</summary>
     public static ByteOrder ParseOrder(string? value) =>
@@ -88,6 +99,8 @@ public static class ValueCodec
         {
             // Bool 与 Hex 不参与字节序换算：前者只看首字节，后者要的就是原始排列
             if (dataType == "Bool") return data[0] != 0 ? "ON" : "OFF";
+
+            if (dataType == "String") return DecodeString(data, order);
 
             byte[] host = ToHostOrder(data, dataType, order);
 
