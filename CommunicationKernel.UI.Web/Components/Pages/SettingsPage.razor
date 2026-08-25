@@ -8,6 +8,7 @@
 @page "/settings"
 @inject HostSession Session
 @inject WebSettingsStore Settings
+@inject NavigationManager Nav
 @implements IDisposable
 
 <PageTitle>系统设置 — CommunicationKernel</PageTitle>
@@ -40,6 +41,32 @@
     </div>
 
     <div class="settings-card">
+        <h3>本机 Web 地址</h3>
+        <p class="setting-hint">当前实际监听 @_listenPort。也可直接改项目里 appsettings.json 的 Web:ListenPort。改完必须重启 Web。文件：@Settings.ListenFilePath</p>
+        <label>监听端口</label>
+        <input @bind="_portText" placeholder="64000" inputmode="numeric" />
+        <div class="form-actions">
+            <button class="btn primary" type="button" @onclick="SavePort" disabled="@_busy">保存端口</button>
+        </div>
+        <div class="connect-status @_portStatusClass" style="margin-top:12px">@_portStatus</div>
+        <label>本机浏览器</label>
+        <input readonly value="http://localhost:@_listenPort" />
+        <label style="margin-top:12px">同一 WiFi 的手机</label>
+        @if (_phoneUrls.Count == 0)
+        {
+            <p class="setting-hint">没找到局域网 IPv4。确认电脑已连 WiFi 后刷新本页。</p>
+        }
+        else
+        {
+            @foreach (string url in _phoneUrls)
+            {
+                <input readonly value="@url" style="margin-bottom:8px" />
+            }
+        }
+        <p class="setting-hint">5000 是 Host.App 的 gRPC 口，不能填。Host 地址在上面单独配。</p>
+    </div>
+
+    <div class="settings-card">
         <h3>关于</h3>
         <p class="setting-desc">CommunicationKernel Web 上位机</p>
         <p class="setting-hint">Blazor Server · 只持有 route_id · 协议清单来自宿主插件 · 串口枚举发生在宿主机器 · 设备/变量落在本机，Host 重启后对账恢复</p>
@@ -57,12 +84,29 @@
     /// <summary>状态行的 CSS 类，与 _status 配套变化。</summary>
     private string _statusClass = "status-muted";
 
+    /// <summary>当前 Web 监听端口，用来拼手机地址。</summary>
+    private int _listenPort = LanAccess.DefaultPort;
+    /// <summary>端口输入框文本，未保存前不影响实际监听。</summary>
+    private string _portText = LanAccess.DefaultPort.ToString();
+    /// <summary>保存端口后的提示。</summary>
+    private string _portStatus = "未保存过则使用 64000";
+    /// <summary>端口状态行 CSS。</summary>
+    private string _portStatusClass = "status-muted";
+    /// <summary>同一 WiFi 下手机该打开的 http 地址。</summary>
+    private IReadOnlyList<string> _phoneUrls = Array.Empty<string>();
+
     /// <summary>用当前会话状态初始化表单与状态行，并订阅后续变化。</summary>
     protected override void OnInitialized()
     {
         _address = Session.Address;
         _status = Session.Online ? "已连接" : "当前离线";
         _statusClass = Session.Online ? "status-ok" : "status-muted";
+        if (Uri.TryCreate(Nav.BaseUri, UriKind.Absolute, out Uri? uri) && uri.Port > 0)
+            _listenPort = uri.Port;
+        _portText = WebSettingsStore.TryReadSavedPort(out int saved)
+            ? saved.ToString()
+            : _listenPort.ToString();
+        _phoneUrls = LanAccess.PhoneUrls(_listenPort);
         Session.Changed += OnChanged;
     }
 
@@ -135,6 +179,42 @@
             _statusClass = "status-error";
         }
         finally { _busy = false; }
+    }
+
+    /// <summary>保存 Web 监听端口。不能在运行中换口，所以只落盘并提示重启。</summary>
+    private void SavePort()
+    {
+        if (!int.TryParse(_portText.Trim(), out int port))
+        {
+            _portStatus = "请输入数字端口";
+            _portStatusClass = "status-error";
+            return;
+        }
+        if (port == WebSettingsStore.HostPort)
+        {
+            _portStatus = "5000 是 Host.App 的端口，Web 不能占用";
+            _portStatusClass = "status-error";
+            return;
+        }
+        if (!WebSettingsStore.IsAllowedPort(port))
+        {
+            _portStatus = "端口必须在 1024–65535";
+            _portStatusClass = "status-error";
+            return;
+        }
+        try
+        {
+            Settings.SaveListenPort(port);
+            _portStatus = port == _listenPort
+                ? "已保存，当前就是这个端口"
+                : "已保存。请关掉 Web 再打开，之后用 http://localhost:" + port;
+            _portStatusClass = port == _listenPort ? "status-ok" : "status-warn";
+        }
+        catch (Exception ex)
+        {
+            _portStatus = ex.Message;
+            _portStatusClass = "status-error";
+        }
     }
 
     /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>

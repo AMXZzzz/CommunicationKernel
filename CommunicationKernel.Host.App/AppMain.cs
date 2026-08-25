@@ -1,11 +1,15 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Threading;
 using CommunicationKernel.Engine.Router;
 using CommunicationKernel.Engine.Router.Abstractions;
 using CommunicationKernel.Engine.Runtime;
 using CommunicationKernel.Engine.Runtime.Models;
 using CommunicationKernel.Host.App.Services;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.Logging;
@@ -35,6 +39,33 @@ using Microsoft.Extensions.Logging;
 //    （dotnet run 报 "'/' is an invalid start of a property name"），
 //    所以相关说明只能写在这里。
 // -----------------------------------------------------------------------------
+
+// ============================================================================
+// 单实例：双击 exe 时如果已经有一个宿主在跑，第二个会因 :5000 被占立刻退出。
+// Explorer 下控制台随进程关掉，操作员只看到「一闪而过」，以为没启动。
+// 互斥量在绑端口之前拦截，并弹框说明。拿不到互斥量时不阻断，后面的绑定失败仍会接住。
+// ============================================================================
+Mutex? instanceLock = null;
+try
+{
+    instanceLock = new Mutex(initiallyOwned: true, @"Local\CommunicationKernel.Host.App", out bool createdNew);
+    if (!createdNew)
+    {
+        ReportDuplicateInstance();
+        return;
+    }
+}
+catch (AbandonedMutexException)
+{
+    // 上一个进程崩溃后互斥量被遗弃，本进程已经接手，继续启动
+}
+catch
+{
+    // 无命名互斥量权限等：不因此放弃启动
+}
+
+try
+{
 
 // ============================================================================
 // 创建宿主
@@ -204,25 +235,113 @@ try
 {
     app.Run();
 }
-catch (IOException ex) when (ex.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+catch (Exception ex) when (IsAddressInUse(ex))
 {
     // 这里<b>不能</b>再用 app.Services 取 ILogger：
     // app.Run() 抛出时宿主已经把 DI 容器释放了，
     // GetRequiredService 会再抛一个 ObjectDisposedException，
     // 把真正有用的「端口被占了」盖成一句莫名其妙的「Cannot access a disposed object」。
-    //
-    // 致命启动错误直接写 stderr：不依赖任何仍需存活的组件，
-    // 且 systemd 单元里 StandardError=journal，树莓派上照样进 journalctl。
-    Console.Error.WriteLine();
-    Console.Error.WriteLine("[启动失败] 监听地址已被占用，宿主无法启动。");
-    Console.Error.WriteLine("  · 多半是已经有一个 Host.App 在跑了；");
-    Console.Error.WriteLine("  · 也可能是别的程序占了同一端口；");
-    Console.Error.WriteLine("  · 排查：Windows 执行 netstat -ano | findstr :5000");   
-    Console.Error.WriteLine("          Linux   执行 ss -ltnp | grep 5000");
-    Console.Error.WriteLine("  · 监听地址配在 appsettings.json 的 Kestrel:Endpoints:Grpc:Url，可改端口避开冲突。");
-    Console.Error.WriteLine("  原始错误：" + ex.Message);
-    Console.Error.WriteLine();
-
-    // 非零退出码：systemd / CI 据此判定启动失败，而不是当成正常退出
+    ReportStartupFailure(
+        "监听地址已被占用，宿主无法启动。\n\n" +
+        "多半是已经有一个 Host.App 在跑了（任务管理器里看 CommunicationKernel.Host.App）。\n" +
+        "关掉网页不会停宿主；要停掉请关这个黑窗口，或结束该进程。\n\n" +
+        "原始错误：" + ex.Message);
     Environment.Exit(1);
 }
+catch (Exception ex)
+{
+    ReportStartupFailure("宿主启动失败。\n\n" + ex.Message);
+    Environment.Exit(1);
+}
+
+GC.KeepAlive(instanceLock);
+
+}
+catch (Exception ex)
+{
+    // CreateBuilder / 插件预热阶段的失败同样会让双击「一闪而过」
+    ReportStartupFailure("宿主启动失败。\n\n" + ex.Message);
+    Environment.Exit(1);
+}
+
+// ============================================================================
+// 启动失败时让操作员看得见
+// ============================================================================
+
+/// <summary>已经有一个宿主进程时的提示（双击第二份 exe）。</summary>
+static void ReportDuplicateInstance()
+{
+    const string message =
+        "CommunicationKernel.Host.App 已经在运行，不必再开一份。\n\n" +
+        "关掉浏览器不会停宿主。本机 Web 打开 http://localhost:64000 即可。\n" +
+        "真要重启：任务管理器结束 CommunicationKernel.Host.App，再双击本程序。";
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("[启动失败] " + message);
+    ShowStartupDialog(message);
+    HoldForOperator();
+}
+
+/// <summary>把启动失败写到 stderr；Windows 双击时再弹框，避免窗口一闪而过。</summary>
+static void ReportStartupFailure(string message)
+{
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("[启动失败] " + message);
+    Console.Error.WriteLine();
+    ShowStartupDialog(message);
+    HoldForOperator();
+}
+
+/// <summary>Windows 桌面会话弹消息框；无桌面 / Linux 只靠 stderr（systemd 进 journal）。</summary>
+static void ShowStartupDialog(string message)
+{
+    if (!OperatingSystem.IsWindows())
+        return;
+    try
+    {
+        // 0x00000010 = MB_ICONERROR，0x00040000 = MB_TOPMOST
+        _ = MessageBoxW(
+            IntPtr.Zero,
+            message,
+            "CommunicationKernel 宿主启动失败",
+            0x00000010 | 0x00040000);
+    }
+    catch
+    {
+        // 服务模式、无桌面：弹框失败是正常的
+    }
+}
+
+/// <summary>无消息框可弹时（Linux 终端、重定向失败）停一下，让人看清 stderr。</summary>
+static void HoldForOperator()
+{
+    if (OperatingSystem.IsWindows())
+        return;
+    if (!Environment.UserInteractive || Console.IsInputRedirected)
+        return;
+    Console.Error.WriteLine("按任意键关闭...");
+    try { Console.ReadKey(intercept: true); } catch { }
+}
+
+/// <summary>
+/// 端口占用。Windows 中文系统的 SocketException 文案不含 "address already in use"，
+/// 只认英文会接不住，双击仍然一闪而过。
+/// </summary>
+static bool IsAddressInUse(Exception ex)
+{
+    for (Exception? e = ex; e is not null; e = e.InnerException)
+    {
+        if (e is AddressInUseException)
+            return true;
+        if (e is SocketException se && se.SocketErrorCode == SocketError.AddressAlreadyInUse)
+            return true;
+        if (e.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (e.Message.Contains("只允许使用一次", StringComparison.Ordinal))
+            return true;
+    }
+    return false;
+}
+
+/// <summary>Win32 消息框，仅用于启动失败提示。</summary>
+[DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);

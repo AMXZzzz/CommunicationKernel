@@ -140,7 +140,10 @@ publish/linux-arm64/
 ├── CommunicationKernel.Plugin.Loader.dll           ┘
 └── plugins/
     ├── CommunicationKernel.Plugins.Protocol.Modbus.dll        # TCP / RTU / ASCII 三个变体同处一个程序集
-    ├── CommunicationKernel.Plugins.Transport.*.dll
+    ├── CommunicationKernel.Plugins.Protocol.Panasonic.dll     # MEWTOCOL，TCP 与串口共用 ProtocolId
+    ├── CommunicationKernel.Plugins.Protocol.Siemens.S7.dll    # S7-1200 + S7-200Smart 两个工厂
+    ├── CommunicationKernel.Plugins.Transport.Tcp.dll
+    ├── CommunicationKernel.Plugins.Transport.SerialPort.dll
     └── runtimes/linux-arm64/native/libSystem.IO.Ports.Native.so
 ```
 
@@ -186,6 +189,7 @@ PC 侧只有 `Host.Sdk`，收发的是 `route_id` 和字节，不认识任何协
 #### 1.1 发布（在开发机上，不是在树莓派上编译）
 
 VS 里：右键 `CommunicationKernel.Host.App` → 发布 → 选「树莓派-linux-arm64」→ 发布。
+32 位系统改选「树莓派-linux-arm」（`Properties/PublishProfiles/` 里两份都有）。
 
 命令行等价写法：
 
@@ -202,7 +206,7 @@ dotnet publish CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj 
 ls CommunicationKernel.Host.App/bin/Release/net8.0/linux-arm64/publish/plugins/
 ```
 
-应当看到 5 个插件 DLL。同时确认**四个共享契约在主目录、不在 `plugins/` 下**——
+应当看到 5 个插件 DLL（Modbus / Panasonic / Siemens.S7 / Tcp / SerialPort）。同时确认**四个共享契约在主目录、不在 `plugins/` 下**——
 `Core.Abstractions`、`Communication.Protocol`、`Communication.Transport`、`Plugin.Loader`。
 原因见[产物结构](#产物结构)。
 
@@ -309,6 +313,9 @@ systemctl status communication-kernel
 启动 WPF 或 Web 上位机，到**系统设置**页把 Host 地址改成
 `http://<树莓派IP>:5000`，点「测试连接」确认通了再保存。
 
+Web 上位机本机默认是 `http://localhost:64000`（Blazor Server，跑在办公室这台 PC 上，
+不是树莓派上）。测试连接走临时客户端，不会把正在用的会话切走。
+
 两端共用同一份 `settings.json` 的 `HostAddress`（Windows 下在
 `%APPDATA%/CommunicationKernel/`），WPF 里改过，Web 端起来就是对的。
 
@@ -332,6 +339,10 @@ systemctl status communication-kernel
 多个 USB 串口同时插着时，用 `/dev/serial/by-id/...` 的稳定路径，
 别用 `ttyUSB0`：重启后编号会随枚举顺序对调。
 
+设备管理页「添加」只把配置写到上位机本地，**不会**立刻连 PLC。
+连不上电的设备也能先配好。真正建链走卡片上的「连接」
+（内部是 `RegisterRoute`，失败则宿主路由表里不会有这一条）。
+
 ### 验证清单
 
 按顺序排查，每一步都确认了再往下：
@@ -340,7 +351,7 @@ systemctl status communication-kernel
 |---|---|---|
 | 1. 服务活着 | 树莓派 `systemctl status communication-kernel` | `active (running)` |
 | 2. 端口在听 | 树莓派 `ss -tlnp \| grep 5000` | 显示 `0.0.0.0:5000`，不是 `127.0.0.1:5000` |
-| 3. 插件加载了 | 树莓派 `journalctl -u communication-kernel \| grep 已加载` | `已加载 N 个协议`，N > 0 |
+| 3. 插件加载了 | 树莓派 `journalctl -u communication-kernel \| grep 已加载` | `已加载 6 个协议`，含 modbus-* / panasonic-mewtocol / siemens-s7-* |
 | 4. 网络可达 | PC `ping <树莓派IP>` | 有回包 |
 | 5. gRPC 可达 | 上位机「系统设置 → 测试连接」 | 显示版本号与路由数 |
 | 6. 设备能连 | 设备卡片点「连接」 | 状态灯变绿 |
@@ -354,7 +365,8 @@ systemctl status communication-kernel
 | 协议下拉框是空的 | 插件没加载 | 查验证清单第 3 步；多半是四个共享契约被误拷进了 `plugins/` |
 | 串口下拉框是空的 | 用户不在 `dialout` 组 | `sudo usermod -aG dialout $USER` 后**重新登录**（不重登不生效） |
 | 连接报 `TransportIoError` | 树莓派到 PLC 这一段不通 | 在树莓派上直接 ping PLC，问题不在 PC 与树莓派之间 |
-| 上位机重启后设备都不见了 | 正常——路由是宿主内存态 | 设备配置存在上位机本地，宿主恢复后会自动对账补注册 |
+| 宿主重启后设备灯全灭 | 路由是宿主内存态，重启即空表 | 设备配置在上位机本地。Web 会在宿主恢复时自动对账补注册；WPF 等下次读写/轮询时补注册 |
+| 上位机重装后设备都不见了 | 配置在上位机，不在树莓派 | 备份 `%APPDATA%/CommunicationKernel/`（`settings.json`、`devices.json` / `web-devices.json`、变量表） |
 
 > **别把上位机装到树莓派上再远程桌面过去。** 那等于让树莓派同时跑
 > 桌面环境、浏览器和通讯宿主，CPU 与内存都吃紧，通讯时序首先受影响。
@@ -464,7 +476,7 @@ ExecStart=/opt/communication-kernel/CommunicationKernel.Host.App
 Restart=always
 RestartSec=5
 
-# 必须属于 dialout，否则打不开串口
+# 必须属于 dialout，否则打不开串口。镜像用户不是 pi 时改成实际用户名
 User=pi
 SupplementaryGroups=dialout
 
@@ -551,8 +563,11 @@ sudo rm -rf /opt/communication-kernel.bak
 因此：
 
 - 重装/升级树莓派**不会丢任何设备配置**
-- 宿主重启后路由表是空的，上位机会自动对账把设备重新注册上去
+- 宿主重启后路由表是空的。Web 上位机会自动对账把设备重新 `RegisterRoute`；
+  WPF 等到下次读写或轮询碰到 `RouteNotFound` 再补注册。
+  `RegisterRoute` 会真正建连接——PLC 当时不通，这条会失败并记日志，配置仍保留。
 - 反过来，重装上位机所在的电脑**会**丢配置——那台才需要备份
+  `%APPDATA%/CommunicationKernel/`（Linux 下是 `~/.config/CommunicationKernel/`）
 
 ### 卸载
 
