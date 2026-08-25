@@ -33,10 +33,13 @@ public readonly record struct ModbusAddressInfo(
 ///   00001 / 0x0001     → 线圈，区内偏移 0
 ///   coil:N             → 线圈，区内偏移 N（显式前缀）
 ///   holding:N / input:N / discrete:N
-///   [从站号:]地址      → 可选站号前缀，缺省取设备级站号
 /// </code>
 /// 裸数字（不带区号前缀、且小于 10000）一律按<b>保持寄存器区内偏移</b>解释，
 /// 这是工程现场最常见的写法。
+/// <para>
+/// <b>地址里不接受站号前缀。</b>曾支持过 <c>1:40001</c> 这种写法，现已明确拒绝——
+/// 站号是<b>设备级</b>属性，只能在设备配置里填，理由见 <see cref="Parse"/>。
+/// </para>
 /// </remarks>
 public static class ModbusAddress {
 
@@ -64,8 +67,37 @@ public static class ModbusAddress {
     /// <summary>
     /// 解析地址字符串。
     /// </summary>
-    /// <param name="address">地址字符串，可含可选的 "从站号:" 前缀。</param>
-    /// <param name="defaultUnitId">未带站号前缀时使用的从站 ID（来自设备级配置）。</param>
+    /// <param name="address">
+    /// 地址字符串。<b>不接受站号前缀</b>——站号请在设备配置里填。
+    /// </param>
+    /// <param name="defaultUnitId">从站 ID，来自设备级配置。</param>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么禁止在地址里写站号。</b>站号是 <c>RouteKey</c> 的组成部分
+    /// （协议 + 介质 + 地址 + 端口 + <b>站号</b>），一条路由标识的就是「某台设备的某个从站」。
+    /// 允许地址覆盖站号会同时破坏三件事：
+    /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     <b>路由身份失效。</b>同一条路由会悄悄读写两个不同的物理从站，
+    ///     而路由表、状态灯、在线判定全都只认一个。某个从站掉线不会反映到任何地方。
+    ///   </item>
+    ///   <item>
+    ///     <b>绕过并发调度。</b>写串行化与串口帧间静默都按 RouteKey 归组。
+    ///     地址里换个站号，等于让这些变量跳出该路由的调度组，
+    ///     在共享 RS-485 总线上直接制造帧冲突。
+    ///   </item>
+    ///   <item>
+    ///     <b>两个真相来源。</b>设备配置里填了站号 1、变量地址写 <c>2:40001</c>，
+    ///     界面上这台设备显示站号 1，实际却在读站号 2。这种不一致没有任何报错。
+    ///   </item>
+    /// </list>
+    /// <para>
+    /// 因此遇到 <c>N:</c> 前缀一律<b>明确拒绝</b>而非静默忽略：
+    /// 静默把 <c>2:40001</c> 当成别的地址去解析，会让既有配置悄悄改变读写目标——
+    /// 那比报错危险得多。多站链路请为每个从站建一条独立路由。
+    /// </para>
+    /// </remarks>
     public static OperationResult<ModbusAddressInfo> Parse(
         string? address, byte defaultUnitId = FallbackUnitId) {
 
@@ -73,29 +105,18 @@ public static class ModbusAddress {
         if (string.IsNullOrWhiteSpace(address))
             return Fail("地址为空");
 
-        // 去掉首尾空白；站号缺省取设备级配置，后面的 "N:" 前缀可覆盖
+        // 站号一律取设备级配置，地址无权覆盖
         string text = address.Trim();
         byte unitId = defaultUnitId;
 
-        // ── 可选站号前缀 "N:"，仅当冒号前是纯数字时才认定为站号 ──
-        // （必须与 "coil:5" 这类区号前缀区分开）
+        // ── 拒绝已废弃的站号前缀 "N:" ──
+        // 只拦"冒号前是纯数字"的形式，coil:5 / holding:5 这类区号前缀不受影响
         int colon = text.IndexOf(':');
-        // 冒号落在第 1-3 位才可能是 "1:" / "12:" / "247:"，排除 "coil:5"
-        if (colon > 0 && colon <= 3) {
-            string head = text[..colon];
-            // 冒号前必须是纯数字才认定为站号，否则留给后面的区号前缀解析
-            if (byte.TryParse(head, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte parsedUnit)) {
-                // 从站号必须落在 1-247：0 是广播（本实现不支持），248+ 为保留
-                if (parsedUnit is < ModbusLimits.MinUnitId or > ModbusLimits.MaxUnitId)
-                    return Fail($"从站地址 {parsedUnit} 越界，有效范围 {ModbusLimits.MinUnitId}-{ModbusLimits.MaxUnitId}");
-
-                // 剥掉站号前缀，后续只解析数据区与偏移
-                unitId = parsedUnit;
-                text   = text[(colon + 1)..].Trim();
-                // "1:" 这种只有站号没有地址，无法定位寄存器
-                if (text.Length == 0)
-                    return Fail("站号前缀之后缺少地址");
-            }
+        if (colon > 0 && colon <= 3
+            && byte.TryParse(text[..colon], NumberStyles.Integer, CultureInfo.InvariantCulture, out _)) {
+            return Fail(
+                $"地址 '{text}' 不接受站号前缀。站号是设备属性，请在设备配置的「站号」里填写；" +
+                "多个从站请各建一条路由。");
         }
 
         // ── 显式区号前缀 ──
@@ -209,6 +230,8 @@ public static class ModbusAddress {
             : Ok(unitId, ModbusDataArea.HoldingRegister, (ushort)numeric);
     }
 
+    /// <summary>解析区内偏移，必须是能放进 PDU 16 位地址字段的十进制整数。</summary>
+    /// <returns>解析是否成功；失败时 <paramref name="offset"/> 为 0。</returns>
     private static bool TryParseOffset(string body, out ushort offset) {
         offset = 0;
         // 区内偏移必须是十进制整数
@@ -222,9 +245,11 @@ public static class ModbusAddress {
         return true;
     }
 
+    /// <summary>构造解析成功结果的简写。</summary>
     private static OperationResult<ModbusAddressInfo> Ok(byte unitId, ModbusDataArea area, ushort offset)
         => OperationResult<ModbusAddressInfo>.Ok(new ModbusAddressInfo(unitId, area, offset));
 
+    /// <summary>构造解析失败结果的简写；地址格式问题一律归为 InvalidArgument。</summary>
     private static OperationResult<ModbusAddressInfo> Fail(string message)
         => OperationResult<ModbusAddressInfo>.Fail(message, KernelErrorCode.InvalidArgument);
 }

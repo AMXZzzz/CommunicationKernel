@@ -62,8 +62,23 @@
 </div>
 
 @code {
+    /// <summary>
+    /// 侧栏是否展开。
+    /// </summary>
+    /// <remarks>
+    /// 只在窄屏下有意义——宽屏的侧栏由 CSS 常驻显示，本字段不影响它。
+    /// </remarks>
     private bool NavOpen { get; set; }
 
+    /// <summary>
+    /// 顶栏中间显示的当前页名，由路由推导。
+    /// </summary>
+    /// <remarks>
+    /// 从 URL 推导而非由各页面回传：页面向布局回传标题需要级联参数或状态服务，
+    /// 那是<b>自下而上</b>的数据流。路由本就是布局能直接读到的信息，
+    /// 顺着读一次即可，不必让子组件反向推。
+    /// <c>Split('?')</c> 去掉查询串，否则带参数的地址会落到默认分支。
+    /// </remarks>
     private string PageTitle => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0] switch
     {
         "" or "/" => "MES 监控",
@@ -74,6 +89,13 @@
         _ => "通讯调试工具",
     };
 
+    /// <summary>
+    /// 去掉协议前缀的 Host 地址，用于顶栏窄位显示。
+    /// </summary>
+    /// <remarks>
+    /// 顶栏那一格很窄，"http://" 占掉七个字符却不携带任何信息——
+    /// 操作员要看的是 IP 和端口。完整地址在 title 属性里，悬停可见。
+    /// </remarks>
     private string ShortAddress
     {
         get
@@ -84,15 +106,33 @@
         }
     }
 
+    /// <summary>订阅会话状态变化，用于刷新顶栏状态灯与底部状态栏。</summary>
     protected override void OnInitialized()
     {
         Session.Changed += OnSessionChanged;
     }
 
+    /// <summary>
+    /// 会话状态变化时请求重绘。
+    /// </summary>
+    /// <remarks>
+    /// 事件在后台线程触发（健康探测、状态流），必须经 <c>InvokeAsync</c>
+    /// 切回 Blazor 的同步上下文，直接调 <c>StateHasChanged</c> 会抛线程异常。
+    /// </remarks>
     private void OnSessionChanged() => _ = InvokeAsync(StateHasChanged);
 
+    /// <summary>切换窄屏侧栏的展开状态。</summary>
     private void ToggleNav() => NavOpen = !NavOpen;
+
+    /// <summary>收起侧栏。点导航项或点遮罩后调用，避免跳转后侧栏还挡着内容。</summary>
     private void CloseNav() => NavOpen = false;
 
+    /// <summary>
+    /// 退订会话事件。
+    /// </summary>
+    /// <remarks>
+    /// <c>Session</c> 是进程内单例，生命周期远长于本布局。
+    /// 漏退订会让已销毁的组件继续收事件，表现为控制台报错加内存泄漏。
+    /// </remarks>
     public void Dispose() => Session.Changed -= OnSessionChanged;
 }

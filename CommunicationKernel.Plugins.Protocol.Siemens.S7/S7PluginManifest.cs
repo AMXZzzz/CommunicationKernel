@@ -20,6 +20,7 @@ namespace CommunicationKernel.Plugins.Protocol.Siemens.S7;
 /// 西门子 S7 合并插件 Manifest（包含 S7-1200 与 S7-200Smart）。
 /// </summary>
 public sealed class SiemensS7PluginManifest : IPluginManifest {
+    /// <summary>插件描述符，宿主据此登记本插件提供的协议与支持的介质。</summary>
     public PluginDescriptor Descriptor { get; } = new() {
         PluginId    = "siemens-s7",
         DisplayName = "Siemens S7 Protocol Plugin (S7-1200 / S7-200Smart)",

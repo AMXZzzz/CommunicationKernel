@@ -120,6 +120,15 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
             : response;
     }
 
+    /// <summary>
+    /// 规划一次读：解析地址 → 组 PDU → 按介质封帧。
+    /// </summary>
+    /// <remarks>
+    /// <b>数据区只由地址决定，绝不受读取长度影响。</b>
+    /// 曾有过按长度推断功能码的写法，结果读 1 个字节的线圈会被当成寄存器读。
+    /// 组帧前先做全部校验，避免把畸形 PDU 发到总线上——
+    /// 畸形帧在 RTU 上会让从站丢弃整帧却不响应，表现为超时而非报错。
+    /// </remarks>
     private OperationResult<ModbusExchange> PlanRead(string address, int length) {
         OperationResult<ModbusAddressInfo> addr = ModbusAddress.Parse(address, _defaultUnitId);
         // 站号/区号/偏移任一非法则中止，避免发出畸形 PDU
@@ -142,6 +151,14 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
         return OperationResult<ModbusExchange>.Ok(new ModbusExchange(framed, request));
     }
 
+    /// <summary>
+    /// 规划一次写：解析地址 → 按数据区选功能码 → 组 PDU → 按介质封帧。
+    /// </summary>
+    /// <remarks>
+    /// 与读路径同构，同样在组帧前完成全部校验。
+    /// 写是有副作用的操作，畸形帧的代价比读高得多——
+    /// 从站可能把它解释成一次对错误地址的合法写入。
+    /// </remarks>
     private OperationResult<ModbusExchange> PlanWrite(string address, byte[] payload) {
         OperationResult<ModbusAddressInfo> addr = ModbusAddress.Parse(address, _defaultUnitId);
         // 写路径同样先解析地址，非法则不组帧

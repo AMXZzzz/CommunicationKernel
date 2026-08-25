@@ -65,11 +65,26 @@
 </div>
 
 @code {
+    /// <summary>级别筛选，"ALL" 表示不过滤；其余取值与 <c>AppLogEntry.LevelText</c> 一致。</summary>
     private string FilterLevel { get; set; } = "ALL";
+
+    /// <summary>关键字筛选，同时匹配正文与分类。</summary>
     private string FilterText { get; set; } = string.Empty;
+
+    /// <summary>是否在有新日志时自动滚到底部。默认开——现场多是盯着最新的看。</summary>
     private bool AutoScroll { get; set; } = true;
+
+    /// <summary>导出面板里的纯文本日志。</summary>
     private string _exportText = string.Empty;
 
+    /// <summary>
+    /// 应用两级筛选后的日志行。
+    /// </summary>
+    /// <remarks>
+    /// 每次访问都重新过滤整个快照。缓冲上限 2000 条，
+    /// 这个量级的线性过滤远快于一次渲染，不值得为它引入缓存与失效逻辑。
+    /// 关键字匹配用 <c>OrdinalIgnoreCase</c>：操作员搜 "plc" 应当能命中 "PLC-1"。
+    /// </remarks>
     private List<AppLogEntry> Filtered =>
         Logs.Snapshot().Where(e =>
             (FilterLevel == "ALL" || e.LevelText == FilterLevel) &&
@@ -77,13 +92,29 @@
              e.Message.Contains(FilterText, StringComparison.OrdinalIgnoreCase) ||
              e.Category.Contains(FilterText, StringComparison.OrdinalIgnoreCase))).ToList();
 
+    /// <summary>订阅日志缓冲的变更通知。</summary>
     protected override void OnInitialized() => Logs.Changed += OnChanged;
 
+    /// <summary>
+    /// 有新日志时重绘，并按需滚到底部。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 滚动必须在 <c>StateHasChanged</c> <b>之后</b>：新行还没渲染出来时滚动，
+    /// 滚到的是旧的底部，最新几行仍在视口外。
+    /// </para>
+    /// <para>
+    /// JS 调用整体吞掉异常是有意的：Blazor Server 断线或组件正在销毁时
+    /// <c>InvokeVoidAsync</c> 会抛，而这只是个滚动效果——
+    /// 为它把整条日志链路搞崩不值得。
+    /// </para>
+    /// </remarks>
     private void OnChanged()
     {
         _ = InvokeAsync(async () =>
         {
             StateHasChanged();
+
             if (AutoScroll)
             {
                 try { await Js.InvokeVoidAsync("ck.scrollToBottom", "log-area"); }
@@ -92,6 +123,14 @@
         });
     }
 
+    /// <summary>
+    /// 把<b>全部</b>日志导出为纯文本，供操作员复制。
+    /// </summary>
+    /// <remarks>
+    /// 刻意导出全量而非当前筛选结果：导出多半是为了发给别人排查，
+    /// 只给筛过的片段会漏掉上下文，而现场未必记得自己开着筛选。
+    /// 时间戳带毫秒——排查时序问题时秒级精度不够。
+    /// </remarks>
     private void Export()
     {
         _exportText = string.Join(
@@ -100,5 +139,6 @@
                 e.Timestamp.ToString("HH:mm:ss.fff") + " " + e.LevelText + " " + e.Category + " " + e.Message));
     }
 
+    /// <summary>退订日志事件；AppLogStore 是单例，漏退会泄漏本组件。</summary>
     public void Dispose() => Logs.Changed -= OnChanged;
 }

@@ -32,6 +32,7 @@ public sealed class ConnectionRouter : IConnectionRouter {
     private readonly ConcurrentDictionary<RouteKey, RouteEntry> _routes = new();
     private readonly ILogger<ConnectionRouter> _logger;
 
+    /// <param name="logger">日志记录器；为 null 时退化为 NullLogger，保持嵌入与测试场景可用。</param>
     public ConnectionRouter(ILogger<ConnectionRouter>? logger = null) {
         // 未注入日志时退化为空实现，避免嵌入/测试场景强制依赖日志组件
         _logger = logger ?? NullLogger<ConnectionRouter>.Instance;
@@ -48,6 +49,14 @@ public sealed class ConnectionRouter : IConnectionRouter {
         // ToArray 复制一份，避免调用方遍历时与并发登记/摘除冲突
         => _routes.Values.ToArray();
 
+    /// <summary>
+    /// 登记一条路由。RouteKey 已存在时拒绝，不覆盖。
+    /// </summary>
+    /// <returns>是否登记成功；false 表示同一物理设备已有路由。</returns>
+    /// <remarks>
+    /// 拒绝覆盖是关键：覆盖会让前一条路由的 TransportClient 成为没人释放的孤儿，
+    /// 同时两套 I/O 争用同一个 socket 或串口句柄。
+    /// </remarks>
     public bool TryRegister(RouteEntry entry) {
         // 拒绝空条目：空 RouteEntry 无法提供 TransportClient / 协议驱动
         ArgumentNullException.ThrowIfNull(entry);
@@ -60,10 +69,20 @@ public sealed class ConnectionRouter : IConnectionRouter {
         return added;
     }
 
+    /// <summary>按路由键查找活跃路由。</summary>
+    /// <returns>是否命中；未命中时读写路径应返回 RouteNotFound。</returns>
     public bool TryGet(RouteKey key, out RouteEntry? entry)
         // 按物理连接键查找；未命中时读写路径应返回 RouteNotFound
         => _routes.TryGetValue(key, out entry);
 
+    /// <summary>
+    /// 从路由表摘除一条路由。
+    /// </summary>
+    /// <returns>是否确有摘除。</returns>
+    /// <remarks>
+    /// <b>只摘表，不释放连接。</b>释放由编排器在摘表<b>之后</b>调用 DisposeAsync 完成——
+    /// 顺序颠倒会让并发的读写拿到一个正在被释放的 TransportClient。
+    /// </remarks>
     public bool TryRemove(RouteKey key, out RouteEntry? removed) {
         // 仅从字典摘除，不释放 socket/串口——释放由编排器在摘表之后调用 DisposeAsync
         bool result = _routes.TryRemove(key, out removed);

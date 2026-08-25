@@ -123,6 +123,9 @@ public sealed class ReadCoordinator : IReadCoordinator {
         /// <summary>条目是否已完成（完成后不再接受新参与者）。</summary>
         private int _completed;
 
+        /// <param name="key">读请求键（路由 + 地址 + 长度），相同键的并发请求会被合并。</param>
+        /// <param name="readAction">真正发起协议读的委托，整个在途期内<b>只执行一次</b>。</param>
+        /// <param name="owner">所属的在途表，完成后由本条目自行摘除。</param>
         public InflightRead(
             ReadRequestKey key,
             Func<CancellationToken, Task<OperationResult<byte[]>>> readAction,
@@ -170,6 +173,14 @@ public sealed class ReadCoordinator : IReadCoordinator {
             }
         }
 
+        /// <summary>
+        /// 执行真正的协议读，并把结果分发给所有参与者。
+        /// </summary>
+        /// <remarks>
+        /// 用<b>独立</b>的 CTS 驱动，不串联任何调用方的令牌：
+        /// 多个调用方共享这一次读取，其中一个取消不应中断其余人的等待。
+        /// 只有参与者全部退出（计数归零）时才会真正取消。
+        /// </remarks>
         private async Task<OperationResult<byte[]>> RunAsync(
             Func<CancellationToken, Task<OperationResult<byte[]>>> readAction) {
 
