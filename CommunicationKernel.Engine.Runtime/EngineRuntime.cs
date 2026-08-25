@@ -82,6 +82,11 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// <param name="routeAssemblyService">路由装配服务，负责组装 RouteEntry 与连接资源。</param>
     /// <param name="orchestrator">路由编排器。</param>
     /// <param name="logger">日志记录器；为 null 时不记录。</param>
+    /// <param name="linkCheckIntervalMs">
+    /// 链路巡检间隔（毫秒），默认 5 秒。
+    /// <c>&lt;= 0</c> 表示关闭巡检——注册后没人读写的路由将一直停留在最后已知状态，
+    /// 只有确定「状态完全由读写驱动」的场景（如单元测试）才应该关。
+    /// </param>
     /// <remarks>
     /// 两个依赖均为必填且面向接口——不再在内部 new 具体实现，
     /// 组合根成为唯一知晓具体类型的位置。
@@ -89,7 +94,8 @@ public sealed class EngineRuntime : IAsyncDisposable {
     public EngineRuntime(
         IRouteAssemblyService routeAssemblyService,
         IRouterOrchestrator orchestrator,
-        ILogger<EngineRuntime>? logger = null) {
+        ILogger<EngineRuntime>? logger = null,
+        int linkCheckIntervalMs = DefaultLinkCheckIntervalMs) {
 
         // 装配服务缺失则无法建链；编排器缺失则无法落表——二者均为内核必填依赖
         ArgumentNullException.ThrowIfNull(routeAssemblyService);
@@ -100,7 +106,82 @@ public sealed class EngineRuntime : IAsyncDisposable {
         // 未注入日志时退化为空实现，保持可测试性
         _logger               = logger ?? NullLogger<EngineRuntime>.Instance;
 
+        // 间隔 <= 0 表示关闭链路巡检（单元测试与「只按需读写」的场景用）
+        if (linkCheckIntervalMs > 0) {
+            _linkCheckCts = new CancellationTokenSource();
+            _linkCheckTask = Task.Run(() => LinkCheckLoopAsync(linkCheckIntervalMs, _linkCheckCts.Token));
+        }
+
         _logger.LogInformation("EngineRuntime initialized.");
+    }
+
+    // ========================================================================
+    // 链路巡检
+    // ========================================================================
+
+    /// <summary>链路巡检默认间隔（毫秒）。</summary>
+    private const int DefaultLinkCheckIntervalMs = 5_000;
+
+    private readonly CancellationTokenSource? _linkCheckCts;
+    private readonly Task? _linkCheckTask;
+
+    /// <summary>
+    /// 周期性检查各路由的介质连接是否还活着，状态变化立即广播。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么必须有。</b>此前路由状态只在「注册成功」与「每次读写」时更新。
+    /// 一条注册后没人读写的路由，即使 PLC 早已断电，界面也会一直显示在线。
+    /// 实测过：杀掉从站三分钟，卡片仍是绿的。
+    /// 显示「在线」而实际断开，比显示离线危险得多——操作员据此以为数据是新的。
+    /// </para>
+    /// <para>
+    /// <b>只查不发。</b>巡检调用 <see cref="ITransportClient.IsConnectionAlive"/>，
+    /// 那是介质层的廉价探测（查套接字/端口句柄），不产生任何协议报文，
+    /// 因此不占用路由的 I/O 门，也不会干扰正在进行的读写或串口帧间静默。
+    /// </para>
+    /// <para>
+    /// <b>只降不升。</b>探测到断链就置为离线；反过来「探测说还连着」并不等于
+    /// PLC 能应答（半开连接、PLC 死机都可能维持着 TCP 连接），
+    /// 所以这里绝不把状态从离线改回在线——恢复在线只认一次真正成功的读写。
+    /// </para>
+    /// </remarks>
+    private async Task LinkCheckLoopAsync(int intervalMs, CancellationToken ct) {
+        while (!ct.IsCancellationRequested) {
+            try {
+                await Task.Delay(intervalMs, ct).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                return;
+            }
+
+            foreach (RouteRuntimeRegistration registration in _registrationsByRouteId.Values) {
+                if (ct.IsCancellationRequested) return;
+
+                try {
+                    if (registration.RouteEntry.TransportClient.IsConnectionAlive) continue;
+
+                    // 只在「原本认为在线」时广播，避免对已离线路由反复刷同一条事件
+                    if (_routeStatuses.TryGetValue(registration.RouteId, out RouteStatusSnapshot? prev)
+                        && !prev.Online) {
+                        continue;
+                    }
+
+                    _logger.LogWarning(
+                        "链路巡检：路由 '{RouteId}' 的连接已断开（{Endpoint}）。",
+                        registration.RouteId, registration.Endpoint);
+
+                    PublishStatus(
+                        registration.RouteId,
+                        online: false,
+                        KernelErrorCode.TransportIoError,
+                        "链路巡检发现连接已断开");
+                } catch (Exception ex) {
+                    // 单条路由探测失败不能中断整轮巡检
+                    _logger.LogWarning(ex,
+                        "链路巡检：检查路由 '{RouteId}' 时异常。", registration.RouteId);
+                }
+            }
+        }
     }
 
     /// <summary>当前注册路由数量（供 gRPC Health / Diagnostics 端点使用）。</summary>
@@ -273,6 +354,19 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 重启宿主会因串口被占用而连不上。DI 容器在关闭时会调用本方法。
     /// </remarks>
     public async ValueTask DisposeAsync() {
+        // 先停巡检：否则它可能在路由注销途中读到半拆状态的 RouteEntry
+        if (_linkCheckCts is not null) {
+            await _linkCheckCts.CancelAsync().ConfigureAwait(false);
+            if (_linkCheckTask is not null) {
+                try {
+                    await _linkCheckTask.ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    // 正常收尾
+                }
+            }
+            _linkCheckCts.Dispose();
+        }
+
         // 先复制键列表：Unregister 会改字典，直接遍历 Keys 会抛 InvalidOperationException
         string[] routeIds = _registrationsByRouteId.Keys.ToArray();
         if (routeIds.Length == 0) return;

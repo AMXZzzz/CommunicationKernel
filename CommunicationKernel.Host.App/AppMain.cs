@@ -26,6 +26,14 @@ using Microsoft.Extensions.Logging;
 //    gRPC 只跑在 HTTP/2 上，而明文端点没有 TLS ALPN 可供协议协商——
 //    Kestrel 在明文上同时配两种协议时无法区分，会退回纯 HTTP/1.1，
 //    此时所有 gRPC 调用被服务端以 HTTP_1_1_REQUIRED 直接拒绝。
+// 6) launchSettings.json 里 launchBrowser 必须为 false，且不要写 applicationUrl：
+//    · 本进程只暴露 gRPC（HTTP/2-only 明文），浏览器不做明文 h2c，
+//      弹出来只会显示 "An HTTP/1.x request was sent to an HTTP/2 only endpoint."；
+//    · applicationUrl（即 ASPNETCORE_URLS）优先级低于上面第 4 条的
+//      Kestrel:Endpoints，写了也不生效，只会与实际绑定不符、误导排查。
+//    另注：launchSettings.json 不接受注释——加了整个 profile 会静默失效
+//    （dotnet run 报 "'/' is an invalid start of a property name"），
+//    所以相关说明只能写在这里。
 // -----------------------------------------------------------------------------
 
 // ============================================================================
@@ -182,5 +190,39 @@ app.Lifetime.ApplicationStarted.Register(() =>
     }
 }
 
-// 阻塞运行，直至进程收到停止信号
-app.Run();
+// ============================================================================
+// 运行
+// ============================================================================
+// 阻塞运行，直至进程收到停止信号。
+//
+// 单独接住绑定失败：端口被占用时 Kestrel 抛 IOException，
+// 不接的话调试器直接断在 app.Run()，命令行下则是一整屏堆栈，
+// 而真正有用的信息只有一句「端口被占了」。
+// 树莓派上更要紧——systemd 配了 Restart=always，
+// 一个没说清楚的绑定失败会变成无限重启，日志里全是同一份堆栈。
+try
+{
+    app.Run();
+}
+catch (IOException ex) when (ex.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+{
+    // 这里<b>不能</b>再用 app.Services 取 ILogger：
+    // app.Run() 抛出时宿主已经把 DI 容器释放了，
+    // GetRequiredService 会再抛一个 ObjectDisposedException，
+    // 把真正有用的「端口被占了」盖成一句莫名其妙的「Cannot access a disposed object」。
+    //
+    // 致命启动错误直接写 stderr：不依赖任何仍需存活的组件，
+    // 且 systemd 单元里 StandardError=journal，树莓派上照样进 journalctl。
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("[启动失败] 监听地址已被占用，宿主无法启动。");
+    Console.Error.WriteLine("  · 多半是已经有一个 Host.App 在跑了；");
+    Console.Error.WriteLine("  · 也可能是别的程序占了同一端口；");
+    Console.Error.WriteLine("  · 排查：Windows 执行 netstat -ano | findstr :5000");   
+    Console.Error.WriteLine("          Linux   执行 ss -ltnp | grep 5000");
+    Console.Error.WriteLine("  · 监听地址配在 appsettings.json 的 Kestrel:Endpoints:Grpc:Url，可改端口避开冲突。");
+    Console.Error.WriteLine("  原始错误：" + ex.Message);
+    Console.Error.WriteLine();
+
+    // 非零退出码：systemd / CI 据此判定启动失败，而不是当成正常退出
+    Environment.Exit(1);
+}

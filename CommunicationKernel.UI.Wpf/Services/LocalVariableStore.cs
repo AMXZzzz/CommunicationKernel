@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunicationKernel.Host.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Models;
@@ -329,91 +330,31 @@ namespace CommunicationKernel.UI.Wpf.Services
         // ============================================================================
 
         /// <summary>
-        /// 根据 DataType 枚举将值对象序列化为字节数组（大端序）。
+        /// 把界面值编成写入设备的字节。
         /// </summary>
+        /// <remarks>
+        /// 换算本体在 <see cref="ValueCodec"/>——WPF 与 Web 共用同一份。
+        /// 这里原本手写了一整套大端移位（约 70 行），与 Web 端各写一份；
+        /// Web 那份曾把字节序写反，写 8 进 PLC 变成 2048。
+        /// 同类逻辑分成两处、只有一处出错，正是本项目反复栽的跟头。
+        /// </remarks>
+        /// <exception cref="InvalidOperationException">类型不支持或数值超范围。</exception>
         private static byte[] SerializeValue(VariableDataType dataType, object value)
         {
-            switch (dataType)
+            // 字节序目前固定大端：WPF 尚未提供按设备配置字节序的界面，
+            // 而大端正是三个协议插件统一产出的排列，与原有行为完全一致。
+            if (!ValueCodec.TryEncodeValue(
+                    value,
+                    ValueParser.ToCodecType(dataType),
+                    length: 0,
+                    out byte[] bytes,
+                    out string error,
+                    ByteOrder.ABCD))
             {
-                case VariableDataType.Bool:
-                {
-                    // 1 字节：非零为 true
-                    bool b = Convert.ToBoolean(value);
-                    return new byte[] { b ? (byte)0x01 : (byte)0x00 };
-                }
-                case VariableDataType.Int16:
-                {
-                    // 2 字节大端
-                    short s = Convert.ToInt16(value);
-                    return new byte[] { (byte)(s >> 8), (byte)(s & 0xFF) };
-                }
-                case VariableDataType.UInt16:
-                {
-                    // 2 字节大端
-                    ushort u = Convert.ToUInt16(value);
-                    return new byte[] { (byte)(u >> 8), (byte)(u & 0xFF) };
-                }
-                case VariableDataType.Int32:
-                {
-                    // 4 字节大端
-                    int n = Convert.ToInt32(value);
-                    return new byte[] {
-                        (byte)((n >> 24) & 0xFF), (byte)((n >> 16) & 0xFF),
-                        (byte)((n >> 8)  & 0xFF), (byte)(n & 0xFF)
-                    };
-                }
-                case VariableDataType.UInt32:
-                {
-                    // 4 字节大端
-                    uint u = Convert.ToUInt32(value);
-                    return new byte[] {
-                        (byte)((u >> 24) & 0xFF), (byte)((u >> 16) & 0xFF),
-                        (byte)((u >> 8)  & 0xFF), (byte)(u & 0xFF)
-                    };
-                }
-                case VariableDataType.Int64:
-                {
-                    // 先按小端填再翻转成大端
-                    long l = Convert.ToInt64(value);
-                    byte[] buf = new byte[8];
-                    for (int i = 7; i >= 0; i--) { buf[i] = (byte)(l & 0xFF); l >>= 8; }
-                    Array.Reverse(buf);
-                    return buf;
-                }
-                case VariableDataType.UInt64:
-                {
-                    // 先按小端填再翻转成大端
-                    ulong u = Convert.ToUInt64(value);
-                    byte[] buf = new byte[8];
-                    for (int i = 7; i >= 0; i--) { buf[i] = (byte)(u & 0xFF); u >>= 8; }
-                    Array.Reverse(buf);
-                    return buf;
-                }
-                case VariableDataType.Float:
-                {
-                    // BitConverter 为小端，翻转后按大端下发
-                    float f = Convert.ToSingle(value);
-                    byte[] le = BitConverter.GetBytes(f);
-                    return new byte[] { le[3], le[2], le[1], le[0] };
-                }
-                case VariableDataType.Double:
-                {
-                    // 8 字节 IEEE 754，翻转成大端
-                    double d = Convert.ToDouble(value);
-                    byte[] le = BitConverter.GetBytes(d);
-                    Array.Reverse(le);
-                    return le;
-                }
-                case VariableDataType.String:
-                {
-                    // UTF-8 字节，长度由调用方 Length 约束
-                    string str = value != null ? value.ToString() : string.Empty;
-                    return Encoding.UTF8.GetBytes(str);
-                }
-                default:
-                    throw new InvalidOperationException(
-                        string.Format("不支持的数据类型: {0}", dataType));
+                throw new InvalidOperationException(error);
             }
+
+            return bytes;
         }
     }
 }

@@ -205,6 +205,9 @@ public class SdkEmbeddedUsageTests {
         public string TransportId => "fake-transport";
         public TransportKind Kind => TransportKind.Tcp;
 
+        /// <summary>替身不涉及真实连接，恒为可用。</summary>
+        public bool IsConnectionAlive => true;
+
         public Task<OperationResult> ConnectAsync(TransportEndpoint e, CancellationToken ct)
             => Task.FromResult(OperationResult.Ok);
 

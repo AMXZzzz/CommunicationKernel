@@ -9,6 +9,7 @@
 using System;
 using System.Globalization;
 using System.Text;
+using CommunicationKernel.Host.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 
 namespace CommunicationKernel.UI.Wpf.Services;
@@ -141,22 +142,29 @@ public static class ValueParser {
         }
     }
 
+
     // =========================================================================
     // 字节数组 → 显示字符串（供轮询读取结果展示）
     // =========================================================================
 
     /// <summary>
-    /// 将 gRPC ReadResponse 返回的字节数组（大端序）解析为可读字符串。
+    /// 把 gRPC 返回的字节按数据类型解析为可读字符串。
     /// 解析失败时 <paramref name="display"/> 为 "?" 并返回 false。
     /// </summary>
     /// <param name="dataType">变量数据类型，决定字节数解析方式。</param>
-    /// <param name="data">gRPC 返回的大端序字节数组；null 或长度不足时解析失败。</param>
+    /// <param name="data">协议驱动返回的字节（各插件均已归一为大端）。</param>
     /// <param name="display">解析成功时的可读字符串，失败时为 "?"。</param>
-    /// <returns>解析成功返回 true，字节数不足或类型不支持返回 false。</returns>
+    /// <param name="order">该设备的字节序，默认大端。</param>
+    /// <remarks>
+    /// 字节序换算本体在 <see cref="ValueCodec"/>，此处只做枚举到类型名的映射。
+    /// 早先这里手写了一整套大端移位，与 Web 端的实现各写一份——
+    /// 那正是「写 8 进 PLC 变 2048」那个缺陷能在一侧潜伏的土壤。
+    /// </remarks>
     public static bool TryParseBytes(
         VariableDataType dataType,
         byte[] data,
-        out string display) {
+        out string display,
+        ByteOrder order = ByteOrder.ABCD) {
 
         display = "?";
 
@@ -164,91 +172,41 @@ public static class ValueParser {
         if (data == null || data.Length == 0)
             return false;
 
-        try {
-            switch (dataType) {
+        string codecType = ToCodecType(dataType);
+        string text = ValueCodec.Decode(data, codecType, order);
 
-                case VariableDataType.Bool:
-                    // 1 字节，非零即为 true
-                    if (data.Length < 1) return false;
-                    display = data[0] != 0 ? "true" : "false";
-                    return true;
+        // ValueCodec 用 "(空)" 表示无数据；此处已排除空数组，理论上不会出现
+        if (text == "(空)") return false;
 
-                case VariableDataType.Int16:
-                    // 2 字节大端序 → short
-                    if (data.Length < 2) return false;
-                    display = ((short)((data[0] << 8) | data[1]))
-                        .ToString(CultureInfo.InvariantCulture);
-                    return true;
+        // Bool 的显示措辞两端历来不同：WPF 用 true/false，Web 用 ON/OFF。
+        // 界面文案不属于编解码逻辑，收敛时保持各自原样，避免改动现有 WPF 界面。
+        if (dataType == VariableDataType.Bool)
+            display = data[0] != 0 ? "true" : "false";
+        else
+            display = text;
 
-                case VariableDataType.UInt16:
-                    // 2 字节大端序 → ushort
-                    if (data.Length < 2) return false;
-                    display = ((ushort)((data[0] << 8) | data[1]))
-                        .ToString(CultureInfo.InvariantCulture);
-                    return true;
-
-                case VariableDataType.Int32:
-                    // 4 字节大端序 → int
-                    if (data.Length < 4) return false;
-                    display = ((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3])
-                        .ToString(CultureInfo.InvariantCulture);
-                    return true;
-
-                case VariableDataType.UInt32:
-                    // 4 字节大端序 → uint
-                    if (data.Length < 4) return false;
-                    display = ((uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]))
-                        .ToString(CultureInfo.InvariantCulture);
-                    return true;
-
-                case VariableDataType.Int64:
-                    // 8 字节大端序 → long
-                    if (data.Length < 8) return false;
-                    long i64 = 0;
-                    for (int i = 0; i < 8; i++) i64 = (i64 << 8) | data[i];
-                    display = i64.ToString(CultureInfo.InvariantCulture);
-                    return true;
-
-                case VariableDataType.UInt64:
-                    // 8 字节大端序 → ulong
-                    if (data.Length < 8) return false;
-                    ulong u64 = 0;
-                    for (int i = 0; i < 8; i++) u64 = (u64 << 8) | data[i];
-                    display = u64.ToString(CultureInfo.InvariantCulture);
-                    return true;
-
-                case VariableDataType.Float:
-                    // 4 字节 IEEE 754 大端序 → float
-                    if (data.Length < 4) return false;
-                    byte[] fBuf = { data[3], data[2], data[1], data[0] }; // 转为小端供 BitConverter
-                    display = BitConverter.ToSingle(fBuf, 0)
-                        .ToString("G6", CultureInfo.InvariantCulture);
-                    return true;
-
-                case VariableDataType.Double:
-                    // 8 字节 IEEE 754 大端序 → double
-                    if (data.Length < 8) return false;
-                    byte[] dBuf = new byte[8];
-                    for (int i = 0; i < 8; i++) dBuf[i] = data[7 - i]; // 翻转为小端
-                    display = BitConverter.ToDouble(dBuf, 0)
-                        .ToString("G10", CultureInfo.InvariantCulture);
-                    return true;
-
-                case VariableDataType.String:
-                    // UTF-8 字节 → string
-                    display = Encoding.UTF8.GetString(data);
-                    return true;
-
-                default:
-                    // 未知类型：以十六进制原样展示，便于调试
-                    display = BitConverter.ToString(data).Replace("-", " ");
-                    return true;
-            }
-        }
-        catch {
-            // 解析异常（如 BitConverter 越界）：返回失败
-            display = "?";
-            return false;
-        }
+        return true;
     }
+
+    /// <summary>
+    /// 把 WPF 的 <see cref="VariableDataType"/> 映射为 <see cref="ValueCodec"/> 使用的类型名。
+    /// </summary>
+    /// <remarks>
+    /// 两侧枚举/字符串的差异只此一处，映射集中在这里，
+    /// 避免每个调用点各写一遍 ToString() 而在 String/Hex 这类边角上分叉。
+    /// </remarks>
+    internal static string ToCodecType(VariableDataType dataType) => dataType switch {
+        VariableDataType.Bool   => "Bool",
+        VariableDataType.Int16  => "Int16",
+        VariableDataType.UInt16 => "UInt16",
+        VariableDataType.Int32  => "Int32",
+        VariableDataType.UInt32 => "UInt32",
+        VariableDataType.Int64  => "Int64",
+        VariableDataType.UInt64 => "UInt64",
+        VariableDataType.Float  => "Float",
+        VariableDataType.Double => "Double",
+        // WPF 的 String 与 Web 的 Hex 是同一种「原样十六进制」语义
+        VariableDataType.String => "Hex",
+        _ => "Hex",
+    };
 }

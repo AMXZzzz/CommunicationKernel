@@ -193,6 +193,21 @@ public sealed class SerialPortTransportClient : ITransportClient
     public TransportKind Kind => TransportKind.Serial;
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 串口只能查到「端口句柄还开着」。USB 转串口被拔掉时驱动会让端口失效，
+    /// 这里能查出来；但线缆脱落、PLC 掉电对串口而言毫无迹象——
+    /// 那种情况只能靠真正发一帧出去、等不到响应才发现。
+    /// </remarks>
+    public bool IsConnectionAlive
+    {
+        get
+        {
+            try { return _port?.IsOpen == true; }
+            catch (Exception) { return false; }
+        }
+    }
+
+    /// <inheritdoc />
     public Task<OperationResult> ConnectAsync(
         TransportEndpoint endpoint, CancellationToken cancellationToken)
     {

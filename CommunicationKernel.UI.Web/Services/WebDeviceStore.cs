@@ -6,6 +6,8 @@
 
 using System.Text.Json;
 
+using CommunicationKernel.Host.Sdk;
+
 namespace CommunicationKernel.UI.Web.Services;
 
 /// <summary>一台设备重新注册路由所需的全部参数（不含运行期在线状态）。</summary>
@@ -21,6 +23,17 @@ public sealed class WebDeviceRecord
     public string SerialPort { get; set; } = string.Empty;
     public int BaudRate { get; set; }
     public int MinIoIntervalMs { get; set; } = 15;
+
+    /// <summary>
+    /// 多字节数值在该设备寄存器里的排列方式，取值见 <see cref="ByteOrder"/>。
+    /// </summary>
+    /// <remarks>
+    /// 按设备配而非按协议写死：Modbus 规范只规定 16 位寄存器内部是大端，
+    /// 跨寄存器的 32 位值怎么摆完全没规定，同样是 Modbus，
+    /// 不同品牌的变频器/PLC 可能是 ABCD 也可能是 CDAB。
+    /// 默认 ABCD（大端）——三个协议插件出来的字节都已经是大端。
+    /// </remarks>
+    public string ByteOrder { get; set; } = "ABCD";
 }
 
 /// <summary>设备配置磁盘镜像。线程安全。</summary>
@@ -131,5 +144,8 @@ public sealed class WebDeviceStore
         SerialPort = r.SerialPort,
         BaudRate = r.BaudRate,
         MinIoIntervalMs = r.MinIoIntervalMs,
+        // 新增字段务必同步加到这里：Clone 用于进出存储的深拷贝，
+        // 漏一个字段的表现是「改了能保存、一读回来又变回默认值」，且不报任何错
+        ByteOrder = r.ByteOrder,
     };
 }

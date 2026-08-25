@@ -1,4 +1,4 @@
-    CommunicationKernel.Engine.Runtime.EngineRuntime..ctor(CommunicationKernel.Engine.Runtime.IRouteAssemblyService routeAssemblyService, CommunicationKernel.Engine.Router.Abstractions.IRouterOrchestrator orchestrator, Microsoft.Extensions.Logging.ILogger<CommunicationKernel.Engine.Runtime.EngineRuntime> logger)
+    CommunicationKernel.Engine.Runtime.EngineRuntime..ctor(CommunicationKernel.Engine.Runtime.IRouteAssemblyService routeAssemblyService, CommunicationKernel.Engine.Router.Abstractions.IRouterOrchestrator orchestrator, Microsoft.Extensions.Logging.ILogger<CommunicationKernel.Engine.Runtime.EngineRuntime> logger, System.Int32 linkCheckIntervalMs)
     CommunicationKernel.Engine.Runtime.EngineRuntime.DisposeAsync() -> System.Threading.Tasks.ValueTask
     CommunicationKernel.Engine.Runtime.EngineRuntime.PendingRouteCount { get; } -> System.Int32
     CommunicationKernel.Engine.Runtime.EngineRuntime.ReadByRouteIdAsync(System.String routeId, System.String dataAddress, System.Int32 length, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult<System.Byte[]>>

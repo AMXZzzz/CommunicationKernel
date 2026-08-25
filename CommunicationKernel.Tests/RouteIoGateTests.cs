@@ -235,6 +235,9 @@ public class RouteIoGateTests {
     private sealed class NoopTransportClient : ITransportClient {
         public string TransportId => "fake";
         public TransportKind Kind => TransportKind.Tcp;
+
+        /// <summary>替身不涉及真实连接，恒为可用。</summary>
+        public bool IsConnectionAlive => true;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         public Task<OperationResult> ConnectAsync(TransportEndpoint e, CancellationToken ct) => Task.FromResult(OperationResult.Ok);
         public Task<OperationResult> DisconnectAsync(CancellationToken ct) => Task.FromResult(OperationResult.Ok);

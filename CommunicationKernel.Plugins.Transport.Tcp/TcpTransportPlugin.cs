@@ -133,6 +133,31 @@ public sealed class TcpTransportClient : ITransportClient
     public TransportKind Kind => TransportKind.Tcp;
 
     /// <inheritdoc />
+    public bool IsConnectionAlive
+    {
+        get
+        {
+            Socket? socket = _tcp?.Client;
+            if (socket is null) return false;
+
+            try
+            {
+                if (!socket.Connected) return false;
+
+                // Poll(SelectRead)=true 有两种含义：有数据可读，或对端已关闭。
+                // 用 Available==0 区分——可读却一个字节都没有，就是对端关了连接。
+                //
+                // 注意这只能发现带 FIN/RST 的正常断链（对端进程退出、主动断开）。
+                // 拔网线、掉电属于半开连接，不产生任何报文，这里查不出来，
+                // 要靠下面 ConnectAsync 里开启的 TCP keepalive 兜底。
+                return !(socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0);
+            }
+            catch (SocketException)      { return false; }
+            catch (ObjectDisposedException) { return false; }
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<OperationResult> ConnectAsync(
         TransportEndpoint endpoint, CancellationToken cancellationToken)
     {
@@ -150,6 +175,8 @@ public sealed class TcpTransportClient : ITransportClient
             await _tcp.ConnectAsync(endpoint.Address, endpoint.Port, cancellationToken)
                 .ConfigureAwait(false);
             _stream = _tcp.GetStream();
+
+            EnableKeepAlive(_tcp.Client);
             return OperationResult.Ok;
         }
         catch (OperationCanceledException)
@@ -239,6 +266,34 @@ public sealed class TcpTransportClient : ITransportClient
     // -------------------------------------------------------------------------
     // 内部辅助
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// 开启 TCP keepalive，让半开连接能被内核发现。
+    /// </summary>
+    /// <remarks>
+    /// 拔网线、PLC 掉电这类断链不会发出 FIN/RST，套接字层面看上去一切正常，
+    /// <see cref="IsConnectionAlive"/> 查不出来，读取则会一直挂到超时。
+    /// keepalive 让内核定期发探测包，几次无应答后把连接标记为已断，
+    /// 之后 Poll 与读写都会立刻失败。
+    ///
+    /// 系统默认是 2 小时后才首次探测，对产线毫无意义，因此显式收紧到
+    /// 15 秒无流量即探测、每 5 秒重试、3 次无应答判死（最坏约 30 秒发现）。
+    /// 失败不影响主功能：仅退化为「靠读写超时发现断链」。
+    /// </remarks>
+    private static void EnableKeepAlive(Socket socket)
+    {
+        try
+        {
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 15);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 5);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);
+        }
+        catch (Exception)
+        {
+            // 部分平台不支持逐项设置 keepalive 参数；保持默认即可，不影响通讯
+        }
+    }
 
     private void DisposeInternals()
     {

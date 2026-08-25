@@ -17,8 +17,9 @@
     <div class="toolbar">
         <h2 class="page-title">设备管理</h2>
         <button class="btn ghost" type="button" @onclick="RefreshAsync" disabled="@_busy">刷新</button>
-        <button class="btn ghost" type="button" @onclick="ReconcileAsync" disabled="@(_busy || !Session.Online)">对账</button>
-        <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@(!Session.Online || _busy)">添加设备</button>
+        <button class="btn ghost" type="button" @onclick="ConnectAllAsync" disabled="@(_busy || !Session.Online)">一键连接</button>
+        @* 添加设备不需要 Host 在线：它只写本地配置，不建连接 *@
+        <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@_busy">添加设备</button>
         <div class="toolbar-right">
             @if (_busy) { <span class="busy-hint">处理中…</span> }
             <span class="toolbar-count">@OnlineCount / @Rows.Count 在线</span>
@@ -35,8 +36,8 @@
         {
             <div class="empty-state">
                 <div class="empty-title">还没有路由</div>
-                <div class="empty-hint">协议下拉来自宿主已加载的插件。Host 离线时不能注册，但本地配置仍会显示。</div>
-                <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@(!Session.Online || _busy)">添加设备</button>
+                <div class="empty-hint">添加设备只写本地配置，不需要 Host 在线，也不会立刻建连接。<br />配好后到现场可达时再点「连接」。</div>
+                <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@_busy">添加设备</button>
             </div>
         }
         else
@@ -60,20 +61,39 @@
                             <div class="kv"><span>路由</span><span class="mono">@row.RouteId</span></div>
                             <div class="kv"><span>连接</span><span class="addr">@row.Endpoint</span></div>
                             <div class="kv"><span>站号</span><span>@(string.IsNullOrEmpty(row.Station) ? "—" : row.Station)</span></div>
+                            <div class="kv">
+                                <span>字节序</span>
+                                <span class="mono" title="@ByteOrderHint(row.ByteOrder)">@row.ByteOrder</span>
+                            </div>
                             @if (!row.OnHost)
                             {
                                 <div class="kv err"><span>宿主</span><span>本地待对账</span></div>
                             }
                         </div>
+                        @* 连接是显式动作，不在「添加设备」时顺带发生——
+                           PLC 未上电时也要能把设备先配好摆在这里 *@
                         <div class="card-ft">
-                            <button class="btn danger" type="button" @onclick="() => AskRemove(row)" disabled="@_busy">注销</button>
+                            @if (row.OnHost)
+                            {
+                                <button class="btn ghost" type="button"
+                                        @onclick="() => DisconnectAsync(row)" disabled="@_busy">断开</button>
+                            }
+                            else
+                            {
+                                <button class="btn primary" type="button"
+                                        @onclick="() => ConnectAsync(row)"
+                                        disabled="@(_busy || !Session.Online)">连接</button>
+                            }
+                            <button class="btn ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
+                            <button class="btn danger card-del" type="button"
+                                    @onclick="() => AskRemove(row)" disabled="@_busy" title="删除设备">删除</button>
                         </div>
                     </div>
                 }
 
                 @* 新增入口同时放在网格末尾：新卡片会出现在这个位置，
                    操作与结果因此在同一处，不必先去顶部工具栏 *@
-                <button class="add-card" type="button" @onclick="OpenAdd" disabled="@(!Session.Online || _busy)">
+                <button class="add-card" type="button" @onclick="OpenAdd" disabled="@_busy">
                     <span class="plus">+</span>
                     <span>添加设备</span>
                 </button>
@@ -86,13 +106,15 @@
         <div class="add-form-overlay" @onclick="CloseForm">
             <div class="add-form" @onclick:stopPropagation>
                 <div class="form-hd">
-                    <h3>注册路由</h3>
+                    <h3>@(IsEditing ? "编辑设备" : "添加设备")</h3>
                     <button class="close-btn" type="button" @onclick="CloseForm">×</button>
                 </div>
 
                 @if (_protocols.Count == 0)
                 {
-                    <p class="setting-hint">宿主未返回任何协议插件。请检查 Host.App 的 plugins 目录。</p>
+                    <p class="setting-hint">
+                        宿主未返回任何协议插件，无法选择协议。请确认 Host.App 已启动、plugins 目录中有协议插件。
+                    </p>
                 }
                 else
                 {
@@ -100,7 +122,17 @@
                     <input @bind="_name" placeholder="例如 贴片机-1" />
 
                     <label>路由 ID *</label>
-                    <input @bind="_routeId" placeholder="plc-001" />
+                    @if (IsEditing)
+                    {
+                        @* 路由 ID 是设备的身份，改了等于换一台设备：
+                           宿主侧已注册的那条会变成没人认领的孤儿路由。
+                           要改就删掉重建。 *@
+                        <input value="@_routeId" readonly title="路由 ID 是设备身份，不可修改；如需更改请删除后重建" />
+                    }
+                    else
+                    {
+                        <input @bind="_routeId" placeholder="plc-001" />
+                    }
 
                     <label>协议 *</label>
                     <select value="@_protocolId" @onchange="OnProtocolChanged">
@@ -111,7 +143,7 @@
                     </select>
 
                     <label>传输介质</label>
-                    <select @bind="_transportKind">
+                    <select value="@_transportKind" @onchange="OnTransportChanged">
                         @foreach (string t in Transports)
                         {
                             <option value="@t">@t</option>
@@ -155,9 +187,33 @@
                         <input @bind="_station" placeholder="1" />
                     }
 
+                    @* 字节序按设备配：Modbus 规范只规定 16 位寄存器内部是大端，
+                       跨寄存器的 32 位值怎么摆没有规定，同样是 Modbus，
+                       不同品牌可能是 ABCD 也可能是 CDAB *@
+                    <label>字节序</label>
+                    <select @bind="_byteOrder">
+                        @foreach (string o in ByteOrders)
+                        {
+                            <option value="@o">@o — @ByteOrderHint(o)</option>
+                        }
+                    </select>
+                    <p class="hint-line">
+                        读数正确但数值明显不对（例如写 8 读回 2048、或 32 位值高低半截颠倒）就是这里配错了。
+                        默认 ABCD 适用于绝大多数设备。
+                    </p>
+
+                    <p class="setting-hint form-note">
+                        保存只写本地配置，<b>不会建立连接</b>。设备会以离线卡片出现，
+                        到现场可达时再点卡片上的「连接」，或用工具栏的「一键连接」。
+                    </p>
+
                     <div class="form-actions">
                         <button class="btn ghost" type="button" @onclick="CloseForm">取消</button>
-                        <button class="btn primary" type="button" @onclick="RegisterAsync" disabled="@_busy">注册</button>
+                        <button class="btn primary" type="button" @onclick="SaveDeviceAsync" disabled="@_busy">保存</button>
+                        @if (!IsEditing && Session.Online)
+                        {
+                            <button class="btn ghost" type="button" @onclick="SaveAndConnectAsync" disabled="@_busy">保存并连接</button>
+                        }
                     </div>
                 }
             </div>
@@ -169,13 +225,17 @@
         <div class="add-form-overlay center" @onclick="() => _pendingRemove = null">
             <div class="add-form confirm-box" @onclick:stopPropagation>
                 <div class="form-hd">
-                    <h3>注销路由</h3>
+                    <h3>删除设备</h3>
                     <button class="close-btn" type="button" @onclick="() => _pendingRemove = null">×</button>
                 </div>
-                <p>将从宿主移除 <span class="mono">@_pendingRemove.RouteId</span>，并删除本地配置。此操作不可恢复。</p>
+                <p>
+                    将删除 <span class="mono">@_pendingRemove.RouteId</span> 的本地配置@(_pendingRemove.OnHost ? "，并从宿主注销该路由" : "")。
+                    此操作不可恢复。
+                </p>
+                <p class="setting-hint">只是想让它下线的话，用卡片上的「断开」——配置会保留。</p>
                 <div class="form-actions">
                     <button class="btn ghost" type="button" @onclick="() => _pendingRemove = null">取消</button>
-                    <button class="btn danger" type="button" @onclick="ConfirmRemoveAsync" disabled="@_busy">确认注销</button>
+                    <button class="btn danger" type="button" @onclick="ConfirmRemoveAsync" disabled="@_busy">确认删除</button>
                 </div>
             </div>
         </div>
@@ -184,6 +244,19 @@
 
 @code {
     private static readonly int[] BaudRates = { 9600, 19200, 38400, 57600, 115200 };
+
+    /// <summary>可选字节序，顺序按现场常见程度排。</summary>
+    private static readonly string[] ByteOrders = { "ABCD", "CDAB", "BADC", "DCBA" };
+
+    /// <summary>字节序的中文说明，供下拉项与卡片提示复用。</summary>
+    private static string ByteOrderHint(string order) => order switch
+    {
+        "ABCD" => "大端（标准）",
+        "CDAB" => "字交换",
+        "BADC" => "字节交换",
+        "DCBA" => "小端（全反序）",
+        _ => "未知",
+    };
 
     private bool _busy;
     private bool _showForm;
@@ -203,6 +276,12 @@
     private string _serialPort = string.Empty;
     private int _baudRate = 9600;
     private int _minIo = 15;
+    private string _byteOrder = "ABCD";
+
+    /// <summary>编辑中的路由 ID；为空表示当前是「新增」。</summary>
+    private string _editingRouteId = string.Empty;
+
+    private bool IsEditing => !string.IsNullOrEmpty(_editingRouteId);
 
     private ProtocolDescriptorDto? SelectedProtocol =>
         _protocols.FirstOrDefault(p => string.Equals(p.ProtocolId, _protocolId, StringComparison.OrdinalIgnoreCase));
@@ -258,14 +337,93 @@
         finally { _busy = false; }
     }
 
-    private async Task ReconcileAsync()
+    /// <summary>
+    /// 把所有「本地已配置、宿主侧还没有」的设备一次性推上去。
+    /// </summary>
+    /// <remarks>
+    /// 复用对账逻辑：它做的正是「逐条补注册缺失路由」。
+    /// 现场上电顺序不固定，逐台点连接很繁琐，这里给一个批量入口。
+    /// </remarks>
+    private async Task ConnectAllAsync()
     {
         _busy = true;
         try
         {
+            int before = Rows.Count(r => r.OnHost);
             await Session.ReconcileNowAsync().ConfigureAwait(true);
-            _banner = "已触发对账";
-            _bannerClass = "status-ok";
+            int after = Rows.Count(r => r.OnHost);
+            int total = Rows.Count;
+
+            _banner = "一键连接完成：" + after + " / " + total + " 台已连接"
+                    + (after > before ? "（本次新增 " + (after - before) + " 台）" : "");
+            // 没有全部连上不算失败——现场本就允许部分设备还没上电
+            _bannerClass = after == total ? "status-ok" : "status-warn";
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>连接单台设备：此时才向宿主注册路由并真正建链。</summary>
+    private async Task ConnectAsync(DeviceRow row)
+    {
+        WebDeviceRecord? rec = Store.GetAll()
+            .FirstOrDefault(d => string.Equals(d.RouteId, row.RouteId, StringComparison.OrdinalIgnoreCase));
+        if (rec is null)
+        {
+            _banner = "本地找不到 " + row.RouteId + " 的配置";
+            _bannerClass = "status-error";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var (ok, code, msg, _) = await Session.Client.RegisterRouteAsync(
+                rec.RouteId, rec.ProtocolId, rec.TransportKind,
+                rec.Address, rec.Port, rec.Station,
+                rec.SerialPort, rec.BaudRate, rec.MinIoIntervalMs).ConfigureAwait(true);
+
+            if (ok)
+            {
+                _banner = row.Name + " 已连接";
+                _bannerClass = "status-ok";
+                Log.Info("Devices", "已连接 " + rec.RouteId);
+            }
+            else
+            {
+                // 连接失败不动本地配置——设备还在列表里，稍后可重试。
+                // 错误分类只影响提示措辞：连不上要检查现场，配置错要改参数。
+                bool unreachable = RegisterFailure.ShouldKeepConfiguration(code);
+                _banner = row.Name + (unreachable
+                    ? " 连接失败（目标不可达）：" + msg + "。设备保留在列表中，可稍后重试。"
+                    : " 连接失败：[" + code + "] " + msg + "。请点「编辑」检查配置。");
+                _bannerClass = unreachable ? "status-warn" : "status-error";
+                Log.Warn("Devices", "连接 " + rec.RouteId + " 失败: [" + code + "] " + msg);
+            }
+
+            await Session.RefreshRoutesAsync().ConfigureAwait(true);
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>断开单台设备：从宿主注销路由，本地配置保留。</summary>
+    private async Task DisconnectAsync(DeviceRow row)
+    {
+        _busy = true;
+        try
+        {
+            var (ok, code, msg) = await Session.Client.RemoveRouteAsync(row.RouteId).ConfigureAwait(true);
+            if (ok)
+            {
+                _banner = row.Name + " 已断开（配置保留）";
+                _bannerClass = "status-ok";
+                Log.Info("Devices", "已断开 " + row.RouteId);
+            }
+            else
+            {
+                _banner = "断开失败: [" + code + "] " + msg;
+                _bannerClass = "status-error";
+            }
+            await Session.RefreshRoutesAsync().ConfigureAwait(true);
         }
         finally { _busy = false; }
     }
@@ -301,25 +459,74 @@
         string endpoint = serial
             ? (r?.SerialPort ?? rec?.SerialPort ?? "串口")
             : (r is not null ? r.Address + ":" + r.Port : (rec?.Address ?? "") + ":" + (rec?.Port ?? 0));
-        return new DeviceRow(id, name, protocol, transport, station, endpoint, onHost);
+        // 字节序只存在于本地配置：宿主的 RouteDto 不带它（引擎不解释数值语义）
+        string byteOrder = string.IsNullOrWhiteSpace(rec?.ByteOrder) ? "ABCD" : rec!.ByteOrder;
+        return new DeviceRow(id, name, protocol, transport, station, endpoint, onHost, byteOrder);
     }
 
     private async Task OpenAdd()
     {
         ResetForm();
+        _editingRouteId = string.Empty;
         _showForm = true;
+
+        await LoadFormChoicesAsync().ConfigureAwait(true);
+
+        // 新增时给一份默认选择；编辑时不能这么做，会覆盖掉设备原有的协议
+        if (_protocols.Count > 0)
+        {
+            _protocolId = _protocols[0].ProtocolId;
+            _transportKind = _protocols[0].DefaultTransport;
+        }
+        if (_ports.Count > 0 && string.IsNullOrWhiteSpace(_serialPort))
+            _serialPort = _ports[0].PortName;
+    }
+
+    /// <summary>打开编辑表单，用本地已存配置回填。</summary>
+    private async Task OpenEdit(DeviceRow row)
+    {
+        WebDeviceRecord? rec = Store.GetAll()
+            .FirstOrDefault(d => string.Equals(d.RouteId, row.RouteId, StringComparison.OrdinalIgnoreCase));
+        if (rec is null)
+        {
+            // 宿主上有、本地没有配置的路由（别处注册的）无法在此编辑
+            _banner = row.RouteId + " 没有本地配置，无法编辑。可先「断开」再重新添加。";
+            _bannerClass = "status-warn";
+            return;
+        }
+
+        ResetForm();
+        _editingRouteId = rec.RouteId;
+        _routeId        = rec.RouteId;
+        _name           = rec.Name;
+        _protocolId     = rec.ProtocolId;
+        _transportKind  = rec.TransportKind;
+        _address        = rec.Address;
+        _port           = rec.Port;
+        _station        = rec.Station;
+        _serialPort     = rec.SerialPort;
+        _baudRate       = rec.BaudRate > 0 ? rec.BaudRate : 9600;
+        _minIo          = rec.MinIoIntervalMs;
+        _byteOrder      = rec.ByteOrder;
+        _showForm       = true;
+
+        await LoadFormChoicesAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 拉取协议清单与宿主串口清单。
+    /// </summary>
+    /// <remarks>
+    /// Host 离线时两者都会是空列表——这不是错误：添加设备本就不要求宿主在线。
+    /// 但没有协议清单就选不了协议，因此表单会给出提示。
+    /// </remarks>
+    private async Task LoadFormChoicesAsync()
+    {
         _busy = true;
         try
         {
             _protocols = (await Session.Client.QueryProtocolsAsync().ConfigureAwait(true)).ToList();
             _ports = (await Session.Client.QuerySerialPortsAsync().ConfigureAwait(true)).ToList();
-            if (_protocols.Count > 0)
-            {
-                _protocolId = _protocols[0].ProtocolId;
-                _transportKind = _protocols[0].DefaultTransport;
-            }
-            if (_ports.Count > 0 && string.IsNullOrWhiteSpace(_serialPort))
-                _serialPort = _ports[0].PortName;
         }
         catch (Exception ex)
         {
@@ -341,6 +548,8 @@
         _serialPort = string.Empty;
         _baudRate = 9600;
         _minIo = 15;
+        _byteOrder = "ABCD";
+        _editingRouteId = string.Empty;
         _protocols = new List<ProtocolDescriptorDto>();
         _ports = new List<SerialPortDto>();
     }
@@ -351,11 +560,58 @@
         ProtocolDescriptorDto? p = SelectedProtocol;
         if (p is not null)
             _transportKind = p.DefaultTransport;
+        NormalizeForTransport();
+    }
+
+    private void OnTransportChanged(ChangeEventArgs e)
+    {
+        _transportKind = e.Value?.ToString() ?? "Tcp";
+        NormalizeForTransport();
+    }
+
+    /// <summary>
+    /// 切换介质后，把被另一种介质清零的字段补回可用默认值。
+    /// </summary>
+    /// <remarks>
+    /// 保存时按介质取舍字段：串口路由存 Port=0，TCP 路由存 BaudRate=0。
+    /// 于是把一台串口设备改成 TCP 时，回填进表单的 Port 就是 0，
+    /// 不补默认值会直接存出 <c>127.0.0.1:0</c> 这种连不上的端点，
+    /// 而错误信息只说「invalid TCP endpoint」，看不出是端口被清零了。
+    /// </remarks>
+    private void NormalizeForTransport()
+    {
+        if (IsSerial)
+        {
+            if (_baudRate <= 0) _baudRate = 9600;
+            if (_minIo < 0) _minIo = 15;
+        }
+        else if (_port <= 0)
+        {
+            _port = 502;
+        }
     }
 
     private void CloseForm() => _showForm = false;
 
-    private async Task RegisterAsync()
+    // ========================================================================
+    // 保存：只写本地配置，不建连接
+    // ========================================================================
+
+    /// <summary>
+    /// 保存设备配置。<b>不会建立连接。</b>
+    /// </summary>
+    /// <remarks>
+    /// 配置与连接分离，是因为现场的时间顺序就是分离的：
+    /// 设备清单在 PLC 上电前就要录好，网关、网线、供电往往还没到位。
+    /// 把注册塞进保存里，等于「PLC 不通电就没法建设备」。
+    /// 连接由卡片上的「连接」或工具栏「一键连接」显式触发。
+    /// </remarks>
+    private async Task SaveDeviceAsync() => await SaveAsync(thenConnect: false).ConfigureAwait(true);
+
+    /// <summary>保存后立即连接，供 PLC 已经在线时少点一次。</summary>
+    private async Task SaveAndConnectAsync() => await SaveAsync(thenConnect: true).ConfigureAwait(true);
+
+    private async Task SaveAsync(bool thenConnect)
     {
         if (string.IsNullOrWhiteSpace(_routeId))
         {
@@ -363,9 +619,23 @@
             _bannerClass = "status-error";
             return;
         }
+        if (string.IsNullOrWhiteSpace(_protocolId))
+        {
+            _banner = "请选择协议";
+            _bannerClass = "status-error";
+            return;
+        }
         if (!IsSerial && string.IsNullOrWhiteSpace(_address))
         {
             _banner = "TCP 路由必须填写 IP";
+            _bannerClass = "status-error";
+            return;
+        }
+        if (!IsSerial && _port <= 0)
+        {
+            // 存出端口 0 会在连接时报「invalid TCP endpoint」，
+            // 那条信息看不出是端口的问题，必须在这里拦下
+            _banner = "TCP 端口必须大于 0";
             _bannerClass = "status-error";
             return;
         }
@@ -376,50 +646,64 @@
             return;
         }
 
-        _busy = true;
-        try
+        string routeId = _routeId.Trim();
+
+        // 新增时不能撞已有 ID：同一 ID 会直接覆盖掉另一台设备的配置
+        if (!IsEditing &&
+            Store.GetAll().Any(d => string.Equals(d.RouteId, routeId, StringComparison.OrdinalIgnoreCase)))
         {
-            string transport = IsSerial ? "Serial" : "Tcp";
-            int minIo = IsSerial ? Math.Max(0, _minIo) : 0;
-            var (ok, code, msg, id) = await Session.Client.RegisterRouteAsync(
-                _routeId.Trim(),
-                _protocolId,
-                transport,
-                IsSerial ? string.Empty : _address.Trim(),
-                IsSerial ? 0 : _port,
-                NeedsStation ? _station.Trim() : string.Empty,
-                IsSerial ? _serialPort.Trim() : string.Empty,
-                IsSerial ? _baudRate : 0,
-                minIo).ConfigureAwait(true);
-
-            if (!ok)
-            {
-                _banner = "注册失败: [" + code + "] " + msg;
-                _bannerClass = "status-error";
-                Log.Error("Devices", _banner);
-                return;
-            }
-
-            Store.Upsert(new WebDeviceRecord
-            {
-                RouteId = string.IsNullOrWhiteSpace(id) ? _routeId.Trim() : id,
-                Name = string.IsNullOrWhiteSpace(_name) ? _routeId.Trim() : _name.Trim(),
-                ProtocolId = _protocolId,
-                TransportKind = transport,
-                Address = _address.Trim(),
-                Port = _port,
-                Station = _station.Trim(),
-                SerialPort = _serialPort.Trim(),
-                BaudRate = _baudRate,
-                MinIoIntervalMs = minIo,
-            });
-            Log.Info("Devices", "已注册 " + _routeId);
-            _banner = "路由 " + _routeId + " 已注册";
-            _bannerClass = "status-ok";
-            CloseForm();
-            await Session.RefreshRoutesAsync().ConfigureAwait(true);
+            _banner = "路由 ID " + routeId + " 已存在，请换一个";
+            _bannerClass = "status-error";
+            return;
         }
-        finally { _busy = false; }
+
+        string transport = IsSerial ? "Serial" : "Tcp";
+        WebDeviceRecord record = new()
+        {
+            RouteId = routeId,
+            Name = string.IsNullOrWhiteSpace(_name) ? routeId : _name.Trim(),
+            ProtocolId = _protocolId,
+            TransportKind = transport,
+            Address = IsSerial ? string.Empty : _address.Trim(),
+            Port = IsSerial ? 0 : _port,
+            Station = NeedsStation ? _station.Trim() : string.Empty,
+            SerialPort = IsSerial ? _serialPort.Trim() : string.Empty,
+            BaudRate = IsSerial ? _baudRate : 0,
+            MinIoIntervalMs = IsSerial ? Math.Max(0, _minIo) : 0,
+            ByteOrder = _byteOrder,
+        };
+
+        // 编辑一台已连接的设备：宿主拒绝重复 RouteId，改参数必须先注销再注册。
+        // 不重连的话，界面显示的是新参数、实际跑的还是旧参数——这种分叉最难排查。
+        bool wasConnected = Rows.Any(r =>
+            string.Equals(r.RouteId, routeId, StringComparison.OrdinalIgnoreCase) && r.OnHost);
+
+        Store.Upsert(record);
+        Log.Info("Devices", (IsEditing ? "已更新配置 " : "已保存配置 ") + routeId);
+        CloseForm();
+
+        if (IsEditing && wasConnected)
+        {
+            _busy = true;
+            try
+            {
+                await Session.Client.RemoveRouteAsync(routeId).ConfigureAwait(true);
+            }
+            finally { _busy = false; }
+
+            await ConnectAsync(ToRow(null, record, onHost: false)).ConfigureAwait(true);
+            return;
+        }
+
+        if (thenConnect && Session.Online)
+        {
+            await ConnectAsync(ToRow(null, record, onHost: false)).ConfigureAwait(true);
+            return;
+        }
+
+        _banner = "已保存 " + record.Name + "（未连接）。点卡片上的「连接」或工具栏「一键连接」建立连接。";
+        _bannerClass = "status-info";
+        await Session.RefreshRoutesAsync().ConfigureAwait(true);
     }
 
     private void AskRemove(DeviceRow row) => _pendingRemove = row;
@@ -451,9 +735,9 @@
             }
 
             Store.Remove(row.RouteId);
-            _banner = "已注销 " + row.RouteId;
+            _banner = "已删除 " + row.Name;
             _bannerClass = "status-ok";
-            Log.Info("Devices", "注销 " + row.RouteId);
+            Log.Info("Devices", "删除设备 " + row.RouteId);
             if (Session.Online)
                 await Session.RefreshRoutesAsync().ConfigureAwait(true);
         }
@@ -463,5 +747,6 @@
     public void Dispose() => Session.Changed -= OnChanged;
 
     private sealed record DeviceRow(
-        string RouteId, string Name, string ProtocolId, string TransportKind, string Station, string Endpoint, bool OnHost);
+        string RouteId, string Name, string ProtocolId, string TransportKind,
+        string Station, string Endpoint, bool OnHost, string ByteOrder);
 }
