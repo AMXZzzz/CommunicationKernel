@@ -360,11 +360,18 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     border-bottom: 1px solid var(--border);
 }
 .mes-titles { flex: 1; min-width: 0; }
+/* 协议色条。
+   槽位按 ProtocolId 的稳定哈希分配（见 Services/UiHelpers.cs），
+   不与任何具体协议名绑定——新插件自动获得一个固定且各异的颜色。
+   增删槽位时必须同步修改 UiHelpers.PaletteSlots。
+   六种色相在明暗两个主题下都有足够对比度。 */
 .proto-bar { width: 3px; align-self: stretch; border-radius: 2px; min-height: 30px; flex-shrink: 0; }
-.proto-bar.siemens { background: #00a0e3; }
-.proto-bar.panasonic { background: #3b82f6; }
-.proto-bar.modbus { background: #f59e0b; }
-.proto-bar.other { background: #64748b; }
+.proto-bar.p0 { background: #00a0e3; }
+.proto-bar.p1 { background: #f59e0b; }
+.proto-bar.p2 { background: #3b82f6; }
+.proto-bar.p3 { background: #10b981; }
+.proto-bar.p4 { background: #a855f7; }
+.proto-bar.p5 { background: #ef4444; }
 
 .mes-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
 .kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12.5px; }

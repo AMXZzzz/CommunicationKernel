@@ -3,27 +3,35 @@
 // -----------------------------------------------------------------------------
 // 文件: MainWindow.xaml.cs
 // 层级: UI 层 — WPF 主窗口 code-behind
-// 作用: 管理 NavSidebar → Frame 导航；无边框窗口拖动/最大化/关闭；顶栏 Host.App 状态灯。
+// 作用: 管理 NavSidebar → Frame 导航；无边框窗口拖动/最大化/关闭；把会话状态画到顶栏。
 // 调用链:
 //   navSidebar.NavigateRequested → NavigateTo(pageType)
 //     → DI.GetRequiredService(pageType) → MainFrame.Navigate(page)
+//   HostSessionService.Changed → OnSessionChanged → UpdateConnectionStatus
+//
+// 职责边界:
+//   本类只做"把状态画出来"，不管连接生命周期。
+//   健康轮询曾经就写在这里，导致连接节奏、取消逻辑与窗口生命周期绑死，
+//   既无法脱离窗口测试，其他页面想知道 Host 在不在线也只能反向来问窗口。
+//   现已移入 Services/HostSessionService.cs，本类改为订阅它的 Changed 事件。
+//
+//   仍保留 IServiceProvider，但<b>仅</b>用于按 Type 解析导航目标页——
+//   这是运行时才知道类型的场景，构造注入无法表达。
+//   其余依赖一律走构造函数，不要再退回 GetService 取件。
 // -----------------------------------------------------------------------------
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using CommunicationKernel.UI.Wpf.Core.Logging;
 using CommunicationKernel.UI.Wpf.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CommunicationKernel.UI.Wpf;
 
 /// <summary>
-/// 主窗口 code-behind：只负责纯 UI 行为（导航、窗口控制、状态灯更新）。
+/// 主窗口 code-behind：只负责纯 UI 行为（导航、窗口控制、状态灯渲染）。
 /// 业务逻辑均在 ViewModel / Service 层。
 /// </summary>
 public partial class MainWindow : Window {
@@ -32,26 +40,27 @@ public partial class MainWindow : Window {
     // 私有字段
     // ============================================================================
 
-    /// <summary>DI 服务提供者，用于懒解析页面实例。</summary>
+    /// <summary>
+    /// DI 服务提供者。
+    /// 仅用于 <see cref="NavigateTo"/> 按运行时 Type 解析页面实例，不作他用。
+    /// </summary>
     private readonly IServiceProvider _services;
 
-    /// <summary>应用日志记录器，可为 null（此时不记录日志）。</summary>
-    private readonly IAppLogger _log;
-
-    /// <summary>健康轮询任务的取消源，窗口关闭时触发取消。</summary>
-    private readonly CancellationTokenSource _healthCts = new CancellationTokenSource();
+    /// <summary>Host.App 会话状态源，顶栏指示灯的唯一数据来源。</summary>
+    private readonly HostSessionService _session;
 
     // ============================================================================
     // 构造函数
     // ============================================================================
 
-    /// <param name="services">从 App DI 容器注入，用于获取 Page 实例。</param>
-    public MainWindow(IServiceProvider services) {
-        // DI 容器必填，页面均从中解析
+    /// <param name="services">从 App DI 容器注入，用于按 Type 解析 Page 实例。</param>
+    /// <param name="session">会话状态服务，提供在线状态与版本信息。</param>
+    public MainWindow(IServiceProvider services, HostSessionService session) {
+        // DI 容器必填，导航目标页均从中解析
         _services = services ?? throw new ArgumentNullException(nameof(services));
 
-        // 日志器为可选依赖：取不到时降级为不记录，不阻断窗口构造
-        _log = services.GetService<IAppLogger>();
+        // 会话服务必填：顶栏状态灯没有它就没有数据来源
+        _session = session ?? throw new ArgumentNullException(nameof(session));
 
         InitializeComponent();
 
@@ -59,82 +68,53 @@ public partial class MainWindow : Window {
         if (navSidebar != null)
             navSidebar.NavigateRequested += NavigateTo;
 
-        Loaded  += MainWindow_Loaded;
-        Closed  += MainWindow_Closed;
+        // 订阅会话状态变化。注意方向：服务发布、视图订阅，
+        // 服务本身不认识 MainWindow 这个类型。
+        _session.Changed += OnSessionChanged;
+
+        Loaded += MainWindow_Loaded;
+        Closed += MainWindow_Closed;
     }
 
-    /// <summary>窗口关闭：取消健康轮询，避免后台任务在应用退出后继续运行。</summary>
+    /// <summary>窗口关闭：退订会话事件，避免服务持有已关闭窗口的引用。</summary>
     private void MainWindow_Closed(object sender, EventArgs e) {
-        try {
-            // 取消并释放健康检查令牌，后台 Task 随即退出
-            _healthCts.Cancel();
-            _healthCts.Dispose();
-        } catch {
-            // 关闭阶段的异常静默处理，不阻塞退出流程
-        }
+        // 会话服务是单例，生命周期长于窗口；不退订会让窗口无法被回收
+        _session.Changed -= OnSessionChanged;
     }
 
     // ============================================================================
     // 初始化
     // ============================================================================
 
-    /// <summary>窗口加载完成后：导航到默认首页，并启动 Host.App 健康轮询。</summary>
+    /// <summary>窗口加载完成后：导航到默认首页，并按当前会话状态刷新一次顶栏。</summary>
     private void MainWindow_Loaded(object sender, RoutedEventArgs e) {
         // 默认显示 MES 监控页（与 NavSidebar 默认选中项一致）
         NavigateTo(typeof(Views.Pages.MesMonitor.DataMonitorPage));
 
-        // 获取 gRPC 客户端并启动后台健康检查轮询
-        HostClient client = _services.GetService<HostClient>();
-        if (client != null)
-            StartHealthPolling(client);
+        // 主动渲染一次：轮询可能早于窗口加载完成，
+        // 那次 Changed 事件本窗口没赶上，不补这一下顶栏会一直停在初始值
+        OnSessionChanged();
     }
 
     // ============================================================================
-    // 健康检查轮询
+    // 会话状态渲染
     // ============================================================================
 
     /// <summary>
-    /// 在后台循环调用 HealthAsync，每 10 秒一次，结果更新顶栏指示灯。
-    /// 窗口关闭时通过 <see cref="_healthCts"/> 取消，任务随之结束。
+    /// 会话状态变化时刷新顶栏。
     /// </summary>
     /// <remarks>
-    /// 必须可取消：无取消的 while(true) 会在应用退出后继续存活，
-    /// 向已释放的 gRPC 通道发请求、向已关闭的 Dispatcher 排队回调。
+    /// 本方法可能在<b>后台线程</b>上被调用——<see cref="HostSessionService"/>
+    /// 刻意不引用 Dispatcher，切回 UI 线程是订阅方的责任。
+    /// <see cref="UpdateConnectionStatus"/> 内部已经用 InvokeAsync 包好了。
     /// </remarks>
-    private void StartHealthPolling(HostClient client) {
-        CancellationToken ct = _healthCts.Token;
+    private void OnSessionChanged() {
+        // 在线时把版本与路由数一并显示，离线时留空由下游填默认文案
+        string info = _session.Online
+            ? string.Format("v{0}  路由: {1}", _session.HostVersion, _session.RouteCount)
+            : string.Empty;
 
-        // 在线程池后台运行，不阻塞 UI 线程
-        Task.Run(async () => {
-            while (!ct.IsCancellationRequested) {
-                try {
-                    // 发起健康检查，内部已设置 5 秒截止时间
-                    (bool ok, string ver, int routes) = await client.HealthAsync(ct)
-                        .ConfigureAwait(false);
-
-                    // 拼接顶栏状态文字
-                    string info = ok
-                        ? string.Format("v{0}  路由: {1}", ver, routes)
-                        : string.Empty;
-
-                    UpdateConnectionStatus(ok, info);
-                } catch (OperationCanceledException) {
-                    // 窗口关闭触发的取消：正常退出
-                    return;
-                } catch (Exception ex) {
-                    // 网络异常时标记为离线，不中断轮询
-                    _log?.Warn("Host", "健康检查失败: " + ex.Message);
-                    UpdateConnectionStatus(false);
-                }
-
-                // 每 10 秒检查一次，避免频繁 gRPC 调用
-                try {
-                    await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
-                } catch (OperationCanceledException) {
-                    return;
-                }
-            }
-        }, ct);
+        UpdateConnectionStatus(_session.Online, info);
     }
 
     // ============================================================================

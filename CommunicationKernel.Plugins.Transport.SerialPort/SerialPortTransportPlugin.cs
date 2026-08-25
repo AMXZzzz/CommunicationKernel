@@ -36,6 +36,7 @@ using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Communication.Transport.Framing;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Plugin.Loader.Abstractions;

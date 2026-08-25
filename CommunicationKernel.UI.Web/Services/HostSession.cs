@@ -166,13 +166,13 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
     /// 用临时客户端探测指定地址，不切换当前会话。
     /// 设置页「测试连接」必须走这里，否则测的是旧地址。
     /// </summary>
-    public async Task<(bool Ok, string Version, int RouteCount)> ProbeAddressAsync(
+    public async Task<HealthResultDto> ProbeAddressAsync(
         string address,
         CancellationToken ct = default)
     {
         string normalized = (address ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(normalized))
-            return (false, string.Empty, 0);
+            return HealthResultDto.Offline();
 
         HostClient temp = new(normalized, _loggerFactory.CreateLogger<HostClient>());
         try

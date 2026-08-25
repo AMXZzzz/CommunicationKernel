@@ -92,7 +92,12 @@ public partial class App : Application {
         // 4. 启动变量轮询：对 IsPollingEnabled=true 的变量按 ScanRateMs 周期 ReadAsync
         _host.Services.GetRequiredService<VariablePollingService>().Start();
 
-        // 5. 从 DI 取主窗口并显示（必须在 UI 线程）
+        // 5. 启动 Host.App 健康轮询。
+        //    刻意早于窗口创建：窗口构造时就能拿到已知状态，
+        //    且轮询不再依附窗口生命周期（这正是它从 MainWindow 里搬出来的原因）。
+        _host.Services.GetRequiredService<HostSessionService>().Start();
+
+        // 6. 从 DI 取主窗口并显示（必须在 UI 线程）
         MainWindow mainWindow = _host.Services.GetRequiredService<MainWindow>();
         mainWindow.Show();
       } catch (Exception ex) {
@@ -201,6 +206,14 @@ public partial class App : Application {
         // 串口清单来自宿主所在机器（树莓派上是 /dev/ttyUSB0，不是本机 COM1）
         services.AddSingleton<ISerialPortProvider>(sp =>
             new GrpcSerialPortProvider(sp.GetRequiredService<HostClient>()));
+
+        // Host.App 会话状态（在线与否、版本、路由数）。
+        // 健康轮询曾经写在 MainWindow.xaml.cs 里，属于把连接生命周期放进了视图层；
+        // 现独立成服务，与 Web 端的 HostSession 职责一致。
+        services.AddSingleton<HostSessionService>(sp =>
+            new HostSessionService(
+                sp.GetRequiredService<HostClient>(),
+                sp.GetRequiredService<IAppLogger>()));
 
         // =====================================================================
         // 页面级 ViewModel（单例）

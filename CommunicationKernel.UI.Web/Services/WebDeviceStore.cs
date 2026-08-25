@@ -94,42 +94,42 @@ public sealed class WebDeviceStore
 
     private void Load()
     {
-        try
+        // 读写都走 Host.Sdk 的 JsonFileStore：与 WPF 端共用同一套原子落盘实现
+        List<WebDeviceRecord> list = JsonFileStore.Load<WebDeviceRecord>(
+            WebPaths.DevicesFile, out string error);
+
+        if (error is not null)
         {
-            string path = WebPaths.DevicesFile;
-            if (!File.Exists(path)) return;
-            List<WebDeviceRecord>? list = JsonSerializer.Deserialize<List<WebDeviceRecord>>(
-                File.ReadAllText(path), JsonOptions);
-            if (list is null) return;
-            lock (_lock)
+            // 配置损坏不阻止启动，以空配置继续；损坏文件保留在磁盘上便于排查
+            _log.Warn("Devices", "载入 web-devices.json 失败: " + error);
+            return;
+        }
+
+        lock (_lock)
+        {
+            _records.Clear();
+            foreach (WebDeviceRecord r in list)
             {
-                _records.Clear();
-                foreach (WebDeviceRecord r in list)
-                {
-                    if (string.IsNullOrWhiteSpace(r.RouteId)) continue;
-                    _records[r.RouteId] = r;
-                }
+                // 跳过损坏条目：缺 RouteId 无法作为字典键
+                if (string.IsNullOrWhiteSpace(r.RouteId)) continue;
+                _records[r.RouteId] = r;
             }
-            _log.Info("Devices", "已载入 " + _records.Count + " 台设备配置");
         }
-        catch (Exception ex)
-        {
-            _log.Warn("Devices", "载入 web-devices.json 失败: " + ex.Message);
-        }
+
+        _log.Info("Devices", "已载入 " + _records.Count + " 台设备配置");
     }
 
+    /// <summary>
+    /// 写回磁盘。调用方必须已持有 <see cref="_lock"/>。
+    /// </summary>
+    /// <remarks>
+    /// 此前是直接 File.WriteAllText 覆写，写入中途掉电会留下截断的 JSON，
+    /// 下次启动整份设备配置全部丢失。现改为经 JsonFileStore 原子替换。
+    /// </remarks>
     private void Persist_NoLock()
     {
-        try
-        {
-            File.WriteAllText(
-                WebPaths.DevicesFile,
-                JsonSerializer.Serialize(_records.Values.ToList(), JsonOptions));
-        }
-        catch (Exception ex)
-        {
-            _log.Warn("Devices", "写入 web-devices.json 失败: " + ex.Message);
-        }
+        if (!JsonFileStore.Save(WebPaths.DevicesFile, _records.Values.ToList(), out string error))
+            _log.Warn("Devices", "写入 web-devices.json 失败: " + error);
     }
 
     private static WebDeviceRecord Clone(WebDeviceRecord r) => new()

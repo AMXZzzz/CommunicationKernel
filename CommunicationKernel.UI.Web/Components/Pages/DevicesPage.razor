@@ -2,11 +2,14 @@
    文件: Components/Pages/DevicesPage.razor
    层级: UI 层 — 设备管理
    作用: 协议清单来自 QueryProtocols，串口来自 QuerySerialPorts，禁止内置协议名。
+   职责: 本页只负责渲染与交互编排。所有设备操作一律经 IWebDeviceService，
+         不得直接持有 Session.Client 发 gRPC——那会把传输细节焊进视图。
    ----------------------------------------------------------------------------- *@
 
 @page "/devices"
 @inject HostSession Session
 @inject WebDeviceStore Store
+@inject IWebDeviceService Devices
 @inject AppLogStore Log
 @inject ILogger<DevicesPage> Logger
 @implements IDisposable
@@ -363,41 +366,31 @@
     }
 
     /// <summary>连接单台设备：此时才向宿主注册路由并真正建链。</summary>
+    /// <remarks>
+    /// 本方法只做两件事：调服务、把结果翻译成横幅文案。
+    /// 配置查找、注册调用、失败分类与日志都在 <see cref="IWebDeviceService"/> 里。
+    /// </remarks>
     private async Task ConnectAsync(DeviceRow row)
     {
-        WebDeviceRecord? rec = Store.GetAll()
-            .FirstOrDefault(d => string.Equals(d.RouteId, row.RouteId, StringComparison.OrdinalIgnoreCase));
-        if (rec is null)
-        {
-            _banner = "本地找不到 " + row.RouteId + " 的配置";
-            _bannerClass = "status-error";
-            return;
-        }
-
         _busy = true;
         try
         {
-            var (ok, code, msg, _) = await Session.Client.RegisterRouteAsync(
-                rec.RouteId, rec.ProtocolId, rec.TransportKind,
-                rec.Address, rec.Port, rec.Station,
-                rec.SerialPort, rec.BaudRate, rec.MinIoIntervalMs).ConfigureAwait(true);
+            DeviceOperationResult result = await Devices.ConnectAsync(row.RouteId).ConfigureAwait(true);
 
-            if (ok)
+            if (result.Success)
             {
                 _banner = row.Name + " 已连接";
                 _bannerClass = "status-ok";
-                Log.Info("Devices", "已连接 " + rec.RouteId);
             }
             else
             {
-                // 连接失败不动本地配置——设备还在列表里，稍后可重试。
-                // 错误分类只影响提示措辞：连不上要检查现场，配置错要改参数。
-                bool unreachable = RegisterFailure.ShouldKeepConfiguration(code);
+                // 失败性质决定措辞与颜色：连不上要去检查现场，配置错要去改参数。
+                // 两种情况都保留本地配置，设备仍在列表里可重试。
+                bool unreachable = result.FailureKind == RegisterFailureKind.Unreachable;
                 _banner = row.Name + (unreachable
-                    ? " 连接失败（目标不可达）：" + msg + "。设备保留在列表中，可稍后重试。"
-                    : " 连接失败：[" + code + "] " + msg + "。请点「编辑」检查配置。");
+                    ? " 连接失败（目标不可达）：" + result.ErrorMessage + "。设备保留在列表中，可稍后重试。"
+                    : " 连接失败：[" + result.ErrorCode + "] " + result.ErrorMessage + "。请点「编辑」检查配置。");
                 _bannerClass = unreachable ? "status-warn" : "status-error";
-                Log.Warn("Devices", "连接 " + rec.RouteId + " 失败: [" + code + "] " + msg);
             }
 
             await Session.RefreshRoutesAsync().ConfigureAwait(true);
@@ -411,16 +404,15 @@
         _busy = true;
         try
         {
-            var (ok, code, msg) = await Session.Client.RemoveRouteAsync(row.RouteId).ConfigureAwait(true);
-            if (ok)
+            DeviceOperationResult result = await Devices.DisconnectAsync(row.RouteId).ConfigureAwait(true);
+            if (result.Success)
             {
                 _banner = row.Name + " 已断开（配置保留）";
                 _bannerClass = "status-ok";
-                Log.Info("Devices", "已断开 " + row.RouteId);
             }
             else
             {
-                _banner = "断开失败: [" + code + "] " + msg;
+                _banner = "断开失败: [" + result.ErrorCode + "] " + result.ErrorMessage;
                 _bannerClass = "status-error";
             }
             await Session.RefreshRoutesAsync().ConfigureAwait(true);
@@ -525,8 +517,8 @@
         _busy = true;
         try
         {
-            _protocols = (await Session.Client.QueryProtocolsAsync().ConfigureAwait(true)).ToList();
-            _ports = (await Session.Client.QuerySerialPortsAsync().ConfigureAwait(true)).ToList();
+            _protocols = (await Devices.GetProtocolsAsync().ConfigureAwait(true)).ToList();
+            _ports = (await Devices.GetSerialPortsAsync().ConfigureAwait(true)).ToList();
         }
         catch (Exception ex)
         {
@@ -684,10 +676,12 @@
 
         if (IsEditing && wasConnected)
         {
+            // 改了配置且原本连着：先断再连，让新参数生效。
+            // 断开失败也继续尝试连接——多半是宿主已经没有这条路由了。
             _busy = true;
             try
             {
-                await Session.Client.RemoveRouteAsync(routeId).ConfigureAwait(true);
+                await Devices.DisconnectAsync(routeId).ConfigureAwait(true);
             }
             finally { _busy = false; }
 
@@ -721,17 +715,18 @@
         _busy = true;
         try
         {
-            if (Session.Online)
+            // 宿主离线、或宿主本来就没有这条路由，服务都会返回成功——
+            // 这里要的终态是"它不在宿主上"，不是"必须亲手注销一次"。
+            DeviceOperationResult result =
+                await Devices.UnregisterForDeleteAsync(row.RouteId).ConfigureAwait(true);
+
+            if (!result.Success)
             {
-                var (ok, code, msg) = await Session.Client.RemoveRouteAsync(row.RouteId).ConfigureAwait(true);
-                bool gone = ok || string.Equals(code, "RouteNotFound", StringComparison.OrdinalIgnoreCase);
-                if (!gone)
-                {
-                    _banner = "宿主注销失败: [" + code + "] " + msg + "（本地配置保留）";
-                    _bannerClass = "status-warn";
-                    Log.Warn("Devices", _banner);
-                    return;
-                }
+                // 注销失败就不删本地配置，否则界面上设备消失而宿主仍持有连接，
+                // 且该 RouteId 再也无法重新注册
+                _banner = "宿主注销失败: [" + result.ErrorCode + "] " + result.ErrorMessage + "（本地配置保留）";
+                _bannerClass = "status-warn";
+                return;
             }
 
             Store.Remove(row.RouteId);

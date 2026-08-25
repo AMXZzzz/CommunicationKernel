@@ -4,6 +4,7 @@
 // 作用: 持久化变量定义。变量是上位机配置，不属于 Host.App。
 // -----------------------------------------------------------------------------
 
+using CommunicationKernel.Host.Sdk;
 using System.Text.Json;
 
 namespace CommunicationKernel.UI.Web.Services;
@@ -161,35 +162,35 @@ public sealed class WebVariableStore
 
     private void Load()
     {
-        try
+        // 读写都走 Host.Sdk 的 JsonFileStore：与 WPF 端共用同一套原子落盘实现
+        List<WebVariable> list = JsonFileStore.Load<WebVariable>(
+            WebPaths.VariablesFile, out string error);
+
+        if (error is not null)
         {
-            string path = WebPaths.VariablesFile;
-            if (!File.Exists(path)) return;
-            List<WebVariable>? list = JsonSerializer.Deserialize<List<WebVariable>>(
-                File.ReadAllText(path), JsonOptions);
-            if (list is null) return;
-            lock (_lock)
-            {
-                _items.Clear();
-                _items.AddRange(list);
-            }
-            _log.Info("Variables", "已载入 " + _items.Count + " 条变量");
+            _log.Warn("Variables", "载入 web-variables.json 失败: " + error);
+            return;
         }
-        catch (Exception ex)
+
+        lock (_lock)
         {
-            _log.Warn("Variables", "载入 web-variables.json 失败: " + ex.Message);
+            _items.Clear();
+            _items.AddRange(list);
         }
+
+        _log.Info("Variables", "已载入 " + _items.Count + " 条变量");
     }
 
+    /// <summary>
+    /// 写回磁盘。调用方必须已持有 <see cref="_lock"/>。
+    /// </summary>
+    /// <remarks>
+    /// 此前是直接 File.WriteAllText 覆写，写入中途掉电会留下截断的 JSON。
+    /// 现改为经 JsonFileStore 原子替换。
+    /// </remarks>
     private void Persist_NoLock()
     {
-        try
-        {
-            File.WriteAllText(WebPaths.VariablesFile, JsonSerializer.Serialize(_items, JsonOptions));
-        }
-        catch (Exception ex)
-        {
-            _log.Warn("Variables", "写入 web-variables.json 失败: " + ex.Message);
-        }
+        if (!JsonFileStore.Save(WebPaths.VariablesFile, _items, out string error))
+            _log.Warn("Variables", "写入 web-variables.json 失败: " + error);
     }
 }

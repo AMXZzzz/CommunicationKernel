@@ -237,7 +237,13 @@ public sealed class EngineRuntime : IAsyncDisposable {
         if (string.IsNullOrWhiteSpace(command.RouteId))
             return OperationResult<string>.Fail("route_id is required", KernelErrorCode.InvalidArgument);
 
-        // RouteKey 用 '|' 作分隔符，输入字段中不得包含该字符，否则会破坏键唯一性。
+        // 拒绝字段中的 '|'。
+        //
+        // 注意这与键的唯一性无关：RouteKey 是 record struct，相等性逐字段比较，
+        // 无论字段内容含什么字符都不会撞键。此处纯粹是为了诊断可读性——
+        // RouteKey.ToString() 以 '|' 分隔字段输出到日志，字段内混入分隔符会让
+        // 日志无法断字段边界，故在入口一次性挡掉。
+        // 已支持的五种协议其地址形态（40001 / DB1.DBW0 / DT100 等）均不含该字符。
         if (command.ProtocolId?.Contains('|') == true)
             return OperationResult<string>.Fail("protocol_id must not contain '|'", KernelErrorCode.InvalidArgument);
         if (command.Address?.Contains('|') == true)

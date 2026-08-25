@@ -203,7 +203,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <param name="value">要写入的值，类型应与变量 DataType 匹配。</param>
         /// <param name="ct">取消令牌。</param>
         /// <returns>操作结果，Success = true 表示写入成功。</returns>
-        public async Task<OperationResult> WriteAsync(string id, object value, CancellationToken ct)
+        public async Task<HostOperationResult> WriteAsync(string id, object value, CancellationToken ct)
         {
             VariableItem variable = null;
             lock (_lock)
@@ -220,7 +220,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
             // 变量已被删除或 Id 错误
             if (variable == null)
-                return OperationResult.Fail("NOT_FOUND", string.Format("变量 {0} 不存在", id));
+                return HostOperationResult.Fail("NOT_FOUND", string.Format("变量 {0} 不存在", id));
 
             byte[] bytes;
             try
@@ -231,7 +231,7 @@ namespace CommunicationKernel.UI.Wpf.Services
             catch (Exception ex)
             {
                 // 类型转换失败（例如把 "abc" 当 Int16）
-                return OperationResult.Fail("PARSE_ERROR", ex.Message);
+                return HostOperationResult.Fail("PARSE_ERROR", ex.Message);
             }
 
             // 经 gRPC 下发到指定路由的地址
@@ -241,10 +241,10 @@ namespace CommunicationKernel.UI.Wpf.Services
                 bytes,
                 ct).ConfigureAwait(false);
 
-            // 映射 Host.App 的成功/错误码给变量页弹框
-            return result.Success
-                ? OperationResult.Ok()
-                : OperationResult.Fail(result.ErrorCode, result.ErrorMessage);
+            // 直接上抛。WriteResultDto 派生自 HostOperationResult，字段形状完全一致，
+            // 无需再拆开重装——此前那次转换纯属把三个字段搬进另一个同形状对象，
+            // 除了制造错位机会没有任何收益。
+            return result;
         }
 
         // ============================================================================
