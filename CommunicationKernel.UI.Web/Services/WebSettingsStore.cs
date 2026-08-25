@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/WebSettingsStore.cs
 // 层级: UI 层 — Blazor Server
-// 作用: 读写 Host.App 地址；文件格式与 WPF settings.json 对齐。
+// 作用: 读写本端 Host.App 地址。文件在本 exe 旁 config/，不与 WPF 共用。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Host.Sdk;
@@ -9,11 +9,9 @@ using System.Text.Json;
 
 namespace CommunicationKernel.UI.Web.Services;
 
-/// <summary>持久化 Web / WPF 共用的 Host 地址。</summary>
+/// <summary>持久化 Web 自己的 Host 地址。</summary>
 /// <remarks>
-/// 两个上位机共用同一个 <c>%APPDATA%/CommunicationKernel/settings.json</c>：
-/// 现场往往先用 WPF 调通地址，再开 Web 端给操作员用，
-/// 分两份配置会让人在一端改了地址、另一端还连着旧地址而不知道。
+/// 落在本 exe 旁 <c>config/settings.json</c>，与 WPF 的 config 互不影响。
 /// </remarks>
 public sealed class WebSettingsStore
 {
@@ -47,8 +45,7 @@ public sealed class WebSettingsStore
     /// <remarks>
     /// <para>
     /// 用 <see cref="JsonDocument"/> 逐字段取而非反序列化成强类型：
-    /// 这个文件是 WPF 与 Web 共用的，另一端可能写入本端还不认识的字段，
-    /// 强类型反序列化会因未知字段或结构差异整体失败，
+    /// 本文件以后可能加字段，强类型反序列化会因结构差异整体失败，
     /// 连本来能读出来的地址也一并丢掉。
     /// </para>
     /// <para>

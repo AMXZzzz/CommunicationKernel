@@ -98,7 +98,7 @@ Panasonic **没有** `panasonic-mewtocol-tcp` 这个 ID——TCP 与串口共用
 | 设备操作 | `IDeviceService` | `IWebDeviceService`（`Connect` / `Disconnect` / 查询） |
 | 变量读写 | `IVariableService` | `IWebVariableService` |
 | 本地持久化 | `devices.json` / `variables.json` | `web-devices.json` / `web-variables.json` |
-| Host 地址 | 共用 `%APPDATA%/CommunicationKernel/settings.json` 的 `HostAddress` | 同左 |
+| Host 地址 | 本 exe 旁 `config/settings.json`（WPF / Web 各一份） | 同左，互不影响 |
 | 落盘实现 | 设备/变量走 `Host.Sdk.JsonFileStore`（原子替换） | 三个 Store 均走 `JsonFileStore` |
 
 两端**添加设备都先写本地配置**，PLC 未上电也能录。真正建链是 `RegisterRoute`（内部会 `ConnectAsync`，失败则整条路由不入表）：
@@ -121,7 +121,7 @@ Blazor Server 操作员客户端。只持有 `route_id` 与 Host.Sdk DTO，不�
 | 设备管理 | `/devices` | `IWebDeviceService`：`QueryProtocols` / `QuerySerialPorts` / `Connect` / `Disconnect` |
 | 变量配置 | `/variables` | 本地 `web-variables.json` + `IWebVariableService` 的 `Read` / `Write` |
 | 通讯日志 | `/log` | 进程内 `AppLogStore` |
-| 系统设置 | `/settings` | 共用 `settings.json` 的 `HostAddress`；测试连接走临时客户端，不动正在用的会话 |
+| 系统设置 | `/settings` | 本 exe 旁 `config/settings.json` 的 `HostAddress`；测试连接走临时客户端，不动正在用的会话 |
 
 进程内单例 `HostSession`：5 秒健康检查、全站一条状态流、Host 恢复后按 `web-devices.json` 对账。
 Windows 下 `OutputType=WinExe`，双击 exe 不弹控制台；`dotnet run` 时日志仍打到当前终端。
@@ -132,13 +132,12 @@ dotnet run --project CommunicationKernel.UI.Web
 
 默认听 `http://0.0.0.0:64000`：本机浏览器打开 `http://localhost:64000`，
 同一 WiFi 的手机打开 `http://<电脑IP>:64000`（启动日志会打印这条地址）。
-端口可在系统设置页改，写入 `%APPDATA%/CommunicationKernel/web-listen.json`，
+端口可在系统设置页改，写入本 exe 旁 `config/web-listen.json`，
 重启 Web 后生效；不能改成 `5000`（那是 Host.App）。
 Host.App 仍绑本机 `:5000`，不用改。双击 exe 同样生效，不必加 `--urls`。
 
 默认连 `http://localhost:5000`（`appsettings.json` 的 `Host.App:Address`，
-可被已保存的 `settings.json` 覆盖）。只想本机访问时把 Kestrel 地址改成
-`http://localhost:64000`。
+可被本 exe 旁 `config/settings.json` 覆盖）。
 
 ## WPF 上位机（UI.Wpf）
 
@@ -149,7 +148,7 @@ dotnet run --project CommunicationKernel.UI.Wpf
 ```
 
 同样默认连 `http://localhost:5000`，出厂值在本项目 `appsettings.json` 的 `Host.App:Address`。
-系统设置里保存的地址写入 `%APPDATA%/CommunicationKernel/settings.json`，与 Web 共用，优先于 appsettings。
+系统设置里保存的地址写入本 exe 旁 `config/settings.json`，与 Web 互不影响，优先于 appsettings。
 
 ## 运行宿主（形态 B）
 
