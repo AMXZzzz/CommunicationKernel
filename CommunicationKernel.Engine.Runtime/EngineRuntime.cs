@@ -506,6 +506,14 @@ public sealed class EngineRuntime : IAsyncDisposable {
             ct => RunReadWithPolicyAsync(registration, ioAction, ct),
             cancellationToken);
 
+    /// <summary>
+    /// 在运行策略下执行一次读：失败且属于链路类错误时重连并重试一次。
+    /// </summary>
+    /// <remarks>
+    /// 只重试<b>一次</b>。链路问题重连一次不成，多半是设备真的断了，
+    /// 继续重试只会把调用方拖在这里，而上层的轮询本就会在下个周期再来。
+    /// 每次读写的成败都会推送在线状态，这是 UI 状态灯的主要来源。
+    /// </remarks>
     private async Task<OperationResult<byte[]>> RunReadWithPolicyAsync(
         RouteRuntimeRegistration registration,
         Func<CancellationToken, Task<OperationResult<byte[]>>> ioAction,
@@ -556,6 +564,14 @@ public sealed class EngineRuntime : IAsyncDisposable {
             ct => RunWriteWithPolicyAsync(registration, ioAction, ct),
             cancellationToken);
 
+    /// <summary>
+    /// 在运行策略下执行一次写：失败且属于链路类错误时重连并重试一次。
+    /// </summary>
+    /// <remarks>
+    /// 与读路径同构，但重试的含义不同：写是<b>有副作用</b>的操作。
+    /// 这里能安全重试，是因为只有在传输层错误（连接断开、超时）时才重试——
+    /// 那意味着请求多半没送达。协议层返回的业务失败一律不重试。
+    /// </remarks>
     private async Task<OperationResult> RunWriteWithPolicyAsync(
         RouteRuntimeRegistration registration,
         Func<CancellationToken, Task<OperationResult>> ioAction,
@@ -610,6 +626,16 @@ public sealed class EngineRuntime : IAsyncDisposable {
             or KernelErrorCode.TransportUnavailable
             or KernelErrorCode.Timeout;
 
+    /// <summary>
+    /// 尝试重建该路由的物理连接。
+    /// </summary>
+    /// <returns>重连是否成功。</returns>
+    /// <remarks>
+    /// 必须<b>先断后连</b>：半开的 socket 与被占用的串口句柄不释放，
+    /// 后续 Connect 会直接失败（串口报"拒绝访问"），于是这条路由再也起不来。
+    /// 端点取自登记时保存的副本，不重新解析配置——配置可能已被改动，
+    /// 重连要连的是原来那台设备。
+    /// </remarks>
     private async Task<bool> TryReconnectAsync(RouteRuntimeRegistration registration, CancellationToken cancellationToken) {
         try {
             // 先断开旧连接：半开 socket / 被占用的串口句柄必须释放，否则 Connect 会失败
@@ -689,6 +715,13 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 读写互斥与串口帧间隔在 <see cref="RouteEntry"/> 内实现，此处不再持有第二套信号量。
     /// </summary>
     private sealed class RouteRuntimeRegistration {
+        /// <param name="routeId">路由 Id，读写句柄。</param>
+        /// <param name="routeKey">路由键，用于查重与日志。</param>
+        /// <param name="endpoint">连接端点，重连时原样复用。</param>
+        /// <param name="transportId">传输插件 Id。</param>
+        /// <param name="routeEntry">Router 层的路由实体，读写互斥在其内部实现。</param>
+        /// <param name="isSerialRoute">是否串口路由。</param>
+        /// <param name="minIoIntervalMs">最小 I/O 间隔；负值钳到 0。</param>
         public RouteRuntimeRegistration(
             string routeId, RouteKey routeKey, TransportEndpoint endpoint,
             string transportId, RouteEntry routeEntry, bool isSerialRoute, int minIoIntervalMs) {
@@ -703,10 +736,15 @@ public sealed class EngineRuntime : IAsyncDisposable {
             MinIoIntervalMs  = Math.Max(0, minIoIntervalMs);
         }
 
+        /// <summary>路由 Id，UI 侧的读写句柄。</summary>
         public string            RouteId         { get; }
+        /// <summary>路由键，标识一条物理连接；用于查重与诊断日志。</summary>
         public RouteKey          RouteKey        { get; }
+        /// <summary>连接端点。<b>重连时原样复用</b>，不重新解析配置。</summary>
         public TransportEndpoint Endpoint       { get; }
+        /// <summary>传输插件 Id，诊断用。</summary>
         public string            TransportId     { get; }
+        /// <summary>Router 层路由实体，持有传输客户端与协议驱动；读写互斥在其内部实现。</summary>
         public RouteEntry        RouteEntry      { get; }
         /// <summary>装配时是否为串口路由（诊断/扩展用；节流已在 RouteEntry）。</summary>
         public bool              IsSerialRoute   { get; }

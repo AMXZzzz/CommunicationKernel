@@ -157,6 +157,8 @@ public static class ModbusAsciiFraming {
         return (byte)(-(sbyte)sum);
     }
 
+    /// <summary>把两个 ASCII 十六进制字符合成一个字节。</summary>
+    /// <remarks>Modbus ASCII 帧里每个数据字节都编码成两个可打印的十六进制字符。</remarks>
     private static bool TryParseHexByte(byte high, byte low, out byte value) {
         value = 0;
         // 高半字节或低半字节任一非法则整字节失败
@@ -166,6 +168,7 @@ public static class ModbusAsciiFraming {
         return true;
     }
 
+    /// <summary>把单个 ASCII 十六进制字符转成 0-15；大小写均接受。</summary>
     private static bool TryParseHexDigit(byte c, out int value) {
         if (c >= '0' && c <= '9') { value = c - '0';      return true; }
         if (c >= 'A' && c <= 'F') { value = c - 'A' + 10; return true; }

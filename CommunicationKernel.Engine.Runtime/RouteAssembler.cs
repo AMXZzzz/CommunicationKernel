@@ -32,6 +32,10 @@ internal sealed class RouteAssembler {
     private readonly int _defaultSerialMinIoIntervalMs;
     private readonly ILogger _logger;
 
+    /// <param name="transportFactories">可用的传输插件工厂，按 TransportKind 选取。</param>
+    /// <param name="protocolFactories">可用的协议插件工厂，按 ProtocolId 选取。</param>
+    /// <param name="defaultSerialMinIoIntervalMs">串口路由未指定时的默认帧间静默；负值钳到 0。</param>
+    /// <param name="logger">日志记录器。</param>
     internal RouteAssembler(
         IReadOnlyList<ITransportFactory> transportFactories,
         IReadOnlyList<IProtocolDriverFactory> protocolFactories,
@@ -180,6 +184,7 @@ internal sealed class RouteAssembler {
         return endpoint;
     }
 
+    /// <summary>构造装配失败结果的简写，纯粹为了让上面的失败分支保持单行可读。</summary>
     private static OperationResult<RouteAssemblyResult> Fail(string message, KernelErrorCode code)
         => OperationResult<RouteAssemblyResult>.Fail(message, code);
 }

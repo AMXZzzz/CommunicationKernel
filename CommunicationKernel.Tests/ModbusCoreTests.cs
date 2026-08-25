@@ -133,9 +133,9 @@ public class ModbusAddressAreaTests {
         Assert.AreEqual((ushort)100, r.Value.RegisterAddress);
     }
 
-    // 地址前缀覆盖设备级 UnitId
+    // 站号前缀已废弃，必须明确拒绝并保留设备级站号语义
     [TestMethod]
-    public void Parse_UnitPrefix_OverridesDeviceStation() {
+    public void Parse_UnitPrefix_IsRejected() {
         // ============================================================================
         // Arrange / Act
         // ============================================================================
@@ -144,8 +144,29 @@ public class ModbusAddressAreaTests {
         // ============================================================================
         // Assert
         // ============================================================================
-        Assert.IsTrue(r.Success);
-        Assert.AreEqual((byte)3, r.Value.UnitId);
+        Assert.IsFalse(r.Success, "站号前缀必须被拒绝");
+        StringAssert.Contains(r.ErrorMessage, "站号");
+    }
+
+    // 区号前缀含冒号，绝不能被站号拦截规则误伤
+    [TestMethod]
+    public void Parse_NamedPrefix_StillWorksAfterStationPrefixRemoval() {
+        // ============================================================================
+        // Arrange / Act
+        // ============================================================================
+        // 拦截规则只认"冒号前是纯数字"，coil:5 的冒号前是字母，必须照常解析
+        var coil = ModbusAddress.Parse("coil:5", defaultUnitId: 9);
+        var holding = ModbusAddress.Parse("holding:5", defaultUnitId: 9);
+
+        // ============================================================================
+        // Assert
+        // ============================================================================
+        Assert.IsTrue(coil.Success, "coil:5 不是站号前缀，不应被拦截");
+        Assert.AreEqual(ModbusDataArea.Coil, coil.Value.Area);
+        Assert.AreEqual((byte)9, coil.Value.UnitId, "站号仍应取设备级配置");
+
+        Assert.IsTrue(holding.Success, "holding:5 不是站号前缀，不应被拦截");
+        Assert.AreEqual(ModbusDataArea.HoldingRegister, holding.Value.Area);
     }
 
     // 无前缀时吃设备级 UnitId

@@ -285,6 +285,7 @@ public static class ModbusPdu {
         buffer[offset + 1] = (byte)(value & 0xFF);
     }
 
+    /// <summary>构造「帧 + 期望响应长度」失败结果的简写。</summary>
     private static OperationResult<(byte[], ushort)> FailTuple(string message)
         => OperationResult<(byte[], ushort)>.Fail(message, KernelErrorCode.InvalidArgument);
 }

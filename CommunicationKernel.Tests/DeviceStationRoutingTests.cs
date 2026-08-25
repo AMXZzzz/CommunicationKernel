@@ -54,22 +54,41 @@ public class DefaultStationResolutionTests
             "设备级站号应作为默认站号生效，无需在地址中书写 '05:' 前缀");
     }
 
-    // RS-485 一主多从：地址前缀必须能覆盖设备级站号
+    // 站号前缀已废弃：必须明确拒绝，不能静默当成别的地址
     [TestMethod]
-    public void Mewtocol_AddressPrefix_OverridesDeviceStation()
+    public void Mewtocol_AddressPrefix_IsRejected()
     {
         // ============================================================================
         // Arrange / Act
         // ============================================================================
-        // RS-485 一主多从：同一路由下个别变量指向别的站
+        // 曾支持 "07:DT100" 覆盖设备级站号。现已禁止——站号是 RouteKey 的组成部分，
+        // 让地址覆盖它会使同一条路由悄悄读写两个物理站，
+        // 而路由表、状态灯与串口帧间静默全都只认一个。
         var parsed = MewtocolAddress.Parse("07:DT100", defaultStation: 5);
 
         // ============================================================================
         // Assert
         // ============================================================================
+        Assert.IsFalse(parsed.Success,
+            "站号前缀必须被拒绝，而不是静默忽略——静默改变读写目标比报错危险得多");
+        StringAssert.Contains(parsed.ErrorMessage, "站号",
+            "错误信息必须指出问题在站号，并指引到设备配置");
+    }
+
+    // 干净地址在禁用前缀后仍必须正常吃到设备级站号
+    [TestMethod]
+    public void Mewtocol_CleanAddress_StillUsesDeviceStation()
+    {
+        // ============================================================================
+        // Arrange / Act
+        // ============================================================================
+        var parsed = MewtocolAddress.Parse("DT100", defaultStation: 5);
+
+        // ============================================================================
+        // Assert
+        // ============================================================================
         Assert.IsTrue(parsed.Success);
-        Assert.AreEqual((byte)7, parsed.Value.Station,
-            "地址前缀应覆盖设备级站号");
+        Assert.AreEqual((byte)5, parsed.Value.Station);
     }
 
     // Modbus 三种变体共用同一份解析，干净地址吃到设备 UnitId
@@ -89,20 +108,25 @@ public class DefaultStationResolutionTests
         Assert.AreEqual((byte)9, parsed.Value.UnitId);
     }
 
-    // 地址前缀 "3:" 覆盖设备 UnitId 9
+    // 站号前缀已废弃：必须明确拒绝
     [TestMethod]
-    public void Modbus_AddressPrefix_OverridesDeviceUnitId()
+    public void Modbus_AddressPrefix_IsRejected()
     {
         // ============================================================================
         // Arrange / Act
         // ============================================================================
+        // 曾支持 "3:40001" 覆盖设备 UnitId。现已禁止——理由同 Mewtocol，
+        // 另有一条：写串行化与串口帧间静默按 RouteKey 归组，
+        // 地址里换站号等于让这些变量跳出调度组，在共享 RS-485 上直接制造帧冲突。
         var parsed = ModbusSharedAddress.Parse("3:40001", defaultUnitId: 9);
 
         // ============================================================================
         // Assert
         // ============================================================================
-        Assert.IsTrue(parsed.Success);
-        Assert.AreEqual((byte)3, parsed.Value.UnitId);
+        Assert.IsFalse(parsed.Success,
+            "站号前缀必须被拒绝，而不是静默按 40001 解析");
+        StringAssert.Contains(parsed.ErrorMessage, "站号",
+            "错误信息必须指出问题在站号，并指引到设备配置");
     }
 
     // 未传默认站号时保持历史行为（站号 1），既有调用方不受影响

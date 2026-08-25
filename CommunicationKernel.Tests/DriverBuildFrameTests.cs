@@ -172,19 +172,21 @@ public sealed class ModbusRtuDriverFrameTests {
         Assert.AreEqual(0x02, r.Value[5]); // Qty Lo = 2 个寄存器
     }
 
-    // 地址前缀 "3:" 必须写入 SlaveId 字节
+    // 帧里的 SlaveId 只能来自设备级站号，地址无权覆盖
     [TestMethod]
-    public void BuildReadFrame_WithExplicitSlaveId_UsesCorrectId() {
+    public void BuildReadFrame_AddressWithStationPrefix_IsRejected() {
         // ============================================================================
         // Arrange / Act
         // ============================================================================
+        // 曾支持 "3:40001" 把 SlaveId 改写成 3。现已禁止：
+        // 一条路由只对应一个从站，否则该路由的写串行化与帧间静默形同虚设。
         OperationResult<byte[]> r = _driver.BuildReadFrame("3:40001", 2);
 
         // ============================================================================
         // Assert
         // ============================================================================
-        Assert.IsTrue(r.Success);
-        Assert.AreEqual(0x03, r.Value[0]); // SlaveId = 3
+        Assert.IsFalse(r.Success, "带站号前缀的地址必须被拒绝，不能组出帧");
+        StringAssert.Contains(r.ErrorMessage, "站号");
     }
 
     // 1 字节线圈 payload 走 FC05

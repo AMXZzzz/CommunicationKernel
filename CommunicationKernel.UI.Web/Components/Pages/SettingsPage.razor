@@ -48,11 +48,16 @@
 </div>
 
 @code {
+    /// <summary>地址输入框的当前文本；与会话地址分开，未保存前不影响实际连接。</summary>
     private string _address = string.Empty;
+    /// <summary>是否有探测或保存在途，用于禁用按钮防重复提交。</summary>
     private bool _busy;
+    /// <summary>状态行文案，反映最近一次测试或保存的结果。</summary>
     private string _status = "未测试";
+    /// <summary>状态行的 CSS 类，与 _status 配套变化。</summary>
     private string _statusClass = "status-muted";
 
+    /// <summary>用当前会话状态初始化表单与状态行，并订阅后续变化。</summary>
     protected override void OnInitialized()
     {
         _address = Session.Address;
@@ -61,8 +66,16 @@
         Session.Changed += OnChanged;
     }
 
+    /// <summary>会话状态变化时重绘；事件来自后台线程，必须经 InvokeAsync 切回。</summary>
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
 
+    /// <summary>
+    /// 测试输入框里的地址是否可连接，<b>不</b>切换当前会话。
+    /// </summary>
+    /// <remarks>
+    /// 走 <c>ProbeAddressAsync</c> 用临时客户端探测。若改用当前会话去探，
+    /// 测的是旧地址——那正是「测试通过、保存后却连不上」的来源。
+    /// </remarks>
     private async Task TestAsync()
     {
         if (string.IsNullOrWhiteSpace(_address))
@@ -91,6 +104,14 @@
         finally { _busy = false; }
     }
 
+    /// <summary>
+    /// 保存地址并切换会话到新地址。
+    /// </summary>
+    /// <remarks>
+    /// 保存成功但新地址无响应时给 warn 而非 error：地址已经写进磁盘了，
+    /// 报成红色会让操作员以为没存上而反复重试。
+    /// 现场先配地址、后接网线是常见顺序。
+    /// </remarks>
     private async Task SaveAsync()
     {
         if (string.IsNullOrWhiteSpace(_address))
@@ -116,5 +137,6 @@
         finally { _busy = false; }
     }
 
+    /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>
     public void Dispose() => Session.Changed -= OnChanged;
 }

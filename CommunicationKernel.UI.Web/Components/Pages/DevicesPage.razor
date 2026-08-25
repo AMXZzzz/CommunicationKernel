@@ -261,50 +261,122 @@
         _ => "未知",
     };
 
+    /// <summary>是否有操作在途；为 true 时禁用全部按钮，防止重复提交。</summary>
     private bool _busy;
+    /// <summary>是否展开新增/编辑表单浮层。</summary>
     private bool _showForm;
+    /// <summary>顶部横幅文案；为空表示不显示横幅。</summary>
     private string _banner = string.Empty;
+    /// <summary>横幅样式类：status-ok / status-warn / status-error / status-info。</summary>
     private string _bannerClass = "status-info";
+    /// <summary>
+    /// 等待二次确认删除的设备；为 null 表示当前没有待确认的删除。
+    /// </summary>
+    /// <remarks>
+    /// 删设备会连带注销宿主路由并丢掉全部连接参数，不可撤销，因此必须二次确认。
+    /// </remarks>
     private DeviceRow? _pendingRemove;
+    /// <summary>
+    /// 宿主当前加载的协议清单，表单下拉框的<b>唯一</b>来源。
+    /// </summary>
+    /// <remarks>
+    /// 禁止内置协议名清单：那会随插件增减而失真，
+    /// 还会掩盖「宿主一个协议都没加载」这类故障——
+    /// 界面照样列出选项，直到注册时才莫名失败。
+    /// Host 离线时这里是空列表，表单会给出提示。
+    /// </remarks>
     private List<ProtocolDescriptorDto> _protocols = new();
+
+    /// <summary>宿主所在机器上的可用串口。空列表是正常情况（纯以太网现场）。</summary>
     private List<SerialPortDto> _ports = new();
 
+    // ========================================================================
+    // 表单字段
+    // ========================================================================
+
+    /// <summary>表单：设备显示名。</summary>
     private string _name = string.Empty;
+
+    /// <summary>表单：路由 Id，保存后作为读写句柄，编辑时不可改。</summary>
     private string _routeId = string.Empty;
+
+    /// <summary>表单：协议 Id，取值来自 <see cref="_protocols"/>。</summary>
     private string _protocolId = string.Empty;
+
+    /// <summary>表单：传输介质，取值受所选协议的 SupportedTransports 约束。</summary>
     private string _transportKind = "Tcp";
+
+    /// <summary>表单：TCP 地址。</summary>
     private string _address = string.Empty;
+
+    /// <summary>表单：TCP 端口。默认 502 是 Modbus TCP 标准端口。</summary>
     private int _port = 502;
+
+    /// <summary>表单：站号。默认 "1" 是最常见的从站地址。</summary>
     private string _station = "1";
+
+    /// <summary>表单：串口设备名，取值来自 <see cref="_ports"/> 或手工输入。</summary>
     private string _serialPort = string.Empty;
+
+    /// <summary>表单：波特率。9600 是工业串口最保险的默认值。</summary>
     private int _baudRate = 9600;
+
+    /// <summary>表单：最小 I/O 间隔（毫秒），串口共享总线时的帧间静默。</summary>
     private int _minIo = 15;
+
+    /// <summary>表单：字节序。默认 ABCD——协议插件上抛的就是大端。</summary>
     private string _byteOrder = "ABCD";
 
     /// <summary>编辑中的路由 ID；为空表示当前是「新增」。</summary>
     private string _editingRouteId = string.Empty;
 
+    /// <summary>表单处于编辑态还是新增态，决定标题、路由 Id 是否只读、保存行为。</summary>
     private bool IsEditing => !string.IsNullOrEmpty(_editingRouteId);
 
+    // ========================================================================
+    // 由所选协议驱动的表单形态
+    // ========================================================================
+
+    /// <summary>当前所选协议的描述符；未选或宿主离线时为 null。</summary>
     private ProtocolDescriptorDto? SelectedProtocol =>
         _protocols.FirstOrDefault(p => string.Equals(p.ProtocolId, _protocolId, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// 当前协议支持的传输介质，用于渲染介质下拉框。
+    /// </summary>
+    /// <remarks>
+    /// 由协议描述符决定而非写死：Modbus 同时支持 TCP 与串口，
+    /// S7 只有 TCP。列出协议不支持的介质会让操作员配出一个必然注册失败的组合。
+    /// 取不到描述符时回落到 Tcp——总得给一个可选项，否则下拉框是空的。
+    /// </remarks>
     private IReadOnlyList<string> Transports
     {
         get
         {
             ProtocolDescriptorDto? p = SelectedProtocol;
+
             if (p?.SupportedTransports is { Count: > 0 })
                 return p.SupportedTransports;
+
             return new[] { "Tcp" };
         }
     }
 
+    /// <summary>当前是否为串口配置，决定表单显示「串口+波特率」还是「IP+端口」。</summary>
     private bool IsSerial =>
         string.Equals(_transportKind, "Serial", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 当前协议是否需要站号。
+    /// </summary>
+    /// <remarks>
+    /// 用 <c>!= false</c> 而非 <c>== true</c>：描述符取不到（宿主离线）时应当<b>显示</b>站号框，
+    /// 让操作员能把配置填完整。反过来会在离线配置时静默吞掉站号字段，
+    /// 保存下来的配置缺站号，连接时才报错。
+    /// </remarks>
     private bool NeedsStation => SelectedProtocol?.RequiresStation != false;
 
+    /// <summary>设备卡片行，由宿主路由与本地配置合并而来。</summary>
     private IReadOnlyList<DeviceRow> Rows => BuildRows();
 
     /// <summary>当前在线的路由数，供工具栏显示「在线 / 总计」。</summary>
@@ -314,13 +386,22 @@
     /// </remarks>
     private int OnlineCount => Rows.Count(r => Session.IsRouteOnline(r.RouteId));
 
+    /// <summary>订阅会话变化，用于在路由上下线时刷新卡片状态灯。</summary>
     protected override void OnInitialized()
     {
         Session.Changed += OnChanged;
     }
 
+    /// <summary>会话变化时重绘；事件来自后台线程，必须经 InvokeAsync 切回渲染上下文。</summary>
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
 
+    /// <summary>
+    /// 手动刷新设备列表。
+    /// </summary>
+    /// <remarks>
+    /// Host 离线时<b>不</b>报错，改为提示"显示本地配置"——
+    /// 离线浏览已配好的设备是正常用法，不是故障。
+    /// </remarks>
     private async Task RefreshAsync()
     {
         _busy = true;
@@ -420,6 +501,15 @@
         finally { _busy = false; }
     }
 
+    /// <summary>
+    /// 合并宿主路由与本地配置，构造设备卡片行。
+    /// </summary>
+    /// <remarks>
+    /// 两个来源都要：宿主路由是<b>已连接</b>的设备，本地配置里还有<b>已配好但未连接</b>的。
+    /// 只取前者的话，刚添加的设备根本不出现在列表里——
+    /// 而"添加设备只写配置、不建连接"正是本页的既定行为。
+    /// 用 seen 集合而非字典去重，以保持"先宿主、后本地"的稳定顺序。
+    /// </remarks>
     private List<DeviceRow> BuildRows()
     {
         Dictionary<string, WebDeviceRecord> local = Store.GetAll()
@@ -440,6 +530,17 @@
         return rows;
     }
 
+    /// <summary>
+    /// 把一条路由和／或一条本地配置合成一行卡片数据。
+    /// </summary>
+    /// <param name="r">宿主路由；设备未连接时为 null。</param>
+    /// <param name="rec">本地配置；宿主上有、本地却没留底时为 null。</param>
+    /// <param name="onHost">该设备当前是否已在宿主上注册，决定按钮显示「连接」还是「断开」。</param>
+    /// <remarks>
+    /// 两个入参不会同时为 null。取值一律「宿主优先、本地兜底」——
+    /// 宿主返回的是运行中的真实参数，本地的可能是改了还没重连的草稿。
+    /// 例外是显示名与字节序：宿主都不存，只能取自本地。
+    /// </remarks>
     private static DeviceRow ToRow(RouteDto? r, WebDeviceRecord? rec, bool onHost)
     {
         string id = r?.RouteId ?? rec?.RouteId ?? string.Empty;
@@ -456,6 +557,7 @@
         return new DeviceRow(id, name, protocol, transport, station, endpoint, onHost, byteOrder);
     }
 
+    /// <summary>打开新增表单：清空字段、拉取协议与串口清单、给一份默认选择。</summary>
     private async Task OpenAdd()
     {
         ResetForm();
@@ -528,6 +630,11 @@
         finally { _busy = false; }
     }
 
+    /// <summary>把表单字段恢复为新增态的默认值。</summary>
+    /// <remarks>
+    /// 默认值都取工业现场最常见的取值（502 端口、站号 1、9600 波特率），
+    /// 让典型配置只需改地址即可完成。
+    /// </remarks>
     private void ResetForm()
     {
         _name = string.Empty;
@@ -546,6 +653,13 @@
         _ports = new List<SerialPortDto>();
     }
 
+    /// <summary>
+    /// 协议改变时，把介质切到该协议的默认介质并补齐相关字段。
+    /// </summary>
+    /// <remarks>
+    /// 必须跟着切介质：原先选的介质新协议未必支持（S7 没有串口），
+    /// 留着会配出一个必然注册失败的组合，而错误要到点连接时才出现。
+    /// </remarks>
     private void OnProtocolChanged(ChangeEventArgs e)
     {
         _protocolId = e.Value?.ToString() ?? string.Empty;
@@ -555,6 +669,7 @@
         NormalizeForTransport();
     }
 
+    /// <summary>介质改变时补齐被另一种介质清零的字段，见 <see cref="NormalizeForTransport"/>。</summary>
     private void OnTransportChanged(ChangeEventArgs e)
     {
         _transportKind = e.Value?.ToString() ?? "Tcp";
@@ -583,6 +698,13 @@
         }
     }
 
+    /// <summary>
+    /// 关闭表单浮层。
+    /// </summary>
+    /// <remarks>
+    /// 刻意<b>不</b>调 ResetForm：操作员可能是误点了遮罩，
+    /// 重新打开时字段还在就能接着填，清空会让刚录入的一整屏参数白费。
+    /// </remarks>
     private void CloseForm() => _showForm = false;
 
     // ========================================================================
@@ -603,6 +725,14 @@
     /// <summary>保存后立即连接，供 PLC 已经在线时少点一次。</summary>
     private async Task SaveAndConnectAsync() => await SaveAsync(thenConnect: true).ConfigureAwait(true);
 
+    /// <summary>
+    /// 校验并保存设备配置，可选地随后建立连接。
+    /// </summary>
+    /// <param name="thenConnect">保存后是否立即连接。</param>
+    /// <remarks>
+    /// 编辑一台<b>原本连着</b>的设备时会先断后连，让新参数生效——
+    /// 宿主的路由参数在注册时就固定了，不重连改了也不起作用。
+    /// </remarks>
     private async Task SaveAsync(bool thenConnect)
     {
         if (string.IsNullOrWhiteSpace(_routeId))
@@ -700,8 +830,10 @@
         await Session.RefreshRoutesAsync().ConfigureAwait(true);
     }
 
+    /// <summary>请求删除设备，置入待确认状态而非直接删除。</summary>
     private void AskRemove(DeviceRow row) => _pendingRemove = row;
 
+    /// <summary>确认删除。先清空待删引用再执行，避免确认框重复点击触发两次删除。</summary>
     private async Task ConfirmRemoveAsync()
     {
         if (_pendingRemove is null) return;
@@ -710,6 +842,13 @@
         await RemoveAsync(row).ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// 删除设备：先从宿主注销路由，成功后才删本地配置。
+    /// </summary>
+    /// <remarks>
+    /// 顺序不能颠倒。先删本地会让界面上设备消失、而宿主仍持有连接与该 RouteId，
+    /// 此后既看不到它也无法重新注册——只能重启宿主。
+    /// </remarks>
     private async Task RemoveAsync(DeviceRow row)
     {
         _busy = true;
@@ -739,8 +878,18 @@
         finally { _busy = false; }
     }
 
+    /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>
     public void Dispose() => Session.Changed -= OnChanged;
 
+    /// <summary>设备管理页的一行卡片数据。</summary>
+    /// <param name="RouteId">路由 Id，用于查在线状态与所有操作。</param>
+    /// <param name="Name">显示名；无本地配置时回落为 RouteId。</param>
+    /// <param name="ProtocolId">协议 Id，用于色条与卡片副标题。</param>
+    /// <param name="TransportKind">传输介质，决定 Endpoint 的含义。</param>
+    /// <param name="Station">站号；无站号协议为空字符串。</param>
+    /// <param name="Endpoint">端点描述：TCP 为「地址:端口」，串口为设备名。</param>
+    /// <param name="OnHost">是否已在宿主注册，决定显示「连接」还是「断开」。</param>
+    /// <param name="ByteOrder">字节序，仅存在于本地配置。</param>
     private sealed record DeviceRow(
         string RouteId, string Name, string ProtocolId, string TransportKind,
         string Station, string Endpoint, bool OnHost, string ByteOrder);

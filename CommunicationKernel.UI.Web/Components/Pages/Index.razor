@@ -138,16 +138,54 @@
 </div>
 
 @code {
+    /// <summary>是否有刷新在途，用于禁用刷新按钮。</summary>
     private bool _busy;
+
+    /// <summary>
+    /// 当前卡片集合的物化快照。
+    /// </summary>
+    /// <remarks>
+    /// 物化而非每次现算：本页多个统计属性（在线数、离线数、协议数、告警列表）
+    /// 都要遍历它，每个属性各算一遍会在一次渲染里重复构建同一份数据。
+    /// 只在 <see cref="Rebuild"/> 里更新。
+    /// </remarks>
     private List<MesCard> _cards = new();
 
+    /// <summary>整线设备卡片。</summary>
     private IReadOnlyList<MesCard> Cards => _cards;
+
+    /// <summary>当前离线的设备，渲染为告警列表。</summary>
     private IReadOnlyList<MesCard> Alarms => _cards.Where(c => !Session.IsRouteOnline(c.RouteId)).ToList();
+
+    /// <summary>在线设备数。</summary>
     private int OnlineCount => _cards.Count(c => Session.IsRouteOnline(c.RouteId));
+
+    /// <summary>离线设备数（含已配置但从未连接的）。</summary>
     private int OfflineCount => _cards.Count - OnlineCount;
+
+    /// <summary>
+    /// 是否存在告警。
+    /// </summary>
+    /// <remarks>
+    /// 必须同时要求 <c>_cards.Count &gt; 0</c>：一台设备都没配的空系统里，
+    /// 离线数为 0，但若不加这个条件，某些边界下会把「什么都没有」显示成告警。
+    /// </remarks>
     private bool HasAlarm => OfflineCount > 0 && _cards.Count > 0;
+
+    /// <summary>在用协议种数，忽略空值并去重。</summary>
     private int ProtocolCount => _cards.Select(c => c.ProtocolId).Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
+    /// <summary>
+    /// 整线健康状态文案。
+    /// </summary>
+    /// <remarks>
+    /// 判断顺序即优先级，不能调换：宿主离线时所有设备状态都是陈旧的，
+    /// 此刻报「运行」或「告警」都是在拿过期数据下结论。
+    /// 「待命」与「运行」也要分开——一台设备都没配的系统不该显示成正常运行。
+    /// <para>
+    /// 健康状态由真实路由在线率推导，<b>没有</b>任何假的产线启停开关。
+    /// </para>
+    /// </remarks>
     private string HealthText
     {
         get
@@ -159,6 +197,7 @@
         }
     }
 
+    /// <summary>健康状态对应的 CSS 类，判断顺序与 <see cref="HealthText"/> 严格一致。</summary>
     private string HealthClass
     {
         get
@@ -170,26 +209,43 @@
         }
     }
 
+    /// <summary>订阅会话变化并构建首屏卡片。</summary>
     protected override void OnInitialized()
     {
         Session.Changed += OnChanged;
         Rebuild();
     }
 
+    /// <summary>
+    /// 会话变化时重建卡片并重绘。
+    /// </summary>
+    /// <remarks>
+    /// 重建必须放在 <c>InvokeAsync</c> 内部：它读 <c>Session.Routes</c> 与本地配置，
+    /// 在后台线程上直接做会与渲染争用 <see cref="_cards"/>。
+    /// </remarks>
     private void OnChanged() => _ = InvokeAsync(() =>
     {
         Rebuild();
         StateHasChanged();
     });
 
+    /// <summary>
+    /// 手动刷新：先探测宿主，在线才拉路由清单。
+    /// </summary>
+    /// <remarks>
+    /// 离线时跳过拉取，避免叠加一次必然失败的 RPC 和随之而来的错误日志——
+    /// 探测已经给出结论了。
+    /// </remarks>
     private async Task RefreshAsync()
     {
         _busy = true;
         try
         {
             await Session.ProbeAsync().ConfigureAwait(true);
+
             if (Session.Online)
                 await Session.RefreshRoutesAsync().ConfigureAwait(true);
+
             Rebuild();
         }
         finally
@@ -198,20 +254,37 @@
         }
     }
 
+    /// <summary>重建卡片快照。</summary>
     private void Rebuild() => _cards = BuildCards();
 
+    /// <summary>
+    /// 合并宿主路由与本地配置，构造整线卡片。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 两个来源都要，各自覆盖一种情况：宿主路由是<b>正在跑</b>的设备，
+    /// 本地配置里还有<b>已配好但未连接</b>的。只取前者的话，
+    /// 新添加的设备在 MES 页上根本不出现，操作员会以为没添加成功。
+    /// </para>
+    /// <para>
+    /// 顺序即优先级：先放宿主的（<c>onHost: true</c>），
+    /// 本地那轮跳过已存在的键，因此运行中的设备不会被未连接的定义覆盖掉。
+    /// </para>
+    /// </remarks>
     private List<MesCard> BuildCards()
     {
         Dictionary<string, WebDeviceRecord> local = Devices.GetAll()
             .ToDictionary(d => d.RouteId, d => d, StringComparer.OrdinalIgnoreCase);
         Dictionary<string, MesCard> map = new(StringComparer.OrdinalIgnoreCase);
 
+        // 来源一：宿主上真正跑着的路由。配对本地记录以取得显示名
         foreach (RouteDto r in Session.Routes)
         {
             local.TryGetValue(r.RouteId, out WebDeviceRecord? rec);
             map[r.RouteId] = ToCard(r, rec, onHost: true);
         }
 
+        // 来源二：已配置但未连接的设备，补进来显示为离线卡片
         foreach (WebDeviceRecord rec in local.Values)
         {
             if (map.ContainsKey(rec.RouteId)) continue;
@@ -221,21 +294,46 @@
         return map.Values.ToList();
     }
 
+    /// <summary>
+    /// 把一条路由和／或一条本地配置合成一张卡片。
+    /// </summary>
+    /// <param name="r">宿主路由；设备未连接时为 null。</param>
+    /// <param name="rec">本地配置；宿主上有、本地却没留底时为 null。</param>
+    /// <param name="onHost">该设备当前是否已在宿主上注册。</param>
+    /// <remarks>
+    /// 两个入参都可能为 null，但不会同时为 null。取值一律「宿主优先、本地兜底」——
+    /// 宿主返回的是运行中的真实参数，本地的可能是改了还没重连的草稿。
+    /// 唯一例外是显示名：宿主不存名字，只能来自本地。
+    /// </remarks>
     private static MesCard ToCard(RouteDto? r, WebDeviceRecord? rec, bool onHost)
     {
         string id = r?.RouteId ?? rec?.RouteId ?? string.Empty;
+
+        // 名字只有本地才有；没配名字就回落到 RouteId，避免卡片标题空白
         string name = rec is not null && !string.IsNullOrWhiteSpace(rec.Name) ? rec.Name : id;
+
         string protocol = r?.ProtocolId ?? rec?.ProtocolId ?? string.Empty;
         string transport = r?.TransportKind ?? rec?.TransportKind ?? string.Empty;
+
+        // 串口与 TCP 的「端点」是完全不同的东西，不能用同一套字段拼
         bool serial = string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase);
         string endpoint = serial
             ? (r?.SerialPort ?? rec?.SerialPort ?? "串口")
             : (r is not null ? r.Address + ":" + r.Port : (rec?.Address ?? "") + ":" + (rec?.Port ?? 0));
+
         return new MesCard(id, name, protocol, transport, endpoint, onHost);
     }
 
+    /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>
     public void Dispose() => Session.Changed -= OnChanged;
 
+    /// <summary>MES 监控页的一张设备卡片。</summary>
+    /// <param name="RouteId">路由 Id，用于查在线状态。</param>
+    /// <param name="Name">显示名；无本地配置时回落为 RouteId。</param>
+    /// <param name="ProtocolId">协议 Id，用于色条与协议种数统计。</param>
+    /// <param name="TransportKind">传输介质，决定 <paramref name="Endpoint"/> 的含义。</param>
+    /// <param name="Endpoint">端点描述：TCP 为「地址:端口」，串口为设备名。</param>
+    /// <param name="OnHost">是否已在宿主注册；false 表示已配置但未连接。</param>
     private sealed record MesCard(
         string RouteId,
         string Name,

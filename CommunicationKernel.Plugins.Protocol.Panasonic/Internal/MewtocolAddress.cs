@@ -93,19 +93,21 @@ internal static class MewtocolAddress
 
     private static OperationResult<MewtocolAddressInfo> DoParse(string raw, byte defaultStation)
     {
-        // 缺省取设备级站号；下方的 "NN:" 前缀分支可覆盖
+        // 站号一律取设备级配置，地址无权覆盖
         byte station = defaultStation;
 
-        // 分支1：站号前缀 "01:DT100" 或 "05:R10A"（可选，仅多站链路需要）
+        // ── 拒绝已废弃的站号前缀 "NN:" ──
+        // 站号是 RouteKey 的组成部分，一条路由标识的就是「某台设备的某个站」。
+        // 允许地址覆盖会让同一条路由悄悄读写两个物理站，
+        // 而路由表、状态灯与串口帧间静默全都只认一个——在共享 RS-485 上直接制造帧冲突。
+        // 明确拒绝而非静默忽略：静默改变读写目标比报错危险得多。
         int colonIdx = raw.IndexOf(':');
-        if (colonIdx > 0 && colonIdx <= 2)
+        if (colonIdx > 0 && colonIdx <= 2 && byte.TryParse(raw[..colonIdx], out _))
         {
-            // 冒号前 1-2 位数字才认定为站号，排除区号里可能出现的冒号
-            if (byte.TryParse(raw[..colonIdx], out byte parsedStation) && parsedStation is >= 1 and <= 99)
-            {
-                station = parsedStation;
-                raw     = raw[(colonIdx + 1)..];
-            }
+            return OperationResult<MewtocolAddressInfo>.Fail(
+                $"地址 '{raw}' 不接受站号前缀。站号是设备属性，请在设备配置的「站号」里填写；" +
+                "多站链路请为每个站各建一条路由。",
+                KernelErrorCode.InvalidArgument);
         }
 
         // 区号匹配不区分大小写
@@ -166,11 +168,14 @@ internal static class MewtocolAddress
         return Ok(station, MewtocolArea.R, ParseInt(body), -1, true);
     }
 
+    /// <summary>构造地址解析成功结果的简写。</summary>
     private static OperationResult<MewtocolAddressInfo> Ok(
         byte station, MewtocolArea area, int index, int bitIndex, bool isBit)
         => OperationResult<MewtocolAddressInfo>.Ok(
             new MewtocolAddressInfo(station, area, index, bitIndex, isBit));
 
+    /// <summary>把地址里的十进制数字段转成整数；非法输入返回 -1 交由调用方拒绝。</summary>
+    /// <remarks>用 InvariantCulture：地址是协议文本，不受运行机器的区域设置影响。</remarks>
     private static int ParseInt(string s)
     {
         // 非法或负数无法作为 MEWTOCOL 字号/触点号

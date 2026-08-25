@@ -240,68 +240,182 @@
         _ => "",
     };
 
+    // ========================================================================
+    // 页面状态
+    // ========================================================================
+
+    /// <summary>是否有 I/O 在途；为 true 时禁用所有触发 I/O 的按钮，防止重复提交。</summary>
     private bool _busy;
+
+    /// <summary>是否展开新增/编辑表单浮层。</summary>
     private bool _showForm;
+
+    /// <summary>顶部横幅文案；为空表示不显示横幅。</summary>
     private string _banner = string.Empty;
+
+    /// <summary>横幅样式类：status-ok / status-warn / status-error / status-info。</summary>
     private string _bannerClass = "status-info";
+
+    /// <summary>左侧设备筛选选中的路由 Id；空字符串表示「全部」。</summary>
     private string _filterRoute = string.Empty;
+
+    /// <summary>导出面板里待复制的 JSON 文本。</summary>
     private string _exportJson = string.Empty;
+
+    /// <summary>
+    /// 等待二次确认删除的变量；为 null 表示当前没有待确认的删除。
+    /// </summary>
+    /// <remarks>
+    /// 删除变量不可撤销，且变量表可能是现场花很久整理出来的，
+    /// 因此不直接删，先置入本字段由确认框接管。
+    /// </remarks>
     private WebVariable? _pendingRemove;
 
+    // ========================================================================
+    // 表单字段
+    // ========================================================================
+
+    /// <summary>表单：变量显示名。</summary>
     private string _name = string.Empty;
+
+    /// <summary>表单：所属路由 Id。</summary>
     private string _routeId = string.Empty;
+
+    /// <summary>表单：设备地址，原样下发给协议插件，本页不解析其格式。</summary>
     private string _address = string.Empty;
+
+    /// <summary>表单：数据类型，取值见 <c>DataTypes</c>。</summary>
     private string _dataType = "Int16";
+
+    /// <summary>表单：读取字节数。定长类型由 <c>OnTypeChanged</c> 自动带出。</summary>
     private int _length = 2;
+
+    /// <summary>表单：轮询扫描周期（毫秒）。</summary>
     private int _scan = 1000;
 
+    // ========================================================================
+    // 派生视图数据
+    // ========================================================================
+
+    /// <summary>
+    /// 当前应显示的变量行：未选筛选时为全部，否则按路由 Id 过滤。
+    /// </summary>
     private IReadOnlyList<WebVariable> Visible =>
         string.IsNullOrEmpty(_filterRoute)
             ? Store.GetAll()
             : Store.GetAll().Where(v => string.Equals(v.RouteId, _filterRoute, StringComparison.OrdinalIgnoreCase)).ToList();
 
+    /// <summary>左侧设备列表与表单下拉框共用的路由候选项。</summary>
     private IReadOnlyList<RouteChoice> RouteChoices => BuildRouteChoices();
 
+    // ========================================================================
+    // 生命周期
+    // ========================================================================
+
+    /// <summary>
+    /// 订阅会话与变量表的变更通知，并给表单选一个默认路由。
+    /// </summary>
+    /// <remarks>
+    /// 两个事件都要订阅：<c>Session.Changed</c> 带来路由上下线，
+    /// <c>Store.Changed</c> 带来轮询回填的读值。少订一个就会出现
+    /// 「数据变了但界面不动」——而且只在特定操作路径下复现，很难查。
+    /// 退订在 <see cref="Dispose"/> 里，漏退会让已销毁的组件继续收事件。
+    /// </remarks>
     protected override void OnInitialized()
     {
         Session.Changed += OnChanged;
         Store.Changed += OnChanged;
+
+        // 表单默认选中第一条路由，省去操作员每次新增都要手动选
         if (RouteChoices.Count > 0)
             _routeId = RouteChoices[0].RouteId;
     }
 
+    /// <summary>
+    /// 数据源变更时请求重绘。
+    /// </summary>
+    /// <remarks>
+    /// 事件可能在<b>非渲染线程</b>上触发（轮询器在后台线程回填读值），
+    /// 因此必须经 <c>InvokeAsync</c> 切回 Blazor 的同步上下文，
+    /// 直接调 <c>StateHasChanged</c> 会抛线程异常。
+    /// 弃元赋值是有意的：这里不需要等待重绘完成。
+    /// </remarks>
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
 
+    /// <summary>
+    /// 汇总三个来源，构造路由候选列表。
+    /// </summary>
+    /// <remarks>
+    /// <para>三个来源缺一不可，各自覆盖一种现实情况：</para>
+    /// <list type="number">
+    ///   <item><b>宿主已注册的路由</b>——当前真正能读写的设备。</item>
+    ///   <item><b>本地设备配置</b>——已配好但还没连接的设备。变量要能<b>提前</b>配好，
+    ///         不能等设备上线才允许录入。这一步同时用本地的显示名覆盖宿主给的
+    ///         裸 RouteId，让下拉框显示「一号线主控」而不是「PLC-1」。</item>
+    ///   <item><b>变量表里出现过的路由</b>——设备配置被删了但变量还在，
+    ///         若不补进来，这些变量在左侧列表里会归属到一个不存在的分组而彻底看不见。</item>
+    /// </list>
+    /// <para>
+    /// 用字典按 RouteId 去重，后写入者覆盖前者，所以顺序即优先级：
+    /// 本地名字优先于宿主的裸 Id，而孤儿变量只在前两者都没有时才补位。
+    /// 比较器用 <c>OrdinalIgnoreCase</c>：RouteId 在不同来源可能大小写不一致，
+    /// 但显然应当算同一条路由。
+    /// </para>
+    /// </remarks>
     private List<RouteChoice> BuildRouteChoices()
     {
         Dictionary<string, RouteChoice> map = new(StringComparer.OrdinalIgnoreCase);
+
+        // 来源一：宿主当前登记的路由，此时只有裸 RouteId 可用作显示名
         foreach (RouteDto r in Session.Routes)
             map[r.RouteId] = new RouteChoice(r.RouteId, r.RouteId, r.ProtocolId);
+
+        // 来源二：本地设备配置，提供人类可读的名字；未连接的设备也在这里
         foreach (WebDeviceRecord d in Devices.GetAll())
         {
+            // 名字留空的设备回落到 RouteId，避免下拉框出现空白项
             string name = string.IsNullOrWhiteSpace(d.Name) ? d.RouteId : d.Name;
+
             if (map.TryGetValue(d.RouteId, out RouteChoice? existing) && existing is not null)
+                // 宿主已有该路由：只替换显示名，保留宿主给的 ProtocolId（那是权威值）
                 map[d.RouteId] = existing with { Name = name };
             else
+                // 设备已配置但未连接，整条都取自本地
                 map[d.RouteId] = new RouteChoice(d.RouteId, name, d.ProtocolId);
         }
+
+        // 来源三：孤儿变量所引用的路由（设备配置已删但变量还在）
         foreach (WebVariable v in Store.GetAll())
         {
             if (map.ContainsKey(v.RouteId)) continue;
+
+            // 协议未知，留空字符串；至少让这些变量在左侧有个可见的归属
             map[v.RouteId] = new RouteChoice(v.RouteId, v.RouteId, string.Empty);
         }
+
         return map.Values.ToList();
     }
+
+    // ========================================================================
+    // 新增 / 编辑
+    // ========================================================================
 
     /// <summary>正在编辑的变量 Id；为空表示当前是「新增」。</summary>
     private string _editingId = string.Empty;
 
+    /// <summary>表单当前处于编辑态还是新增态，决定标题文案与保存行为。</summary>
     private bool IsEditing => !string.IsNullOrEmpty(_editingId);
 
+    /// <summary>打开新增表单，字段清空为默认值。</summary>
+    /// <remarks>
+    /// 只在 <c>_routeId</c> 为空时才补默认路由——操作员刚在左侧点了某台设备，
+    /// 那个选择应当被继承下来，而不是被重置回第一条。
+    /// </remarks>
     private void OpenAdd()
     {
         ResetForm();
         _showForm = true;
+
         if (RouteChoices.Count > 0 && string.IsNullOrEmpty(_routeId))
             _routeId = RouteChoices[0].RouteId;
     }
@@ -319,6 +433,11 @@
         _showForm  = true;
     }
 
+    /// <summary>把表单字段恢复为新增态的默认值。</summary>
+    /// <remarks>
+    /// 刻意<b>不</b>重置 <c>_routeId</c>：连续录入同一台设备的多个变量是常态，
+    /// 每次都清空会逼操作员反复重选。
+    /// </remarks>
     private void ResetForm()
     {
         _editingId = string.Empty;
@@ -329,29 +448,46 @@
         _scan      = 1000;
     }
 
-    private void CloseForm()
-    {
+    /// <summary>关闭表单浮层并清空字段，避免下次打开时残留上一次的输入。</summary>
+    private void CloseForm() {
         _showForm = false;
         ResetForm();
     }
 
+    /// <summary>
+    /// 数据类型改变时自动带出该类型的标准字节数。
+    /// </summary>
+    /// <remarks>
+    /// String 与 Hex 是变长的，<c>DefaultLength</c> 对它们返回一个起始值，
+    /// 操作员仍需按现场那段区域的实际大小手工调整。
+    /// </remarks>
     private void OnTypeChanged() => _length = ValueCodec.DefaultLength(_dataType);
 
     /// <summary>取某条变量所属设备的字节序；设备无配置时按大端。</summary>
     /// <remarks>
     /// 字节序是设备属性：同一台 PLC 的所有变量共用一套排列。
     /// 挂到变量上会让操作员逐条去改，还容易改出彼此矛盾的配置。
+    /// <para>
+    /// 查询委托给服务，页面不自己拼装——读写路径已全部走服务，
+    /// 这里只剩表单提示文案需要它。
+    /// </para>
     /// </remarks>
-    // 字节序查询委托给服务，页面不再自己拼装——读写路径已经全部走服务了，
-    // 这里只剩表单提示文案需要它
     private ByteOrder OrderOf(string routeId) =>
         Variables.OrderOf(routeId);
 
     /// <summary>表单里当前所选路由的字节序，用于提示文案。</summary>
     private string CurrentByteOrder => OrderOf(_routeId).ToString();
 
+    /// <summary>
+    /// 校验并保存表单，新增与编辑共用。
+    /// </summary>
+    /// <remarks>
+    /// 变量只写本地，不触碰宿主——它是上位机的配置，不属于 Host.App。
+    /// 因此本方法是同步的，也不要求 Host 在线。
+    /// </remarks>
     private void Save()
     {
+        // 三个必填项：没有名字无法辨认，没有路由和地址则根本无法读写
         if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_routeId) || string.IsNullOrWhiteSpace(_address))
         {
             _banner = "名称、路由、地址为必填";
@@ -362,6 +498,8 @@
         if (IsEditing)
         {
             WebVariable? existing = Store.GetAll().FirstOrDefault(v => v.Id == _editingId);
+
+            // 表单打开期间该变量可能已被另一处删除（同一浏览器多标签页）
             if (existing is null)
             {
                 _banner = "该变量已被删除，无法保存";
@@ -370,10 +508,14 @@
                 return;
             }
 
+            // Trim：末尾空格会让 "PLC1" 与 "PLC1 " 被当成两条不同路由
             existing.Name       = _name.Trim();
             existing.RouteId    = _routeId.Trim();
             existing.Address    = _address.Trim();
             existing.DataType   = _dataType;
+
+            // 下限保护：长度 0 会被部分协议判为非法请求；
+            // 扫描周期过小会让轮询挤占整条链路，200ms 是经验下限
             existing.Length     = Math.Max(1, _length);
             existing.ScanRateMs = Math.Max(200, _scan);
 
@@ -404,12 +546,26 @@
         CloseForm();
     }
 
+    /// <summary>
+    /// 切换某条变量的轮询开关，立即落盘。
+    /// </summary>
+    /// <remarks>
+    /// 轮询状态要持久化：现场重启浏览器后，操作员期望原先在轮询的变量继续在轮。
+    /// <c>e.Value</c> 是装箱的 object，用 <c>is true</c> 而非强转——
+    /// 复选框在某些浏览器上可能回传 null。
+    /// </remarks>
     private void TogglePoll(WebVariable row, ChangeEventArgs e)
     {
         row.Polling = e.Value is true;
         Store.Update(row);
     }
 
+    /// <summary>读取单条变量，结果直接回填到表格的「当前值」列。</summary>
+    /// <remarks>
+    /// 失败时把<b>错误码</b>而非错误描述填进值列，并标红：
+    /// 表格那一格很窄，塞完整描述会被截断成看不懂的半句；
+    /// 错误码短且可检索，完整描述在通讯日志里。
+    /// </remarks>
     private async Task ReadAsync(WebVariable row)
     {
         _busy = true;
@@ -425,6 +581,11 @@
         finally { _busy = false; }
     }
 
+    /// <summary>把行内输入框的文本写入 PLC。</summary>
+    /// <remarks>
+    /// 写入成功要记日志：这是<b>会改变现场设备状态</b>的操作，
+    /// 事后追查"谁在什么时候改了哪个值"全靠这条记录。读取则不记，否则日志会被轮询淹没。
+    /// </remarks>
     private async Task WriteAsync(WebVariable row)
     {
         _busy = true;
@@ -447,6 +608,12 @@
         finally { _busy = false; }
     }
 
+    /// <summary>批量读取当前可见的全部变量。</summary>
+    /// <remarks>
+    /// 刻意<b>串行</b>：同一路由的并发读会被 Router 合并或排队，并发发起没有收益；
+    /// 而串口设备还有帧间静默要求，并发只会制造超时。
+    /// 单条失败不中断整批——现场常有个别地址配错，不该因此读不到其余变量。
+    /// </remarks>
     private async Task ReadVisibleAsync()
     {
         _busy = true;
@@ -471,8 +638,23 @@
         finally { _busy = false; }
     }
 
+    /// <summary>把变量表导出为 JSON 文本，显示在浮层里供复制。</summary>
     private void Export() => _exportJson = Store.ExportJson();
 
+    /// <summary>
+    /// 从上传的 JSON 文件导入变量，<b>追加</b>而非替换现有表。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>replace: false</c> 是有意的：导入多半是把另一条产线的变量表并进来，
+    /// 直接覆盖会静默清空现场好不容易配好的表，且无法撤销。
+    /// Id 冲突由 <c>ImportJson</c> 内部重新分配。
+    /// </para>
+    /// <para>
+    /// 512 KB 上限防止超大文件把 Blazor Server 的线路撑爆——
+    /// 变量表是人工维护的配置，正常规模远小于此。
+    /// </para>
+    /// </remarks>
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {
         try
@@ -480,31 +662,54 @@
             await using Stream stream = e.File.OpenReadStream(512 * 1024);
             using StreamReader reader = new(stream);
             string json = await reader.ReadToEndAsync().ConfigureAwait(true);
+
             int n = Store.ImportJson(json, replace: false);
             _banner = "已导入 " + n + " 条";
             _bannerClass = "status-ok";
         }
         catch (Exception ex)
         {
+            // 文件损坏、超限、JSON 语法错误对操作员是同一种处置：换个文件重试
             _banner = "导入失败: " + ex.Message;
             _bannerClass = "status-error";
         }
     }
 
+    /// <summary>请求删除某条变量，置入待确认状态而非直接删除。</summary>
     private void AskRemove(WebVariable row) => _pendingRemove = row;
 
+    /// <summary>确认删除待删变量。</summary>
+    /// <remarks>
+    /// 判空不是多余的：确认框弹出期间该变量可能已被另一处删除，
+    /// 此时静默返回即可——目标状态（它不存在了）已经达成。
+    /// </remarks>
     private void ConfirmRemove()
     {
         if (_pendingRemove is null) return;
+
         Store.Remove(_pendingRemove.Id);
         _pendingRemove = null;
     }
 
+    /// <summary>
+    /// 退订两个数据源的事件。
+    /// </summary>
+    /// <remarks>
+    /// <c>Session</c> 与 <c>Store</c> 都是进程内单例，生命周期远长于本组件。
+    /// 漏退订会让已销毁的组件继续收到事件并调 <c>StateHasChanged</c>，
+    /// 表现为控制台报错加内存泄漏——每次页面切换泄漏一个组件实例。
+    /// </remarks>
     public void Dispose()
     {
         Session.Changed -= OnChanged;
         Store.Changed -= OnChanged;
     }
 
+    /// <summary>
+    /// 路由候选项：左侧设备列表与表单下拉框共用。
+    /// </summary>
+    /// <param name="RouteId">路由 Id，作为去重键与提交值。</param>
+    /// <param name="Name">显示名；无本地配置时回落为 RouteId。</param>
+    /// <param name="ProtocolId">协议 Id，仅用于左侧列表的副标题；来源不明时为空。</param>
     private sealed record RouteChoice(string RouteId, string Name, string ProtocolId);
 }

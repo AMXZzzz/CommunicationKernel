@@ -342,6 +342,11 @@ internal static class S7Frame {
     // -------------------------------------------------------------------------
     private static int ParseOffset(string s) => int.Parse(s);
 
+    /// <summary>组 S7Comm 头（10 字节）。</summary>
+    /// <param name="jobType">报文类型：0x01 Job / 0x03 Ack-Data。</param>
+    /// <param name="paramLen">参数区长度。</param>
+    /// <param name="dataLen">数据区长度。</param>
+    /// <remarks>PDU 引用号固定填 0：本驱动是请求-响应同步模型，不需要靠它配对。</remarks>
     private static byte[] BuildS7Header(byte jobType, ushort paramLen, ushort dataLen) {
         return new byte[] {
             0x32,               // Protocol ID
@@ -353,6 +358,8 @@ internal static class S7Frame {
         };
     }
 
+    /// <summary>用 TPKT 头（RFC 1006，4 字节）包裹载荷。</summary>
+    /// <remarks>长度字段是<b>含头</b>的总长，且为大端——这是 TCP 上分帧的唯一依据。</remarks>
     private static byte[] WrapTpkt(byte[] payload) {
         // TPKT：[0]=0x03 [1]=0x00 [2-3]=总长（含头本身）
         ushort totalLen = (ushort)(4 + payload.Length);
@@ -365,6 +372,8 @@ internal static class S7Frame {
         return frame;
     }
 
+    /// <summary>给 S7 载荷加上 COTP 数据传输头，再套 TPKT。</summary>
+    /// <remarks>握手完成后的所有业务报文都走这条路径：TPKT → COTP DT → S7Comm。</remarks>
     private static byte[] WrapTpktWithCotpDt(byte[] s7Payload) {
         // COTP DT Data Header: LI=2, PDU-Type=0xF0, Last=0x80
         byte[] cotpDt = new byte[] { 0x02, 0xF0, 0x80 };
@@ -372,6 +381,8 @@ internal static class S7Frame {
         return WrapTpkt(combined);
     }
 
+    /// <summary>按顺序拼接多个字节段。</summary>
+    /// <remarks>一次性算出总长再拷贝，避免逐段 Concat 产生多次中间分配。</remarks>
     private static byte[] Combine(params byte[][] arrays) {
         int totalLen = 0;
         // 先累加总长再一次分配，避免多次扩容

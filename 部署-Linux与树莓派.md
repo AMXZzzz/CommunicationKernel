@@ -9,7 +9,20 @@
 | 进程数 | 1（上位机自己直连 PLC） | 2（上位机 + Host.App） |
 | 通讯方式 | 进程内直接调用 | gRPC over HTTP/2 |
 | 插件目录 | 不需要 | 需要 |
+| 协议解析发生在 | 上位机进程内 | **Host.App 所在机器** |
 | 典型场景 | 树莓派上跑控制程序直连 PLC | 现场网关 + 远端上位机 |
+
+### 怎么选
+
+用一句话判断：**跑界面的那台机器，是不是就是接 PLC 那台？**
+
+- **是** → 形态 A。树莓派上跑一个控制程序直连 PLC，不需要 Host.App，也不需要 gRPC。
+- **不是** → 形态 B。最典型的就是「树莓派在车间接 PLC，人在办公室用电脑看」——
+  这种情况请直接跳到 **[实战走查：树莓派当现场网关，远端电脑当上位机](#实战走查树莓派当现场网关远端电脑当上位机)**，
+  那一节是从发布到验证的完整六步，把散在下面各章的配置串成了一条线。
+
+多台上位机同时访问同一批 PLC 时只能用形态 B——
+形态 A 里每个进程各自持有串口/socket，两个进程会直接抢同一个句柄。
 
 ---
 
@@ -100,6 +113,145 @@ publish/linux-arm64/
 不抛任何异常**，表现为「协议列表是空的」。CI 有专门的作业守这条。
 
 ---
+---
+
+## 实战走查：树莓派当现场网关，远端电脑当上位机
+
+这是形态 B 最常见的落法，也是唯一一种「PLC 在车间、人在办公室」的做法。
+先看清两边各跑什么：
+
+```
+   车间（树莓派）                          办公室 / 中控室（Windows PC）
+┌───────────────────────────┐          ┌──────────────────────────────┐
+│ Host.App                  │          │ UI.Wpf  或  UI.Web           │
+│  ├─ plugins/ 协议与传输   │◄────────►│  └─ Host.Sdk (HostClient)    │
+│  └─ Kestrel :5000 (h2c)   │  gRPC    │                              │
+└──────────┬────────────────┘  HTTP/2  └──────────────────────────────┘
+           │ 串口 / 以太网
+      ┌────▼────┐
+      │  PLC 群 │
+      └─────────┘
+```
+
+**分工要点：树莓派离 PLC 近，PC 上不需要任何插件。** 协议解析全部发生在树莓派上，
+PC 侧只有 `Host.Sdk`，收发的是 `route_id` 和字节，不认识任何协议。
+这也意味着 PC 换成 Mac、平板或另一台树莓派都不影响——它们都只是 gRPC 客户端。
+
+### 第 1 步：树莓派侧发布并部署
+
+```bash
+dotnet publish CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj \
+  -c Release -r linux-arm64 --self-contained true -o ./publish/linux-arm64
+```
+
+拷到树莓派（`scp -r ./publish/linux-arm64 pi@<树莓派IP>:~/ck`），然后：
+
+```bash
+chmod +x ~/ck/CommunicationKernel.Host.App
+sudo usermod -aG dialout $USER   # 要用串口才需要，改完必须重新登录
+```
+
+> 64 位系统用 `linux-arm64`，32 位系统（含 Raspberry Pi OS 32 位版）用 `linux-arm`。
+> RID 搞错时报的是 exec 格式错误，不会提示你 RID 不对。
+
+### 第 2 步：改监听地址（最容易漏的一步）
+
+默认只绑 `localhost`，**远端 PC 连不上**。编辑树莓派上的 `appsettings.json`：
+
+```json
+"Kestrel": {
+  "Endpoints": {
+    "Grpc": { "Url": "http://0.0.0.0:5000", "Protocols": "Http2" }
+  }
+}
+```
+
+`Protocols` 必须保持 `Http2`，原因见下面「监听地址与暴露面」一节。
+
+### 第 3 步：放行防火墙并确认网络可达
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 5000 proto tcp
+```
+
+**按网段放行，不要 `ufw allow 5000`。** gRPC 端点没有任何认证，
+详见第 2 步下方的暴露面警告。
+
+在 PC 上确认能通（先确认网络层，再谈应用层）：
+
+```bash
+ping <树莓派IP>
+```
+
+### 第 4 步：装成 systemd 服务
+
+现场设备会断电重启，手动 `./CommunicationKernel.Host.App` 起的进程活不过一次停电。
+服务单元见下面「systemd 服务」一节，装完：
+
+```bash
+sudo systemctl enable --now communication-kernel
+```
+
+```bash
+systemctl status communication-kernel
+```
+
+### 第 5 步：PC 侧指向树莓派
+
+启动 WPF 或 Web 上位机，到**系统设置**页把 Host 地址改成
+`http://<树莓派IP>:5000`，点「测试连接」确认通了再保存。
+
+两端共用同一份 `settings.json` 的 `HostAddress`（Windows 下在
+`%APPDATA%/CommunicationKernel/`），WPF 里改过，Web 端起来就是对的。
+
+也可以不改界面，直接改 `appsettings.json`：
+
+```json
+"Host.App": { "Address": "http://192.168.1.50:5000" }
+```
+
+### 第 6 步：配设备时注意「串口是谁的串口」
+
+设备管理页的串口下拉框列出的是**树莓派上的串口**，不是你这台 PC 的。
+
+| 你在 PC 上看到 | 实际含义 |
+|---|---|
+| `/dev/ttyUSB0` | 树莓派上插的 USB 转串口 |
+| `/dev/ttyAMA0` | 树莓派板载串口（需先关掉板载蓝牙，见下文） |
+| 下拉框是空的 | 树莓派上没有串口设备，或当前用户不在 `dialout` 组 |
+
+**不会**出现 `COM1` / `COM3`——那是你 PC 的串口，而通讯发生在树莓派上。
+多个 USB 串口同时插着时，用 `/dev/serial/by-id/...` 的稳定路径，
+别用 `ttyUSB0`：重启后编号会随枚举顺序对调。
+
+### 验证清单
+
+按顺序排查，每一步都确认了再往下：
+
+| 检查 | 命令 / 位置 | 期望 |
+|---|---|---|
+| 1. 服务活着 | 树莓派 `systemctl status communication-kernel` | `active (running)` |
+| 2. 端口在听 | 树莓派 `ss -tlnp \| grep 5000` | 显示 `0.0.0.0:5000`，不是 `127.0.0.1:5000` |
+| 3. 插件加载了 | 树莓派 `journalctl -u communication-kernel \| grep 已加载` | `已加载 N 个协议`，N > 0 |
+| 4. 网络可达 | PC `ping <树莓派IP>` | 有回包 |
+| 5. gRPC 可达 | 上位机「系统设置 → 测试连接」 | 显示版本号与路由数 |
+| 6. 设备能连 | 设备卡片点「连接」 | 状态灯变绿 |
+
+### 这个场景专属的坑
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| 测试连接一直无响应，但 ping 通 | 还在绑 `localhost` | 第 2 步没做，或改完没重启服务 |
+| 浏览器打开 `http://树莓派IP:5000` 是错误页 | 明文 h2c 浏览器不支持，**这是正常的** | 用测试连接判断存活，不要用浏览器 |
+| 协议下拉框是空的 | 插件没加载 | 查验证清单第 3 步；多半是四个共享契约被误拷进了 `plugins/` |
+| 串口下拉框是空的 | 用户不在 `dialout` 组 | `sudo usermod -aG dialout $USER` 后**重新登录**（不重登不生效） |
+| 连接报 `TransportIoError` | 树莓派到 PLC 这一段不通 | 在树莓派上直接 ping PLC，问题不在 PC 与树莓派之间 |
+| 上位机重启后设备都不见了 | 正常——路由是宿主内存态 | 设备配置存在上位机本地，宿主恢复后会自动对账补注册 |
+
+> **别把上位机装到树莓派上再远程桌面过去。** 那等于让树莓派同时跑
+> 桌面环境、浏览器和通讯宿主，CPU 与内存都吃紧，通讯时序首先受影响。
+> 树莓派只跑 Host.App，界面留在 PC 上——这正是形态 B 的意义。
+
 
 ## 串口权限
 
