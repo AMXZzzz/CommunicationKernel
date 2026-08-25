@@ -25,10 +25,8 @@ namespace CommunicationKernel.UI.Wpf.Services
     /// </summary>
     public sealed class GrpcProtocolResolver : IProtocolResolver
     {
-        /// <summary>协议清单本地缓存路径，与 settings.json 同目录。</summary>
-        private static readonly string CachePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CommunicationKernel", "protocols.cache.json");
+        /// <summary>协议清单本地缓存路径。本端独立目录，见 <see cref="WpfPaths"/>。</summary>
+        private static readonly string CachePath = WpfPaths.ProtocolsCacheFile;
 
         private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 

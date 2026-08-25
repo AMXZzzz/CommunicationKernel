@@ -31,8 +31,8 @@ public sealed class SettingsViewModel : ViewModelBase {
     // 常量
     // ============================================================================
 
-    /// <summary>操作员保存的地址，与 Web 共用，优先于本项目 appsettings.json。</summary>
-    private static readonly string SettingsPath = WpfAppSettings.AppDataFile;
+    /// <summary>本端保存的地址，在 exe 旁 config/settings.json，优先于 appsettings.json。</summary>
+    private static readonly string SettingsPath = WpfAppSettings.SettingsFile;
 
     /// <summary>测试连接超时（秒）。</summary>
     private const int TestTimeoutSeconds = 5;
@@ -134,7 +134,7 @@ public sealed class SettingsViewModel : ViewModelBase {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _config = config ?? throw new ArgumentNullException(nameof(config));
 
-        // AppData 已保存的优先，否则用 appsettings.json
+        // config 已保存的优先，否则用 appsettings.json
         _hostAddress = WpfAppSettings.ReadAddress(_config);
 
         // 绑定命令：测试连接（异步，使用 fire-and-forget 包装）

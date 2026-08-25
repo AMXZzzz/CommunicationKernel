@@ -8,7 +8,7 @@
 //       启动主机后预加载设备列表并显示主窗口。
 // 启动顺序:
 //   Application_Startup
-//     → WpfAppSettings.ReadAddress() 读 AppData / appsettings.json
+//     → WpfAppSettings.ReadAddress() 读 config/settings.json / appsettings.json
 //     → IHostBuilder.Build()
 //       → DI 注册: HostClient（使用持久化地址）
 //       → DI 注册: IDeviceService / IVariableService / IProtocolResolver / IAppLogger
@@ -165,7 +165,7 @@ public partial class App : Application {
         // gRPC 客户端（单例）
         // =====================================================================
 
-        // 从 AppData settings.json 读取 HostAddress；没有则用本项目 appsettings.json
+        // 从 exe 旁 config/settings.json 读取 HostAddress；没有则用本项目 appsettings.json
         services.AddSingleton<HostClient>(sp => {
             ILogger<HostClient> logger =
                 sp.GetRequiredService<ILogger<HostClient>>();

@@ -77,7 +77,7 @@ public class JsonFileStoreTests {
 
     [TestMethod]
     public void Save_CreatesMissingDirectory() {
-        // 首次运行时 %APPDATA%\CommunicationKernel 还不存在
+        // 目标目录还不存在时必须先建出来，否则 File.Replace 会失败
         string nested = Path.Combine(_dir, "a", "b", "c", "records.json");
 
         Assert.IsTrue(JsonFileStore.Save(nested, new[] { new Record { Id = "X" } }, out string error), error);

@@ -316,10 +316,8 @@ systemctl status communication-kernel
 Web 上位机本机默认是 `http://localhost:64000`（Blazor Server，跑在办公室这台 PC 上，
 不是树莓派上）。测试连接走临时客户端，不会把正在用的会话切走。
 
-两端共用同一份 `settings.json` 的 `HostAddress`（Windows 下在
-`%APPDATA%/CommunicationKernel/`），WPF 里改过，Web 端起来就是对的。
-
-也可以不改界面，直接改 `appsettings.json`：
+Web 与 WPF 各有一份自己的配置，互不影响。保存后写在**该 exe 旁边的 `config/`**
+（例如 `config/settings.json`）。也可以不改界面，直接改该项目的 `appsettings.json`：
 
 ```json
 "Host.App": { "Address": "http://192.168.1.50:5000" }
@@ -366,7 +364,7 @@ Web 上位机本机默认是 `http://localhost:64000`（Blazor Server，跑在�
 | 串口下拉框是空的 | 用户不在 `dialout` 组 | `sudo usermod -aG dialout $USER` 后**重新登录**（不重登不生效） |
 | 连接报 `TransportIoError` | 树莓派到 PLC 这一段不通 | 在树莓派上直接 ping PLC，问题不在 PC 与树莓派之间 |
 | 宿主重启后设备灯全灭 | 路由是宿主内存态，重启即空表 | 设备配置在上位机本地。Web 会在宿主恢复时自动对账补注册；WPF 等下次读写/轮询时补注册 |
-| 上位机重装后设备都不见了 | 配置在上位机，不在树莓派 | 备份 `%APPDATA%/CommunicationKernel/`（`settings.json`、`devices.json` / `web-devices.json`、变量表） |
+| 上位机重装后设备都不见了 | 配置在上位机 exe 旁 `config/`，不在树莓派 | 备份该 exe 目录下的 `config/`（`settings.json`、`devices.json` / `web-devices.json`、变量表） |
 
 > **别把上位机装到树莓派上再远程桌面过去。** 那等于让树莓派同时跑
 > 桌面环境、浏览器和通讯宿主，CPU 与内存都吃紧，通讯时序首先受影响。
@@ -557,7 +555,7 @@ sudo rm -rf /opt/communication-kernel.bak
 ### 设备配置去哪了
 
 **不在树莓派上。** 设备清单、变量表、字节序这些都存在**上位机**本地
-（Windows 下是 `%APPDATA%\CommunicationKernel\`），
+（该 exe 旁边的 `config/` 目录），
 树莓派上的 Host.App 只持有内存态的路由表。
 
 因此：
@@ -567,7 +565,7 @@ sudo rm -rf /opt/communication-kernel.bak
   WPF 等到下次读写或轮询碰到 `RouteNotFound` 再补注册。
   `RegisterRoute` 会真正建连接——PLC 当时不通，这条会失败并记日志，配置仍保留。
 - 反过来，重装上位机所在的电脑**会**丢配置——那台才需要备份
-  `%APPDATA%/CommunicationKernel/`（Linux 下是 `~/.config/CommunicationKernel/`）
+  该 exe 旁边的 `config/` 目录。
 
 ### 卸载
 

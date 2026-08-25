@@ -33,10 +33,8 @@ namespace CommunicationKernel.UI.Wpf.Services
         // 持久化路径
         // ============================================================================
 
-        /// <summary>变量定义持久化文件路径，与 settings.json 同目录。</summary>
-        private static readonly string PersistPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CommunicationKernel", "variables.json");
+        /// <summary>变量定义持久化文件路径。本端独立目录，见 <see cref="WpfPaths"/>。</summary>
+        private static readonly string PersistPath = WpfPaths.VariablesFile;
 
         /// <summary>JSON 序列化选项：枚举写字符串，缩进输出便于调试查看。</summary>
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions {

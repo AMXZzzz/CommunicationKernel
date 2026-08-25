@@ -14,8 +14,7 @@
 //   业务配置属于上位机（宿主只是无状态的通讯引擎），因此配置必须落在这里，
 //   并由 IRouteReconciler 据此把路由重新推给宿主。
 //
-// 存储位置沿用 settings.json / protocols.cache.json 的约定：
-//   %APPDATA%\CommunicationKernel\devices.json
+// 存储位置：本 exe 旁 config\devices.json，不与 Web 共用。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -36,10 +35,8 @@ namespace CommunicationKernel.UI.Wpf.Services
         // 常量与字段
         // ============================================================================
 
-        /// <summary>配置文件完整路径。</summary>
-        private static readonly string FilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CommunicationKernel", "devices.json");
+        /// <summary>配置文件完整路径。本端独立目录，见 <see cref="WpfPaths"/>。</summary>
+        private static readonly string FilePath = WpfPaths.DevicesFile;
 
         private static readonly JsonSerializerOptions SerializerOptions = new JsonSerializerOptions
         {

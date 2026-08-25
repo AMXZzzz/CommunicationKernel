@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/WpfAppSettings.cs
 // 层级: UI 层 — WPF
-// 作用: 解析 Host.App 地址。AppData 已保存的优先，否则用自己的 appsettings.json。
+// 作用: 解析 Host.App 地址。exe 旁 config 已保存的优先，否则用自己的 appsettings.json。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -19,21 +19,18 @@ internal static class WpfAppSettings
     /// <summary>两层都没有时的最后回落，与 Web 出厂值一致。</summary>
     public const string FallbackAddress = "http://localhost:5000";
 
-    /// <summary>与 Web 共用的操作员配置，字段名 HostAddress。</summary>
-    public static string AppDataFile => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "CommunicationKernel",
-        "settings.json");
+    /// <summary>本端操作员配置：exe 旁 config/settings.json。</summary>
+    public static string SettingsFile => WpfPaths.SettingsFile;
 
     /// <summary>本项目 appsettings.json，跟 exe 放在一起。</summary>
     public static string AppSettingsFile => Path.Combine(AppContext.BaseDirectory, "appsettings.json");
 
     /// <summary>
-    /// 优先级：%APPDATA% settings.json → IConfiguration（appsettings.json）→ 本机 5000。
+    /// 优先级：exe 旁 config/settings.json → 本项目 appsettings.json → 本机 5000。
     /// </summary>
     public static string ReadAddress(IConfiguration? config)
     {
-        string? saved = TryReadAppDataHostAddress();
+        string? saved = TryReadSavedHostAddress();
         if (!string.IsNullOrWhiteSpace(saved))
             return saved.Trim();
 
@@ -44,12 +41,12 @@ internal static class WpfAppSettings
         return FallbackAddress;
     }
 
-    /// <summary>只读 AppData；没有或坏文件返回 null，由调用方继续回落。</summary>
-    public static string? TryReadAppDataHostAddress()
+    /// <summary>只读 exe 旁 config/settings.json；没有或坏文件返回 null。</summary>
+    public static string? TryReadSavedHostAddress()
     {
         try
         {
-            string path = AppDataFile;
+            string path = SettingsFile;
             if (!File.Exists(path))
                 return null;
 
