@@ -342,18 +342,69 @@ namespace CommunicationKernel.UI.Wpf.Services
 
             if (!success)
             {
-                // 注册失败：记日志并弹给操作员，避免设备「悄无声息地不出现」
+                // 注册会真的去建连接。PLC 没上电、Modbus RTU 的 TCP 转串口网关
+                // 还没接、设备临时拔线——这些情况下连接必然失败，
+                // 但操作员填的配置完全正确。
+                //
+                // 配置在 Add/Update 里已先行落盘，这里只需把设备补进当前列表并置为离线；
+                // 否则界面上「什么都没发生」，要重启上位机才看得到那台设备，
+                // 操作员只会以为自己没保存成功，于是反复重录。
+                if (RegisterFailure.ShouldKeepConfiguration(code))
+                {
+                    _log?.Warn("Device", string.Format(
+                        "{0}：{1} 暂时连不上，配置已保留，将由对账自动补注册 [{2}] {3}",
+                        actionLabel, routeId, code, msg));
+                    RaiseFailure(string.Format(
+                        "{0}：目标暂时连不上（{1}）。配置已保存，设备以离线显示，可达后自动接入。",
+                        actionLabel, string.IsNullOrWhiteSpace(msg) ? code : msg));
+                    ShowOfflinePlaceholder(routeId);
+                    return;
+                }
+
+                // 配置本身有问题（协议不存在、介质不支持、参数非法）：
+                // 保存下来只会得到一个永远起不来的条目，因此连带清掉本地配置
                 _log?.Error("Device",
                     string.Format("{0}失败 route={1} protocol={2} code={3}: {4}",
                         actionLabel, routeId, info.Protocol, code, msg));
                 RaiseFailure(string.Format("{0}失败：{1}", actionLabel,
                     string.IsNullOrWhiteSpace(msg) ? code : msg));
+                _config.Delete(routeId);
                 return;
             }
 
             // 成功后刷新列表，合并服务端路由与本地元数据
             _log?.Info("Device", string.Format("{0}成功: {1}", actionLabel, info.Name ?? routeId));
             Load();
+        }
+
+        /// <summary>
+        /// 把一台「配置已保存、但宿主侧尚未注册成功」的设备补进列表并置为离线。
+        /// </summary>
+        /// <remarks>
+        /// 目标不可达时走这条路径。设备必须当场出现在界面上——
+        /// 界面上什么都不发生的话，操作员只会以为没保存成功，于是反复重录同一台设备。
+        /// 幂等：已在列表里就只更新状态，不重复添加。
+        /// </remarks>
+        private void ShowOfflinePlaceholder(string routeId)
+        {
+            DeviceConfigStore.DeviceRecord record = _config.Get(routeId);
+            if (record == null) return;
+
+            Application app = Application.Current;
+            if (app == null) return;
+
+            app.Dispatcher.InvokeAsync(() =>
+            {
+                DeviceInfo existing = FindDevice(routeId);
+                if (existing == null)
+                {
+                    Devices.Add(ToDeviceInfo(record));
+                    return;
+                }
+
+                existing.IsConnected = false;
+                existing.StatusType  = DeviceStatusType.Offline;
+            });
         }
 
         /// <summary>切回 UI 线程触发 <see cref="OperationFailed"/>，供界面弹出提示。</summary>

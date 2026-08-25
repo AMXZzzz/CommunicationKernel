@@ -1,3 +1,8 @@
+    CommunicationKernel.Host.Sdk.ByteOrder.ABCD : CommunicationKernel.Host.Sdk.ByteOrder
+    CommunicationKernel.Host.Sdk.ByteOrder.BADC : CommunicationKernel.Host.Sdk.ByteOrder
+    CommunicationKernel.Host.Sdk.ByteOrder.CDAB : CommunicationKernel.Host.Sdk.ByteOrder
+    CommunicationKernel.Host.Sdk.ByteOrder.DCBA : CommunicationKernel.Host.Sdk.ByteOrder
+    CommunicationKernel.Host.Sdk.ByteOrder.value__ : System.Int32
     CommunicationKernel.Host.Sdk.HostClient..ctor(System.String serverAddress, Microsoft.Extensions.Logging.ILogger<CommunicationKernel.Host.Sdk.HostClient> logger)
     CommunicationKernel.Host.Sdk.HostClient.DisposeAsync() -> System.Threading.Tasks.ValueTask
     CommunicationKernel.Host.Sdk.HostClient.HealthAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.ValueTuple<System.Boolean, System.String, System.Int32>>
@@ -43,6 +48,12 @@
     CommunicationKernel.Host.Sdk.ReadResultDto.GetHashCode() -> System.Int32
     CommunicationKernel.Host.Sdk.ReadResultDto.Success { get; set; } -> System.Boolean
     CommunicationKernel.Host.Sdk.ReadResultDto.ToString() -> System.String
+    CommunicationKernel.Host.Sdk.RegisterFailure.Classify(System.String errorCode) -> CommunicationKernel.Host.Sdk.RegisterFailureKind
+    CommunicationKernel.Host.Sdk.RegisterFailure.ShouldKeepConfiguration(System.String errorCode) -> System.Boolean
+    CommunicationKernel.Host.Sdk.RegisterFailureKind.BadConfiguration : CommunicationKernel.Host.Sdk.RegisterFailureKind
+    CommunicationKernel.Host.Sdk.RegisterFailureKind.None : CommunicationKernel.Host.Sdk.RegisterFailureKind
+    CommunicationKernel.Host.Sdk.RegisterFailureKind.Unreachable : CommunicationKernel.Host.Sdk.RegisterFailureKind
+    CommunicationKernel.Host.Sdk.RegisterFailureKind.value__ : System.Int32
     CommunicationKernel.Host.Sdk.RouteDto..ctor(System.String RouteId, System.String ProtocolId, System.String TransportKind, System.String Address, System.Int32 Port, System.String Station, System.String SerialPort, System.Int32 BaudRate)
     CommunicationKernel.Host.Sdk.RouteDto.<Clone>$() -> CommunicationKernel.Host.Sdk.RouteDto
     CommunicationKernel.Host.Sdk.RouteDto.Address { get; set; } -> System.String
@@ -82,6 +93,11 @@
     CommunicationKernel.Host.Sdk.SerialPortDto.GetHashCode() -> System.Int32
     CommunicationKernel.Host.Sdk.SerialPortDto.PortName { get; set; } -> System.String
     CommunicationKernel.Host.Sdk.SerialPortDto.ToString() -> System.String
+    CommunicationKernel.Host.Sdk.ValueCodec.Decode(System.Byte[] data, System.String dataType, CommunicationKernel.Host.Sdk.ByteOrder order) -> System.String
+    CommunicationKernel.Host.Sdk.ValueCodec.DefaultLength(System.String dataType) -> System.Int32
+    CommunicationKernel.Host.Sdk.ValueCodec.ParseOrder(System.String value) -> CommunicationKernel.Host.Sdk.ByteOrder
+    CommunicationKernel.Host.Sdk.ValueCodec.TryEncode(System.String text, System.String dataType, System.Int32 length, System.Byte[]& data, System.String& error, CommunicationKernel.Host.Sdk.ByteOrder order) -> System.Boolean
+    CommunicationKernel.Host.Sdk.ValueCodec.TryEncodeValue(System.Object value, System.String dataType, System.Int32 length, System.Byte[]& data, System.String& error, CommunicationKernel.Host.Sdk.ByteOrder order) -> System.Boolean
     CommunicationKernel.Host.Sdk.WriteResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage)
     CommunicationKernel.Host.Sdk.WriteResultDto.<Clone>$() -> CommunicationKernel.Host.Sdk.WriteResultDto
     CommunicationKernel.Host.Sdk.WriteResultDto.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage) -> System.Void
@@ -100,4 +116,8 @@ class sealed CommunicationKernel.Host.Sdk.RouteReconcileGate
 class sealed CommunicationKernel.Host.Sdk.RouteStatusDto
 class sealed CommunicationKernel.Host.Sdk.SerialPortDto
 class sealed CommunicationKernel.Host.Sdk.WriteResultDto
+class static CommunicationKernel.Host.Sdk.RegisterFailure
+class static CommunicationKernel.Host.Sdk.ValueCodec
+enum CommunicationKernel.Host.Sdk.ByteOrder
+enum CommunicationKernel.Host.Sdk.RegisterFailureKind
 interface CommunicationKernel.Host.Sdk.IHostClient

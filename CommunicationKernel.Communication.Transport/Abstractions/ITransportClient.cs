@@ -31,6 +31,29 @@ public interface ITransportClient : IAsyncDisposable {
     TransportKind Kind { get; }
 
     /// <summary>
+    /// 连接当前是否仍然可用。<b>不产生任何协议流量。</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 存在的理由：路由状态此前只在「注册成功」与「每次读写」时更新。
+    /// 一条注册后没人读写的路由，即使 PLC 早已断电，界面仍会一直显示在线——
+    /// 显示「在线」而实际断开，比显示离线危险得多。
+    /// </para>
+    /// <para>
+    /// <b>能测出什么，测不出什么。</b>本属性做的是介质层的廉价探测
+    /// （TCP 查套接字对端是否已关闭，串口查端口是否仍打开），
+    /// 因此能立刻发现「对端进程退出 / 主动断开」这类带 FIN/RST 的断链；
+    /// 但拔网线、掉电这种半开连接不会产生任何报文，仅靠本属性发现不了——
+    /// 那要靠 TCP keepalive 或真正发一帧出去。
+    /// 换言之：返回 false 一定是断了；返回 true 只代表「没有证据表明断了」。
+    /// </para>
+    /// <para>
+    /// 实现须保证不抛异常：探测失败一律视为不可用。
+    /// </para>
+    /// </remarks>
+    bool IsConnectionAlive { get; }
+
+    /// <summary>
     /// 建立介质连接。
     /// </summary>
     Task<OperationResult> ConnectAsync(TransportEndpoint endpoint, CancellationToken cancellationToken);

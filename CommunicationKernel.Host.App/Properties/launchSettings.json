@@ -2,11 +2,10 @@
   "profiles": {
     "CommunicationKernel.Host.App": {
       "commandName": "Project",
-      "launchBrowser": true,
+      "launchBrowser": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
-      },
-      "applicationUrl": "https://localhost:57567;http://localhost:57568"
+      }
     }
   }
 }

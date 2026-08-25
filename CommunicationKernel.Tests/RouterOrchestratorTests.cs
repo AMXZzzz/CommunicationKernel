@@ -287,6 +287,9 @@ public class RouterOrchestratorTests {
         public string TransportId => "fake";
         public TransportKind Kind => TransportKind.Tcp;
 
+        /// <summary>替身不涉及真实连接，恒为可用。</summary>
+        public bool IsConnectionAlive => true;
+
         public ValueTask DisposeAsync() {
             _onDispose?.Invoke();
             return ValueTask.CompletedTask;

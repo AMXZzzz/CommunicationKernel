@@ -395,6 +395,9 @@ public sealed class EngineRuntimeLifecycleTests
         public string TransportId => "fake-transport";
         public TransportKind Kind => TransportKind.Tcp;
 
+        /// <summary>释放后即视为不可用，供心跳相关断言使用。</summary>
+        public bool IsConnectionAlive => !Disposed;
+
         public ValueTask DisposeAsync()
         {
             Disposed = true;

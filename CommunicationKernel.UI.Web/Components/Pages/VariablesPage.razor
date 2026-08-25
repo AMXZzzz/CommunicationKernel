@@ -94,7 +94,8 @@
                                         <input type="checkbox" checked="@row.Polling" @onchange="e => TogglePoll(row, e)" />
                                     </label>
                                 </td>
-                                <td>
+                                <td class="row-btns">
+                                    <button class="btn-sm ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
                                     <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
                                 </td>
                             </tr>
@@ -108,11 +109,11 @@
 
     @if (_showForm)
     {
-        <div class="add-form-overlay" @onclick="() => _showForm = false">
+        <div class="add-form-overlay" @onclick="CloseForm">
             <div class="add-form" @onclick:stopPropagation>
                 <div class="form-hd">
-                    <h3>添加变量</h3>
-                    <button class="close-btn" type="button" @onclick="() => _showForm = false">×</button>
+                    <h3>@(IsEditing ? "编辑变量" : "添加变量")</h3>
+                    <button class="close-btn" type="button" @onclick="CloseForm">×</button>
                 </div>
                 <label>名称 *</label>
                 <input @bind="_name" placeholder="传送带速度" />
@@ -143,9 +144,15 @@
                 <input type="number" @bind="_length" min="1" />
                 <label>扫描周期 (ms)</label>
                 <input type="number" @bind="_scan" min="200" />
+                @* 字节序不在这里配：它是设备属性，同一台 PLC 的所有变量共用一套排列。
+                   放到变量上会让操作员逐条去改，还容易改出彼此矛盾的配置。 *@
+                <p class="hint-line">
+                    数值按所属设备的字节序解释（当前 <b>@CurrentByteOrder</b>）。要改到「设备管理」里改。
+                </p>
+
                 <div class="form-actions">
-                    <button class="btn ghost" type="button" @onclick="() => _showForm = false">取消</button>
-                    <button class="btn primary" type="button" @onclick="Add">添加</button>
+                    <button class="btn ghost" type="button" @onclick="CloseForm">取消</button>
+                    <button class="btn primary" type="button" @onclick="Save">@(IsEditing ? "保存" : "添加")</button>
                 </div>
             </div>
         </div>
@@ -238,16 +245,62 @@
         return map.Values.ToList();
     }
 
+    /// <summary>正在编辑的变量 Id；为空表示当前是「新增」。</summary>
+    private string _editingId = string.Empty;
+
+    private bool IsEditing => !string.IsNullOrEmpty(_editingId);
+
     private void OpenAdd()
     {
+        ResetForm();
         _showForm = true;
         if (RouteChoices.Count > 0 && string.IsNullOrEmpty(_routeId))
             _routeId = RouteChoices[0].RouteId;
     }
 
+    /// <summary>打开编辑表单，用已存变量回填。</summary>
+    private void OpenEdit(WebVariable row)
+    {
+        _editingId = row.Id;
+        _name      = row.Name;
+        _routeId   = row.RouteId;
+        _address   = row.Address;
+        _dataType  = row.DataType;
+        _length    = row.Length;
+        _scan      = row.ScanRateMs;
+        _showForm  = true;
+    }
+
+    private void ResetForm()
+    {
+        _editingId = string.Empty;
+        _name      = string.Empty;
+        _address   = string.Empty;
+        _dataType  = "Int16";
+        _length    = ValueCodec.DefaultLength("Int16");
+        _scan      = 1000;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        ResetForm();
+    }
+
     private void OnTypeChanged() => _length = ValueCodec.DefaultLength(_dataType);
 
-    private void Add()
+    /// <summary>取某条变量所属设备的字节序；设备无配置时按大端。</summary>
+    /// <remarks>
+    /// 字节序是设备属性：同一台 PLC 的所有变量共用一套排列。
+    /// 挂到变量上会让操作员逐条去改，还容易改出彼此矛盾的配置。
+    /// </remarks>
+    private ByteOrder OrderOf(string routeId) =>
+        ValueCodec.ParseOrder(Devices.Get(routeId)?.ByteOrder);
+
+    /// <summary>表单里当前所选路由的字节序，用于提示文案。</summary>
+    private string CurrentByteOrder => OrderOf(_routeId).ToString();
+
+    private void Save()
     {
         if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_routeId) || string.IsNullOrWhiteSpace(_address))
         {
@@ -255,18 +308,50 @@
             _bannerClass = "status-error";
             return;
         }
-        Store.Add(new WebVariable
+
+        if (IsEditing)
         {
-            Name = _name.Trim(),
-            RouteId = _routeId.Trim(),
-            Address = _address.Trim(),
-            DataType = _dataType,
-            Length = Math.Max(1, _length),
-            ScanRateMs = Math.Max(200, _scan),
-        });
-        _showForm = false;
-        _name = string.Empty;
-        _address = string.Empty;
+            WebVariable? existing = Store.GetAll().FirstOrDefault(v => v.Id == _editingId);
+            if (existing is null)
+            {
+                _banner = "该变量已被删除，无法保存";
+                _bannerClass = "status-error";
+                CloseForm();
+                return;
+            }
+
+            existing.Name       = _name.Trim();
+            existing.RouteId    = _routeId.Trim();
+            existing.Address    = _address.Trim();
+            existing.DataType   = _dataType;
+            existing.Length     = Math.Max(1, _length);
+            existing.ScanRateMs = Math.Max(200, _scan);
+
+            // 地址/类型变了，旧的显示值就不再对应当前定义——
+            // 留着会让人以为那是刚读回来的新值
+            existing.DisplayValue = "--";
+            existing.IsError      = false;
+
+            Store.Update(existing);
+            _banner = "已更新 " + existing.Name;
+            _bannerClass = "status-ok";
+        }
+        else
+        {
+            Store.Add(new WebVariable
+            {
+                Name = _name.Trim(),
+                RouteId = _routeId.Trim(),
+                Address = _address.Trim(),
+                DataType = _dataType,
+                Length = Math.Max(1, _length),
+                ScanRateMs = Math.Max(200, _scan),
+            });
+            _banner = "已添加 " + _name.Trim();
+            _bannerClass = "status-ok";
+        }
+
+        CloseForm();
     }
 
     private void TogglePoll(WebVariable row, ChangeEventArgs e)
@@ -282,7 +367,7 @@
         {
             ReadResultDto r = await Session.Client.ReadAsync(row.RouteId, row.Address, Math.Max(1, row.Length)).ConfigureAwait(true);
             if (r.Success)
-                Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType), false);
+                Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType, OrderOf(row.RouteId)), false);
             else
                 Store.ApplyRead(row.Id, r.ErrorCode, true);
         }
@@ -291,7 +376,7 @@
 
     private async Task WriteAsync(WebVariable row)
     {
-        if (!ValueCodec.TryEncode(row.WriteText, row.DataType, row.Length, out byte[] data, out string err))
+        if (!ValueCodec.TryEncode(row.WriteText, row.DataType, row.Length, out byte[] data, out string err, OrderOf(row.RouteId)))
         {
             _banner = err;
             _bannerClass = "status-error";
@@ -328,7 +413,7 @@
                 ReadResultDto r = await Session.Client.ReadAsync(row.RouteId, row.Address, Math.Max(1, row.Length)).ConfigureAwait(true);
                 if (r.Success)
                 {
-                    Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType), false);
+                    Store.ApplyRead(row.Id, ValueCodec.Decode(r.Data ?? Array.Empty<byte>(), row.DataType, OrderOf(row.RouteId)), false);
                     ok++;
                 }
                 else

@@ -92,6 +92,9 @@ public sealed class ConnectionRouterTests {
         public string TransportId => "fake";
         public TransportKind Kind => TransportKind.Custom;
 
+        /// <summary>替身不涉及真实连接，恒为可用。</summary>
+        public bool IsConnectionAlive => true;
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public Task<OperationResult> ConnectAsync(TransportEndpoint endpoint, CancellationToken cancellationToken)

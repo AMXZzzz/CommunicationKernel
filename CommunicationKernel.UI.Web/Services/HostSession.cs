@@ -25,6 +25,9 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
     private HostClient _client;
     private CancellationTokenSource _loopCts = new();
     private int _reconcileGate;
+
+    /// <summary>0 = 存活，1 = 已释放。见 <see cref="DisposeAsync"/> 中关于重复释放的说明。</summary>
+    private int _disposed;
     private IReadOnlyList<RouteDto> _routes = Array.Empty<RouteDto>();
 
     public HostSession(
@@ -86,17 +89,48 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        await _loopCts.CancelAsync().ConfigureAwait(false);
+        await CancelLoopsAsync().ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
     {
-        await _loopCts.CancelAsync().ConfigureAwait(false);
+        // 必须幂等——本实例在容器里被登记了两次：
+        //   AddSingleton<HostSession>()                           ← 捕获一次待释放
+        //   AddHostedService(sp => sp.GetRequiredService<...>())  ← 工厂返回同一实例，再捕获一次
+        // 容器不会去重，关站时同一个对象被释放两遍。第二遍再去 Cancel 已释放的
+        // CancellationTokenSource 就会抛 ObjectDisposedException，
+        // 表现为关站时冒出一个没人处理的异常。
+        //
+        // IAsyncDisposable 的契约本就要求可重复调用，所以这里用闸门兜住，
+        // 而不是去迁就某种特定的注册写法。
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        await CancelLoopsAsync().ConfigureAwait(false);
         _loopCts.Dispose();
+
         HostClient client;
         lock (_clientGate)
             client = _client;
         await client.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 取消后台循环。CTS 已被释放时视为「循环早就停了」，不再抛出。
+    /// </summary>
+    /// <remarks>
+    /// StopAsync 与 DisposeAsync 都会走到这里，而宿主关站时两者都会被调用，
+    /// 顺序与次数由框架决定——这里不能假设自己是第一个。
+    /// </remarks>
+    private async Task CancelLoopsAsync()
+    {
+        try
+        {
+            await _loopCts.CancelAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已释放：循环早已随之结束，没有需要取消的东西
+        }
     }
 
     /// <summary>设置页切换地址：释放旧通道，重建客户端并立即探测。</summary>
@@ -208,13 +242,19 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
                 await ProbeAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { return; }
+            // 关站途中 _loopCts 已被释放：属于正常收尾，不是故障。
+            // 若按普通异常记警告并继续，循环会在下一轮 Task.Delay 上再炸一次。
+            catch (ObjectDisposedException) { return; }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "健康检查循环异常");
             }
 
+            // Task.Delay 会在令牌上注册回调，CTS 已释放时抛 ObjectDisposedException——
+            // 只捕获 OperationCanceledException 的话，这个异常会逃成未观测任务异常
             try { await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
+            catch (ObjectDisposedException) { return; }
         }
     }
 
@@ -245,7 +285,11 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
             catch (OperationCanceledException) { return; }
             catch (ObjectDisposedException)
             {
-                // 切换地址时旧客户端被释放，等下一轮用新客户端
+                // 两种来源都会走到这里：
+                //   · 切换地址时旧客户端被释放 —— 应当继续，下一轮用新客户端；
+                //   · 关站时 _loopCts 被释放 —— 应当退出。
+                // 用取消状态区分：已请求取消就收尾，否则重试。
+                if (ct.IsCancellationRequested) return;
             }
             catch (Exception ex)
             {
@@ -254,6 +298,7 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
 
             try { await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
+            catch (ObjectDisposedException) { return; }
         }
     }
 

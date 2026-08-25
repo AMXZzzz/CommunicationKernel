@@ -693,3 +693,33 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     .summary-bar { grid-template-columns: 1fr 1fr; }
     .device-grid { grid-template-columns: 1fr; }
 }
+
+/* 卡片底部三按钮：连接/断开 与 编辑 平分主空间，删除固定窄宽。
+   删除是低频且不可逆的动作，不该和常用动作抢同等面积 */
+.card-ft > .btn.card-del { flex: 0 0 auto; padding: 0 12px; }
+
+/* 表单里的行为说明：保存不等于连接，这一点必须在按钮上方讲清楚 */
+.form-note {
+    margin-top: 14px;
+    padding: 8px 10px;
+    background: #132433;
+    border: 1px solid var(--accent-dim);
+    border-radius: 6px;
+    line-height: 1.6;
+}
+.form-note b { color: var(--accent-ink); }
+
+/* 只读输入（编辑态的路由 ID）要看得出不可改 */
+input[readonly] { background: #171717; color: var(--text-muted); cursor: not-allowed; }
+
+/* 表单内的一行说明（与 .form-note 的区别：不加底框，用于次要提示） */
+.hint-line {
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.6;
+}
+.hint-line b { color: var(--accent-ink); font-family: var(--font-mono); }
+
+/* 表格行末的按钮组 */
+.row-btns { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
