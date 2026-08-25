@@ -123,6 +123,115 @@ public class ValueCodecTests {
     }
 
     // =========================================================================
+    // String：真正的文本类型，不再是 Hex 的别名
+    // =========================================================================
+
+    [TestMethod]
+    public void String_IsDecodedAsText_NotHex() {
+        // 早先 String 只是 Hex 的别名，选它会得到 "48 45 4C 4C 4F"
+        byte[] hello = { 0x48, 0x45, 0x4C, 0x4C, 0x4F };   // "HELLO"
+        Assert.AreEqual("HELLO", ValueCodec.Decode(hello, "String"));
+        Assert.AreEqual("48 45 4C 4C 4F", ValueCodec.Decode(hello, "Hex"));
+    }
+
+    [TestMethod]
+    public void String_StopsAtNul_AndTrimsPadding() {
+        // PLC 里是定长区域，内容短于区域时以 NUL 或空格补齐。
+        // 不裁掉的话界面上会跟着一串不可见字符。
+        byte[] padded = { 0x4F, 0x4B, 0x00, 0x00, 0x00, 0x00 };
+        Assert.AreEqual("OK", ValueCodec.Decode(padded, "String"));
+
+        byte[] spaces = { 0x4F, 0x4B, 0x20, 0x20 };
+        Assert.AreEqual("OK", ValueCodec.Decode(spaces, "String"));
+    }
+
+    [TestMethod]
+    public void String_ByteSwapOrders_SwapCharPairs_NotWholeText() {
+        // 一个寄存器装两个字符。字节交换的设备表现为「每两个字符颠倒」，
+        // 而不是整段文本倒过来——整段反转不是任何真实设备的行为。
+        //
+        // "HELLO\0" = 48 45 | 4C 4C | 4F 00，逐寄存器交换后设备里是：
+        //             45 48 | 4C 4C | 00 4F
+        // 注意最后一对是 4F 00 → 00 4F：交换是逐寄存器统一做的，
+        // 不会因为那一半是填充就跳过。
+        byte[] swapped = { 0x45, 0x48, 0x4C, 0x4C, 0x00, 0x4F };
+        Assert.AreEqual("HELLO", ValueCodec.Decode(swapped, "String", ByteOrder.BADC));
+
+        // 字序（CDAB）对字符串无意义：字符串本就按地址顺序连续读出
+        byte[] plain = { 0x48, 0x45, 0x4C, 0x4C, 0x4F, 0x00 };
+        Assert.AreEqual("HELLO", ValueCodec.Decode(plain, "String", ByteOrder.CDAB));
+    }
+
+    [TestMethod]
+    public void String_Encode_PadsToDeclaredLength_WithNul() {
+        Assert.IsTrue(ValueCodec.TryEncode("OK", "String", 6, out byte[] data, out string err), err);
+        CollectionAssert.AreEqual(new byte[] { 0x4F, 0x4B, 0x00, 0x00, 0x00, 0x00 }, data);
+    }
+
+    [TestMethod]
+    public void String_Encode_RejectsOverflow_InsteadOfTruncating() {
+        // 静默截断会让操作员以为整串都写进去了
+        Assert.IsFalse(ValueCodec.TryEncode("ABCDEFGH", "String", 4, out _, out string err));
+        StringAssert.Contains(err, "超出声明长度");
+    }
+
+    [TestMethod]
+    public void String_Encode_PadsToEvenLength_WhenLengthUnspecified() {
+        // 寄存器是 16 位的，写奇数个字节协议层无法表达
+        Assert.IsTrue(ValueCodec.TryEncode("ABC", "String", 0, out byte[] data, out _));
+        Assert.HasCount(4, data);
+        CollectionAssert.AreEqual(new byte[] { 0x41, 0x42, 0x43, 0x00 }, data);
+    }
+
+    [TestMethod]
+    public void String_RoundTrips_UnderEveryOrder() {
+        foreach (ByteOrder order in Enum.GetValues<ByteOrder>()) {
+            Assert.IsTrue(ValueCodec.TryEncode("PLC-01", "String", 8, out byte[] d, out string e, order), e);
+            Assert.AreEqual("PLC-01", ValueCodec.Decode(d, "String", order),
+                $"{order}: 字符串编解码不互逆");
+        }
+    }
+
+    // =========================================================================
+    // 位宽较大的整型 / 浮点
+    // =========================================================================
+
+    [TestMethod]
+    public void Int64_And_Double_DecodeAsBigEndian() {
+        // 这三种类型 codec 一直支持，但 Web 的下拉框漏了，选不到
+        Assert.AreEqual("1",
+            ValueCodec.Decode(new byte[] { 0, 0, 0, 0, 0, 0, 0, 1 }, "Int64"));
+
+        Assert.AreEqual("18446744073709551615",
+            ValueCodec.Decode(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, "UInt64"));
+
+        // 0x4059000000000000 = 100.0d
+        Assert.AreEqual("100",
+            ValueCodec.Decode(new byte[] { 0x40, 0x59, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }, "Double"));
+    }
+
+    [TestMethod]
+    public void DefaultLength_CoversEveryOfferedType() {
+        // 界面下拉里能选到的每一种类型都必须有合理的默认字节数，
+        // 否则新增变量时「读取字节数」会默认成 2 而读回半截数据
+        Assert.AreEqual(1,  ValueCodec.DefaultLength("Bool"));
+        Assert.AreEqual(2,  ValueCodec.DefaultLength("Int16"));
+        Assert.AreEqual(2,  ValueCodec.DefaultLength("UInt16"));
+        Assert.AreEqual(4,  ValueCodec.DefaultLength("Int32"));
+        Assert.AreEqual(4,  ValueCodec.DefaultLength("UInt32"));
+        Assert.AreEqual(4,  ValueCodec.DefaultLength("Float"));
+        Assert.AreEqual(8,  ValueCodec.DefaultLength("Int64"));
+        Assert.AreEqual(8,  ValueCodec.DefaultLength("UInt64"));
+        Assert.AreEqual(8,  ValueCodec.DefaultLength("Double"));
+        Assert.AreEqual(16, ValueCodec.DefaultLength("String"));
+        Assert.AreEqual(16, ValueCodec.DefaultLength("Hex"));
+
+        Assert.IsTrue(ValueCodec.IsVariableLength("String"));
+        Assert.IsTrue(ValueCodec.IsVariableLength("Hex"));
+        Assert.IsFalse(ValueCodec.IsVariableLength("Int32"));
+    }
+
+    // =========================================================================
     // 两条编码入口必须等价
     // =========================================================================
 

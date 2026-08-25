@@ -137,11 +137,28 @@
                 <select @bind="_dataType" @bind:after="OnTypeChanged">
                     @foreach (string t in DataTypes)
                     {
-                        <option value="@t">@t</option>
+                        <option value="@t">@t — @TypeHint(t)</option>
                     }
                 </select>
-                <label>读取字节数</label>
+
+                <label>
+                    读取字节数
+                    @if (!ValueCodec.IsVariableLength(_dataType))
+                    {
+                        <span class="label-note">（由类型决定）</span>
+                    }
+                </label>
                 <input type="number" @bind="_length" min="1" />
+                @if (ValueCodec.IsVariableLength(_dataType))
+                {
+                    @* 只有 String / Hex 需要操作员自己定长度：
+                       PLC 里那段文本区域多大，只有现场知道 *@
+                    <p class="hint-line">
+                        @(_dataType == "String"
+                            ? "按设备里那段文本区域的实际字节数填。读回后遇 NUL 即截断。"
+                            : "按需要读取的字节数填，原样以十六进制显示。")
+                    </p>
+                }
                 <label>扫描周期 (ms)</label>
                 <input type="number" @bind="_scan" min="200" />
                 @* 字节序不在这里配：它是设备属性，同一台 PLC 的所有变量共用一套排列。
@@ -190,7 +207,37 @@
 </div>
 
 @code {
-    private static readonly string[] DataTypes = { "Bool", "Int16", "UInt16", "Int32", "UInt32", "Float", "Hex" };
+    /// <summary>
+    /// 可选数据类型，与 <see cref="ValueCodec"/> 支持的类型名一一对应。
+    /// </summary>
+    /// <remarks>
+    /// 顺序按位宽递增，末尾两个是变长类型：
+    /// String 是真正的文本（UTF-8、按 NUL 截断），Hex 是原样字节。
+    /// 两者曾经在 codec 里是同一套处理，选哪个结果都一样——现已分开。
+    /// </remarks>
+    private static readonly string[] DataTypes = {
+        "Bool",
+        "Int16", "UInt16",
+        "Int32", "UInt32", "Float",
+        "Int64", "UInt64", "Double",
+        "String", "Hex",
+    };
+
+    /// <summary>各类型的一句话说明，挂在下拉项上避免操作员猜。</summary>
+    private static string TypeHint(string type) => type switch {
+        "Bool"   => "1 字节，非零为 ON",
+        "Int16"  => "16 位有符号",
+        "UInt16" => "16 位无符号",
+        "Int32"  => "32 位有符号（2 个寄存器）",
+        "UInt32" => "32 位无符号（2 个寄存器）",
+        "Float"  => "32 位浮点（IEEE754）",
+        "Int64"  => "64 位有符号（4 个寄存器）",
+        "UInt64" => "64 位无符号（4 个寄存器）",
+        "Double" => "64 位浮点（4 个寄存器）",
+        "String" => "文本，按字节数读取、NUL 截断",
+        "Hex"    => "原样字节，十六进制显示",
+        _ => "",
+    };
 
     private bool _busy;
     private bool _showForm;

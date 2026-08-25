@@ -12,6 +12,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
+using System.Text;
 
 namespace CommunicationKernel.Host.Sdk;
 
@@ -145,8 +146,13 @@ public static class ValueCodec
 
         try
         {
-            if (dataType == "Hex" || dataType == "String")
+            // Hex 是「原样字节」；String 是真正的文本，两者不再混为一谈。
+            // 早先 String 只是 Hex 的别名，选它和选 Hex 结果完全一样。
+            if (dataType == "Hex")
                 return TryParseHex(input, out data, out error);
+
+            if (dataType == "String")
+                return TryEncodeString(input, length, order, out data, out error);
 
             if (dataType == "Bool")
             {
@@ -251,6 +257,83 @@ public static class ValueCodec
             error = "无法按 " + dataType + " 编码: " + ex.Message;
             return false;
         }
+    }
+
+    // ========================================================================
+    // 字符串
+    // ========================================================================
+
+    /// <summary>
+    /// 把寄存器里的字节解释成文本。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// PLC 里的字符串通常是定长区域，实际内容短于区域时以 NUL 或空格补齐，
+    /// 因此尾部填充必须裁掉——否则界面上会跟着一串不可见字符，
+    /// 复制粘贴到别处会出莫名其妙的问题。
+    /// </para>
+    /// <para>
+    /// 字节序对字符串的意义与数值不同：Modbus 一个寄存器装两个字符，
+    /// 高字节是前一个字符（ABCD）。有些设备反过来，表现为
+    /// 「读出来每两个字都是颠倒的」（<c>HELLO</c> 变 <c>EHLL O</c>）。
+    /// 所以这里只做「字内两两交换」，不做整段反转——整段反转会把
+    /// 字符串首尾也颠倒，那不是任何真实设备的行为。
+    /// </para>
+    /// </remarks>
+    private static string DecodeString(byte[] data, ByteOrder order)
+    {
+        byte[] work = data;
+
+        // BADC 与 DCBA 都意味着字内字节颠倒；字序（CDAB）对字符串无意义，
+        // 因为字符串本就是按地址顺序连续读出的
+        if (order is ByteOrder.BADC or ByteOrder.DCBA)
+        {
+            work = new byte[data.Length];
+            Buffer.BlockCopy(data, 0, work, 0, data.Length);
+            for (int i = 0; i + 1 < work.Length; i += 2)
+                (work[i], work[i + 1]) = (work[i + 1], work[i]);
+        }
+
+        // 遇到首个 NUL 即认为字符串结束：定长区域里 NUL 之后是残留数据，
+        // 不是内容的一部分
+        int end = Array.IndexOf(work, (byte)0);
+        if (end < 0) end = work.Length;
+
+        // ASCII 之外的字节按 UTF-8 解，兼容部分设备存中文的做法；
+        // 非法序列由解码器替换为 U+FFFD，不抛异常
+        return Encoding.UTF8.GetString(work, 0, end).TrimEnd(' ', '\0');
+    }
+
+    /// <summary>把文本编成写入寄存器的字节，按声明长度补 NUL。</summary>
+    private static bool TryEncodeString(
+        string text, int length, ByteOrder order, out byte[] data, out string error)
+    {
+        error = string.Empty;
+        byte[] raw = Encoding.UTF8.GetBytes(text);
+
+        // 未声明长度时按实际内容长度，但必须补到偶数——
+        // 寄存器是 16 位的，写奇数个字节协议层无法表达
+        int size = length > 0 ? length : (raw.Length + 1) & ~1;
+
+        if (raw.Length > size)
+        {
+            // 静默截断会让操作员以为写进去了完整字符串，必须报错
+            data = Array.Empty<byte>();
+            error = $"文本占 {raw.Length} 字节，超出声明长度 {size}";
+            return false;
+        }
+
+        data = new byte[size];
+        Buffer.BlockCopy(raw, 0, data, 0, raw.Length);
+        // 余下保持 0：定长区域的惯例是 NUL 填充
+
+        if (order is ByteOrder.BADC or ByteOrder.DCBA)
+        {
+            for (int i = 0; i + 1 < data.Length; i += 2)
+                (data[i], data[i + 1]) = (data[i + 1], data[i]);
+        }
+
+        return true;
     }
 
     /// <summary>
