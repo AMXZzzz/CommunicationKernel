@@ -1,39 +1,34 @@
 <Solution>
-  <!-- 核心抽象 -->
+  <!-- L0 契约根 -->
   <Project Path="CommunicationKernel.Core.Abstractions/CommunicationKernel.Core.Abstractions.csproj" />
 
-  <!-- 通信层抽象 -->
-  <Project Path="CommunicationKernel.Communication.Protocol/CommunicationKernel.Communication.Protocol.csproj" />
-  <Project Path="CommunicationKernel.Communication.Transport/CommunicationKernel.Communication.Transport.csproj" />
+  <!-- L1 传输 / 协议契约 -->
+  <Project Path="CommunicationKernel.Core.Transport/CommunicationKernel.Core.Transport.csproj" />
+  <Project Path="CommunicationKernel.Core.Protocol/CommunicationKernel.Core.Protocol.csproj" />
 
-  <!-- 插件加载器 -->
-  <Project Path="CommunicationKernel.Plugin.Context/CommunicationKernel.Plugin.Context.csproj" />
-
-  <!-- 路由引擎 -->
-  <Project Path="CommunicationKernel.Core.EngineRouter/CommunicationKernel.Core.EngineRouter.csproj" />
-
-  <!-- 通讯内核库（形态 A 直接引用） -->
-  <Project Path="CommunicationKernel.Core.EngineRuntime/CommunicationKernel.Core.EngineRuntime.csproj" />
-
-  <!-- 现场宿主进程（形态 B）：托管 Core.EngineRuntime + gRPC -->
-  <Project Path="CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj" />
-
-  <!-- 协议插件 -->
+  <!-- L2 插件实现 -->
   <Project Path="CommunicationKernel.Plugins.Protocol.Modbus/CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
   <Project Path="CommunicationKernel.Plugins.Protocol.Panasonic/CommunicationKernel.Plugins.Protocol.Panasonic.csproj" />
   <Project Path="CommunicationKernel.Plugins.Protocol.Siemens.S7/CommunicationKernel.Plugins.Protocol.Siemens.S7.csproj" />
-
-  <!-- 传输介质插件 -->
   <Project Path="CommunicationKernel.Plugins.Transport.Tcp/CommunicationKernel.Plugins.Transport.Tcp.csproj" />
   <Project Path="CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
 
-  <!-- 连 EngineHostingServiceApp 的客户端 SDK（形态 B 的 UI 引用） -->
-  <Project Path="CommunicationKernel.EngineHost.Sdk/CommunicationKernel.EngineHost.Sdk.csproj" />
+  <!-- L3 插件加载 -->
+  <Project Path="CommunicationKernel.Plugin.Context/CommunicationKernel.Plugin.Context.csproj" />
 
-  <!-- 测试 -->
-  <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />
+  <!-- L4 路由 -->
+  <Project Path="CommunicationKernel.Core.EngineRouter/CommunicationKernel.Core.EngineRouter.csproj" />
 
-  <!-- UI 客户端 -->
+  <!-- L5 通讯内核（形态 A 直接引用） -->
+  <Project Path="CommunicationKernel.Core.EngineRuntime/CommunicationKernel.Core.EngineRuntime.csproj" />
+
+  <!-- L6 现场宿主 + 客户端 SDK（形态 B） -->
+  <Project Path="CommunicationKernel.Hosting.App/CommunicationKernel.Hosting.App.csproj" />
+  <Project Path="CommunicationKernel.Hosting.Sdk/CommunicationKernel.Hosting.Sdk.csproj" />
+
+  <!-- L7 上位机 -->
   <Project Path="CommunicationKernel.UI.Wpf/CommunicationKernel.UI.Wpf.csproj" />
   <Project Path="CommunicationKernel.UI.WebMaster/CommunicationKernel.UI.WebMaster.csproj" />
+
+  <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />
 </Solution>

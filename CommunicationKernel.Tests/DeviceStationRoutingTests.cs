@@ -13,8 +13,8 @@
 //   4) 协议元信息正确声明传输介质与站号需求（UI 据此渲染表单）
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 
 using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 using CommunicationKernel.Plugins.Protocol.Modbus.Rtu;

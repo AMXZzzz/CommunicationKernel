@@ -4,8 +4,8 @@
 // 作用: 由调用方在编译期直接提供工厂实例的装配服务，不扫描文件系统。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Core.EngineRuntime.Models;

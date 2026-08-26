@@ -4,7 +4,7 @@
        文件: CommunicationKernel.UI.WebMaster.csproj
        层级: UI 层 — Blazor Server Web 客户端
        作用: 本进程内嵌 EngineRuntime，通过 Blazor Server 提供浏览器监控界面。
-             形态 A：不必再单独启动 EngineHostingServiceApp。WPF 远端场景仍用 EngineHostingServiceApp。
+             形态 A：不必再单独启动 Hosting.App。WPF 远端场景仍用 Hosting.App。
 
        不用 Microsoft.NET.Sdk.Web：
          Web SDK 会把项目登记成 ASP.NET 控制台宿主。Visual Studio F5 /
@@ -32,7 +32,7 @@
         没有那段兜底就不该开 WinExe——静默失败比黑框糟糕得多。
 
       托盘依赖 WinForms，因此本项目是 Windows 专用（net8.0-windows）。
-      现场 Linux / 树莓派跑的是 EngineHostingServiceApp，Web 上位机留在办公室电脑上。
+      现场 Linux / 树莓派跑的是 Hosting.App，Web 上位机留在办公室电脑上。
     -->
     <OutputType>WinExe</OutputType>
   </PropertyGroup>
@@ -51,10 +51,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 内嵌引擎：UI 只经 IHostClient 访问，不引用具体协议类型。 -->
+    <!-- 内嵌引擎：UI 只经 IHostingClient 访问，不引用具体协议类型。 -->
     <ProjectReference Include="..\CommunicationKernel.Core.EngineRuntime\CommunicationKernel.Core.EngineRuntime.csproj" />
-    <!-- DTO / JsonFileStore / ValueCodec。远端 gRPC HostClient 仍给 WPF 用。 -->
-    <ProjectReference Include="..\CommunicationKernel.EngineHost.Sdk\CommunicationKernel.EngineHost.Sdk.csproj" />
+    <!-- DTO / JsonFileStore / ValueCodec。远端 gRPC HostingClient 仍给 WPF 用。 -->
+    <ProjectReference Include="..\CommunicationKernel.Hosting.Sdk\CommunicationKernel.Hosting.Sdk.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -114,8 +114,8 @@
       <_PluginDepsJson Remove="@(_PluginDepsJson)" />
       <_PluginDep Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)*.dll"
                   Exclude="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Core.Abstractions.dll;
-                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Protocol.dll;
-                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Transport.dll;
+                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Core.Protocol.dll;
+                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Core.Transport.dll;
                            %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Plugin.Context.dll" />
       <_PluginDepsJson Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)%(_PluginAssembly.Filename).deps.json" />
       <_PluginRuntimeAsset Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)runtimes\**\*.*" />

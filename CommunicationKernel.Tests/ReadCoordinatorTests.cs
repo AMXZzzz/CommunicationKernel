@@ -10,7 +10,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Core.EngineRouter;
 using CommunicationKernel.Core.EngineRouter.Models;

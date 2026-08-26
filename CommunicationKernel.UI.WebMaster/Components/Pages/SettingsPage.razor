@@ -5,7 +5,7 @@
    ----------------------------------------------------------------------------- *@
 
 @page "/settings"
-@inject HostSession Session
+@inject EngineSession Session
 @inject WebSettingsStore Settings
 @inject NavigationManager Nav
 @implements IDisposable
@@ -23,7 +23,7 @@
     <div class="page-body">
     <div class="settings-card">
         <h3>通讯引擎</h3>
-        <p class="setting-hint">已内嵌在本进程，不必再启动 EngineHostingServiceApp。协议插件在 exe 旁的 plugins 目录。</p>
+        <p class="setting-hint">已内嵌在本进程，不必再启动 Hosting.App。协议插件在 exe 旁的 plugins 目录。</p>
         <div class="connect-status @(Session.Online ? "status-ok" : "status-error")">
             @(Session.Online ? "引擎在线 · " + Session.RouteCount + " 条路由 · " + Session.HostVersion : "引擎未就绪")
         </div>
@@ -52,7 +52,7 @@
                 <input readonly value="@url" style="margin-bottom:8px" />
             }
         }
-        <p class="setting-hint">不要填 5000。那是独立宿主 EngineHostingServiceApp 的口，给 WPF 远端场景用。</p>
+        <p class="setting-hint">不要填 5000。那是独立宿主 Hosting.App 的口，给 WPF 远端场景用。</p>
     </div>
 
     <div class="settings-card">
@@ -93,7 +93,7 @@
         }
         if (port == WebSettingsStore.HostPort)
         {
-            _portStatus = "5000 留给独立宿主 EngineHostingServiceApp，Web 不能占用";
+            _portStatus = "5000 留给独立宿主 Hosting.App，Web 不能占用";
             _portStatusClass = "status-error";
             return;
         }

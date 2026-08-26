@@ -1,10 +1,10 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/WebVariableStore.cs
 // 层级: UI 层 — Blazor Server
-// 作用: 持久化变量定义。变量是上位机配置，不属于 EngineHostingServiceApp。
+// 作用: 持久化变量定义。变量是上位机配置，不属于 Hosting.App。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 using System.Text.Json;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
@@ -292,7 +292,7 @@ public sealed class WebVariableStore
 
     private void Load()
     {
-        // 读写都走 EngineHost.Sdk 的 JsonFileStore：与 WPF 端共用同一套原子落盘实现
+        // 读写都走 Hosting.Sdk 的 JsonFileStore：与 WPF 端共用同一套原子落盘实现
         List<WebVariable> list = JsonFileStore.Load<WebVariable>(
             WebPaths.VariablesFile, out string error);
 

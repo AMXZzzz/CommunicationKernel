@@ -4,7 +4,7 @@
 // 作用: 在传输工厂中寻找能枚举串口的插件，汇总宿主本机可用串口清单。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 
 namespace CommunicationKernel.Core.EngineRuntime;
 

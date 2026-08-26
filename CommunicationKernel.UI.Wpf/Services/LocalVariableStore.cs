@@ -14,7 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Models;
@@ -23,7 +23,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 {
     /// <summary>
     /// <see cref="IVariableService"/> 的内存+磁盘实现。
-    /// 变量列表存储在 List&lt;VariableItem&gt; 中，写入时通过 <see cref="HostClient"/> 发送。
+    /// 变量列表存储在 List&lt;VariableItem&gt; 中，写入时通过 <see cref="HostingClient"/> 发送。
     /// 每次 Add / Update / Remove 后触发 <see cref="VariablesChanged"/> 事件，
     /// 供 <c>VariablePollingService</c> 同步轮询任务集合；同时异步持久化到本地 JSON 文件。
     /// </summary>
@@ -48,7 +48,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         // ============================================================================
 
         /// <summary>gRPC 客户端，用于执行 WriteAsync。</summary>
-        private readonly HostClient _client;
+        private readonly HostingClient _client;
 
         /// <summary>内存变量列表，所有 CRUD 操作均在此列表上进行。</summary>
         private readonly List<VariableItem> _items = new List<VariableItem>();
@@ -75,7 +75,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// 初始化 LocalVariableStore，并从磁盘加载上次保存的变量列表。
         /// </summary>
         /// <param name="client">已初始化的 gRPC 客户端，用于写入操作。</param>
-        public LocalVariableStore(HostClient client)
+        public LocalVariableStore(HostingClient client)
         {
             // gRPC 客户端必填，写入走 WriteAsync
             _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -195,13 +195,13 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>
         /// 向 PLC 写入指定变量的值。
         /// 根据变量的 DataType 将 value 序列化为字节数组（大端序），
-        /// 然后通过 gRPC WriteAsync 发送到 EngineHostingServiceApp。
+        /// 然后通过 gRPC WriteAsync 发送到 Hosting.App。
         /// </summary>
         /// <param name="id">目标变量的 Id。</param>
         /// <param name="value">要写入的值，类型应与变量 DataType 匹配。</param>
         /// <param name="ct">取消令牌。</param>
         /// <returns>操作结果，Success = true 表示写入成功。</returns>
-        public async Task<HostOperationResult> WriteAsync(string id, object value, CancellationToken ct)
+        public async Task<HostingOperationResult> WriteAsync(string id, object value, CancellationToken ct)
         {
             VariableItem variable = null;
             lock (_lock)
@@ -218,7 +218,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
             // 变量已被删除或 Id 错误
             if (variable == null)
-                return HostOperationResult.Fail("NOT_FOUND", string.Format("变量 {0} 不存在", id));
+                return HostingOperationResult.Fail("NOT_FOUND", string.Format("变量 {0} 不存在", id));
 
             byte[] bytes;
             try
@@ -229,7 +229,7 @@ namespace CommunicationKernel.UI.Wpf.Services
             catch (Exception ex)
             {
                 // 类型转换失败（例如把 "abc" 当 Int16）
-                return HostOperationResult.Fail("PARSE_ERROR", ex.Message);
+                return HostingOperationResult.Fail("PARSE_ERROR", ex.Message);
             }
 
             // 经 gRPC 下发到指定路由的地址
@@ -239,7 +239,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 bytes,
                 ct).ConfigureAwait(false);
 
-            // 直接上抛。WriteResultDto 派生自 HostOperationResult，字段形状完全一致，
+            // 直接上抛。WriteResultDto 派生自 HostingOperationResult，字段形状完全一致，
             // 无需再拆开重装——此前那次转换纯属把三个字段搬进另一个同形状对象，
             // 除了制造错位机会没有任何收益。
             return result;

@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/GrpcProtocolResolver.cs
 // 层级: UI 层 — WPF 服务实现
-// 作用: IProtocolResolver 的 gRPC 实现。协议清单一律来自 EngineHostingServiceApp，UI 不内置协议知识。
+// 作用: IProtocolResolver 的 gRPC 实现。协议清单一律来自 Hosting.App，UI 不内置协议知识。
 // 离线策略:
 //       上一次成功获取的服务端清单缓存到本地 JSON，宿主不可达时用它填下拉框。
 //       从未成功获取过时返回空列表，由界面提示用户检查连接。
@@ -30,7 +30,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
-        private readonly HostClient _client;
+        private readonly HostingClient _client;
 
         /// <summary>
         /// 当前协议清单。多线程读写通过 volatile + 整体替换（copy-on-write）保证安全。
@@ -47,9 +47,9 @@ namespace CommunicationKernel.UI.Wpf.Services
         public event Action ProtocolsChanged;
 
         /// <param name="client">已初始化的 gRPC 客户端。</param>
-        public GrpcProtocolResolver(HostClient client)
+        public GrpcProtocolResolver(HostingClient client)
         {
-            // gRPC 客户端必填，协议清单一律向 EngineHostingServiceApp 查询
+            // gRPC 客户端必填，协议清单一律向 Hosting.App 查询
             _client = client ?? throw new ArgumentNullException(nameof(client));
 
             // 先加载本地缓存，保证设备编辑面板立刻有下拉内容
@@ -91,7 +91,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
             try
             {
-                // 向 EngineHostingServiceApp 拉取当前已加载的协议插件清单
+                // 向 Hosting.App 拉取当前已加载的协议插件清单
                 IReadOnlyList<ProtocolDescriptorDto> serverList =
                     await _client.QueryProtocolsAsync(ct).ConfigureAwait(false);
 

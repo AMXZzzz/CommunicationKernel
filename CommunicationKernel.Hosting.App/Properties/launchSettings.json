@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "CommunicationKernel.Hosting.App": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

@@ -4,7 +4,7 @@
 // 作用: 抽象 TCP/RTU/ASCII 三种外层封装（MBAP / CRC16 / LRC），供驱动注入。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 
 namespace CommunicationKernel.Plugins.Protocol.Modbus.Core;

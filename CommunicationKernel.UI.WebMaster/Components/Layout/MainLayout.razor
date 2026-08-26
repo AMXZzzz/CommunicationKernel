@@ -1,11 +1,11 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Layout/MainLayout.razor
    层级: UI 层 — 主布局
-   作用: 顶栏 / 侧栏 / 状态栏。Host 在线状态来自 HostSession，不再靠 CascadingParameter。
+   作用: 顶栏 / 侧栏 / 状态栏。Host 在线状态来自 EngineSession，不再靠 CascadingParameter。
    ----------------------------------------------------------------------------- *@
 
 @inherits LayoutComponentBase
-@inject HostSession Session
+@inject EngineSession Session
 @inject NavigationManager Nav
 @implements IDisposable
 

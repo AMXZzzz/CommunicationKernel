@@ -7,7 +7,7 @@
     引用纪律 —— 这个工程只需要"契约"与"反射"，不需要任何具体实现：
       Core.Abstractions        插件必须实现的接口（唯一的共享类型来源）
 
-    这里刻意不引用 Communication.Transport / Communication.Protocol：
+    这里刻意不引用 Core.Transport / Core.Protocol：
     插件加载器看到的只是 Core.Abstractions 里的接口，它不关心某个插件到底是
     传输实现还是协议实现——那是调用方按接口类型自行判定的事。
 

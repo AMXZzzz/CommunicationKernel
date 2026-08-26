@@ -7,7 +7,7 @@
 //   「明明已登记却查不到」或「两条路由被当成一条」。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.EngineRouter.Models;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

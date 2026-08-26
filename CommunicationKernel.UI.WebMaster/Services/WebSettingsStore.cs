@@ -1,10 +1,10 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/WebSettingsStore.cs
 // 层级: UI 层 — Blazor Server
-// 作用: 读写本端 EngineHostingServiceApp 地址。文件在本 exe 旁 config/，不与 WPF 共用。
+// 作用: 读写本端 Hosting.App 地址。文件在本 exe 旁 config/，不与 WPF 共用。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 using System.Text.Json;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
@@ -80,7 +80,7 @@ public sealed class WebSettingsStore
             _log.Warn("Settings", "读取 settings.json 失败，回落配置: " + ex.Message);
         }
 
-        return _config["EngineHostingServiceApp:Address"] ?? fallback;
+        return _config["Hosting.App:Address"] ?? fallback;
     }
 
     /// <summary>保存 Host 地址。</summary>
@@ -109,7 +109,7 @@ public sealed class WebSettingsStore
         _log.Info("Settings", "已保存 Host 地址: " + normalized);
     }
 
-    /// <summary>EngineHostingServiceApp 占用的端口，Web 禁止绑在上面。</summary>
+    /// <summary>Hosting.App 占用的端口，Web 禁止绑在上面。</summary>
     public const int HostPort = 5000;
 
     /// <summary>允许的 Web 端口：1024–65535，且不能是宿主的 5000。</summary>
@@ -166,7 +166,7 @@ public sealed class WebSettingsStore
     {
         if (!IsAllowedPort(port))
             throw new ArgumentOutOfRangeException(nameof(port),
-                "端口必须在 1024–65535，且不能使用 5000（那是 EngineHostingServiceApp 的）。");
+                "端口必须在 1024–65535，且不能使用 5000（那是 Hosting.App 的）。");
 
         lock (_lock)
         {

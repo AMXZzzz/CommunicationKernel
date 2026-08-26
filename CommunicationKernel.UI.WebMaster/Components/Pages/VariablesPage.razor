@@ -5,7 +5,7 @@
    ----------------------------------------------------------------------------- *@
 
 @page "/variables"
-@inject HostSession Session
+@inject EngineSession Session
 @inject WebVariableStore Store
 @inject WebDeviceStore Devices
 @inject AppLogStore Log
@@ -482,7 +482,7 @@
     /// 校验并保存表单，新增与编辑共用。
     /// </summary>
     /// <remarks>
-    /// 变量只写本地，不触碰宿主——它是上位机的配置，不属于 EngineHostingServiceApp。
+    /// 变量只写本地，不触碰宿主——它是上位机的配置，不属于 Hosting.App。
     /// 因此本方法是同步的，也不要求 Host 在线。
     /// </remarks>
     private void Save()
@@ -592,7 +592,7 @@
         try
         {
             // 编码失败不会发起 I/O，服务直接返回 PARSE_ERROR
-            HostOperationResult r = await Variables.WriteAsync(row).ConfigureAwait(true);
+            HostingOperationResult r = await Variables.WriteAsync(row).ConfigureAwait(true);
             if (r.Success)
             {
                 _banner = "写入成功 " + row.Name;

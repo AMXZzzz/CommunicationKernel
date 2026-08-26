@@ -49,7 +49,7 @@ public sealed class DataMonitorViewModel : ViewModelBase {
     // 命令
     // ============================================================================
 
-    /// <summary>手动刷新命令：触发 IDeviceService.Load() 重新从 EngineHostingServiceApp 拉取路由列表。</summary>
+    /// <summary>手动刷新命令：触发 IDeviceService.Load() 重新从 Hosting.App 拉取路由列表。</summary>
     public ICommand RefreshCommand { get; }
 
     // ============================================================================

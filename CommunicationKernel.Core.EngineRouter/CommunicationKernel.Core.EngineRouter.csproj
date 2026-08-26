@@ -6,8 +6,8 @@
 
     引用纪律 —— 每条引用都必须有实际 using 支撑，禁止"以防万一"式声明：
       Core.Abstractions        OperationResult / KernelErrorCode（错误契约）
-      Communication.Transport  ITransportClient（分派目标之一）
-      Communication.Protocol   IProtocolCodec（分派目标之一）
+      Core.Transport  ITransportClient（分派目标之一）
+      Core.Protocol   IProtocolCodec（分派目标之一）
 
     这里刻意不引用 Plugin.Context：路由层接收的是已经实例化好的传输与协议对象，
     "从哪个 DLL 加载出来的"属于上层（Core.EngineRuntime）的组装职责。
@@ -19,8 +19,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.Transport\CommunicationKernel.Core.Transport.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.Protocol\CommunicationKernel.Core.Protocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>

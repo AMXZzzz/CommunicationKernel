@@ -9,7 +9,7 @@
 using System;
 using System.Globalization;
 using System.Text;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 
 namespace CommunicationKernel.UI.Wpf.Services;

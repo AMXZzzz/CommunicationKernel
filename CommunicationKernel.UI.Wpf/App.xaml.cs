@@ -4,13 +4,13 @@
 // 文件: App.xaml.cs
 // 层级: UI 层 — WPF 应用程序启动入口（组合根 Composition Root）
 // 作用: 构建 IHost + DI 容器，注册所有服务、ViewModel、Page；
-//       从 settings.json / 本项目 appsettings.json 读取 EngineHostingServiceApp 地址；
+//       从 settings.json / 本项目 appsettings.json 读取 Hosting.App 地址；
 //       启动主机后预加载设备列表并显示主窗口。
 // 启动顺序:
 //   Application_Startup
 //     → WpfAppSettings.ReadAddress() 读 config/settings.json / appsettings.json
 //     → IHostBuilder.Build()
-//       → DI 注册: HostClient（使用持久化地址）
+//       → DI 注册: HostingClient（使用持久化地址）
 //       → DI 注册: IDeviceService / IVariableService / IProtocolResolver / IAppLogger
 //       → DI 注册: ViewModels（Device / Log / Variable / DataMonitor / Settings）
 //       → DI 注册: Pages（DataMonitor / Device / Variable / Log / Settings）
@@ -70,7 +70,7 @@ public partial class App : Application {
         // 本文件位于 CommunicationKernel.UI.Wpf 命名空间，编译器解析 Host
         // 时会先逐级向外找。以前工程叫 Host.Sdk / Host.App 时会命中
         // CommunicationKernel.Host，根本轮不到 using 里那个类。
-        // 现已改名为 EngineHost.*，冲突没了，但仍写全名，避免以后再踩。
+        // 现已改名为 Hosting.*，冲突没了，但仍写全名，避免以后再踩。
         _host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
             .UseContentRoot(AppContext.BaseDirectory)
             .ConfigureServices(ConfigureServices)
@@ -92,10 +92,10 @@ public partial class App : Application {
         // 4. 启动变量轮询：对 IsPollingEnabled=true 的变量按 ScanRateMs 周期 ReadAsync
         _host.Services.GetRequiredService<VariablePollingService>().Start();
 
-        // 5. 启动 EngineHostingServiceApp 健康轮询。
+        // 5. 启动 Hosting.App 健康轮询。
         //    刻意早于窗口创建：窗口构造时就能拿到已知状态，
         //    且轮询不再依附窗口生命周期（这正是它从 MainWindow 里搬出来的原因）。
-        _host.Services.GetRequiredService<HostSessionService>().Start();
+        _host.Services.GetRequiredService<HostingSessionService>().Start();
 
         // 6. 从 DI 取主窗口并显示（必须在 UI 线程）
         MainWindow mainWindow = _host.Services.GetRequiredService<MainWindow>();
@@ -103,7 +103,7 @@ public partial class App : Application {
       } catch (Exception ex) {
         // Application_Startup 是 async void：首个 await 之后抛出的异常
         // 会被 post 回同步上下文成为未处理异常，直接闪退且不留任何提示。
-        // 启动失败必须让用户看到原因（最常见的是 EngineHostingServiceApp 地址不可达）。
+        // 启动失败必须让用户看到原因（最常见的是 Hosting.App 地址不可达）。
         MessageBox.Show(
             "应用启动失败：\n\n" + ex.Message,
             "启动错误", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -166,11 +166,11 @@ public partial class App : Application {
         // =====================================================================
 
         // 从 exe 旁 config/settings.json 读取 HostAddress；没有则用本项目 appsettings.json
-        services.AddSingleton<HostClient>(sp => {
-            ILogger<HostClient> logger =
-                sp.GetRequiredService<ILogger<HostClient>>();
+        services.AddSingleton<HostingClient>(sp => {
+            ILogger<HostingClient> logger =
+                sp.GetRequiredService<ILogger<HostingClient>>();
             string address = WpfAppSettings.ReadAddress(sp.GetRequiredService<IConfiguration>());
-            return new HostClient(address, logger);
+            return new HostingClient(address, logger);
         });
 
         // =====================================================================
@@ -187,7 +187,7 @@ public partial class App : Application {
         // 封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus / RemoveRoute
         services.AddSingleton<IDeviceService>(sp =>
             new GrpcDeviceService(
-                sp.GetRequiredService<HostClient>(),
+                sp.GetRequiredService<HostingClient>(),
                 sp.GetRequiredService<IAppLogger>()));
 
         // 同一单例再按 IRouteReconciler 取出：两份实例会拆开在途表，合并与限流失效
@@ -196,22 +196,22 @@ public partial class App : Application {
 
         // 内存变量表；写入走 gRPC WriteAsync
         services.AddSingleton<IVariableService>(sp =>
-            new LocalVariableStore(sp.GetRequiredService<HostClient>()));
+            new LocalVariableStore(sp.GetRequiredService<HostingClient>()));
 
-        // 协议清单一律来自 EngineHostingServiceApp 已加载的插件，UI 不内置协议名
+        // 协议清单一律来自 Hosting.App 已加载的插件，UI 不内置协议名
         services.AddSingleton<IProtocolResolver>(sp =>
-            new GrpcProtocolResolver(sp.GetRequiredService<HostClient>()));
+            new GrpcProtocolResolver(sp.GetRequiredService<HostingClient>()));
 
         // 串口清单来自宿主所在机器（树莓派上是 /dev/ttyUSB0，不是本机 COM1）
         services.AddSingleton<ISerialPortProvider>(sp =>
-            new GrpcSerialPortProvider(sp.GetRequiredService<HostClient>()));
+            new GrpcSerialPortProvider(sp.GetRequiredService<HostingClient>()));
 
-        // EngineHostingServiceApp 会话状态（在线与否、版本、路由数）。
+        // Hosting.App 会话状态（在线与否、版本、路由数）。
         // 健康轮询曾经写在 MainWindow.xaml.cs 里，属于把连接生命周期放进了视图层；
-        // 现独立成服务，与 Web 端的 HostSession 职责一致。
-        services.AddSingleton<HostSessionService>(sp =>
-            new HostSessionService(
-                sp.GetRequiredService<HostClient>(),
+        // 现独立成服务，与 Web 端的 EngineSession 职责一致。
+        services.AddSingleton<HostingSessionService>(sp =>
+            new HostingSessionService(
+                sp.GetRequiredService<HostingClient>(),
                 sp.GetRequiredService<IAppLogger>()));
 
         // =====================================================================
@@ -242,7 +242,7 @@ public partial class App : Application {
         // 地址配置、连接测试、设置持久化
         services.AddSingleton<SettingsViewModel>(sp =>
             new SettingsViewModel(
-                sp.GetRequiredService<HostClient>(),
+                sp.GetRequiredService<HostingClient>(),
                 sp.GetRequiredService<IConfiguration>()));
 
         // =====================================================================
@@ -280,7 +280,7 @@ public partial class App : Application {
         services.AddSingleton<VariablePollingService>(sp =>
             new VariablePollingService(
                 sp.GetRequiredService<IVariableService>(),
-                sp.GetRequiredService<HostClient>(),
+                sp.GetRequiredService<HostingClient>(),
                 sp.GetRequiredService<IRouteReconciler>()));
 
         // 主窗口注入 IServiceProvider，按导航懒解析页面
@@ -297,7 +297,7 @@ public partial class App : Application {
     /// </summary>
     /// <remarks>
     /// 必须使用 <see cref="IAsyncDisposable.DisposeAsync"/> 而非同步 Dispose：
-    /// HostClient 只实现了 IAsyncDisposable，
+    /// HostingClient 只实现了 IAsyncDisposable，
     /// 对这类单例调用 ServiceProvider.Dispose() 会抛
     /// InvalidOperationException（"type only implements IAsyncDisposable"），
     /// 在 async void 中即表现为退出时的未处理异常崩溃。

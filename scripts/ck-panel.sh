@@ -431,7 +431,7 @@ diag_plugins() {
 
     # 共享契约泄漏是"协议列表为空"的头号原因，且不抛任何异常
     local leaked=0
-    for c in Core.Abstractions Communication.Protocol Communication.Transport Plugin.Context; do
+    for c in Core.Abstractions Core.Protocol Core.Transport Plugin.Context; do
         if [ -f "${dir}/CommunicationKernel.${c}.dll" ]; then
             err "共享契约泄漏进插件目录：CommunicationKernel.${c}.dll"
             leaked=1
@@ -537,7 +537,7 @@ diag_health() {
 
     printf '9. 契约未泄漏      '
     local leaked=0
-    for c in Core.Abstractions Communication.Protocol Communication.Transport Plugin.Context; do
+    for c in Core.Abstractions Core.Protocol Core.Transport Plugin.Context; do
         [ -f "${INSTALL_DIR}/plugins/CommunicationKernel.${c}.dll" ] && leaked=1
     done
     [ "$leaked" -eq 0 ] && ok "正确" || err "契约泄漏进 plugins/，插件会全部静默注册失败"
