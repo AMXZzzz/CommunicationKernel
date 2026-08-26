@@ -35,17 +35,29 @@
 
     /* 工具栏条带高度。页面主体据此计算可滚动区域，改这里即可整体生效 */
     --toolbar-h: 48px;
+    --space: clamp(8px, 2.4vw, 16px);
+    --title-fs: clamp(14px, 3.8vw, 16px);
+    --card-min: 280px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body { height: 100%; height: 100dvh; }
+html {
+    height: 100%;
+    height: 100dvh;
+    overflow-x: clip;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
 
 body {
     font-family: var(--font);
     font-size: 13px;
     color: var(--text);
     background: var(--bg);
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
 }
 
 button, [role="button"] { cursor: pointer; }
@@ -57,6 +69,8 @@ button:disabled { cursor: not-allowed; }
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .titlebar {
@@ -91,7 +105,7 @@ button:disabled { cursor: not-allowed; }
     border-bottom: 1px solid #7f1d1d;
 }
 
-.main-area { flex: 1; display: flex; overflow: hidden; position: relative; }
+.main-area { flex: 1; display: flex; overflow: hidden; position: relative; min-width: 0; }
 
 .sidebar {
     width: 168px;
@@ -155,18 +169,22 @@ button:disabled { cursor: not-allowed; }
 .page-content {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
     background: var(--bg);
     display: flex;
     flex-direction: column;
+    max-width: 100%;
 }
 
 /* 每个页面的根容器：纵向占满，主体区自己滚 */
 .page {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
+    max-width: 100%;
 }
 
 /* 工具栏下方的可滚动主体 */
@@ -315,7 +333,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .data-table tbody tr.row-error td { background: #2a1212; }
 .empty-cell { text-align: center; color: var(--text-dim); padding: 28px !important; }
 
-.summary-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.summary-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; }
 .summary-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -336,7 +354,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .summary-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .summary-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min)), 1fr)); gap: 14px; }
 
 .mes-card {
     background: var(--surface2);
@@ -711,11 +729,11 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 .tab-ico { font-size: 18px; line-height: 1; }
 
 /* ============================================================================
-   ≤720px 就是手机壳：底栏五键，不要汉堡。不依赖 is-phone 类。
+   ≤900px 手机 / 小平板：底栏五键。再窄靠 auto-fit / clamp 自己收。
    html.is-phone 再覆盖一遍，给忽略 viewport、按 980px 排的华为浏览器。
    ============================================================================ */
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
     html { --toolbar-h: 48px; }
     body { -webkit-tap-highlight-color: transparent; overflow: hidden; }
 
@@ -772,9 +790,10 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
     .toolbar { overflow-x: auto; scrollbar-width: none; padding: 0 12px; gap: 6px; }
     .toolbar::-webkit-scrollbar { display: none; }
     .toolbar .btn, .toolbar .btn-filter, .toolbar .file-btn { min-height: 36px; flex-shrink: 0; }
-    .page-body { padding: 12px; }
-    .summary-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
-    .device-grid { grid-template-columns: 1fr; }
+    .page-body { padding: var(--space); }
+    .summary-bar { gap: var(--space); }
+    .device-grid { --card-min: 100%; gap: var(--space); }
+    .title-status { font-size: var(--title-fs); }
     .health-strip { flex-wrap: wrap; gap: 8px; }
     .health-strip .btn { margin-left: 0; }
     .alarm-row { grid-template-columns: 1fr; gap: 2px; }
@@ -893,4 +912,15 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 
 @media (max-width: 420px) {
     .summary-bar { grid-template-columns: 1fr; }
+    .tab-item { font-size: 9px; }
 }
+
+/* 横屏矮窗口：收顶栏底栏，把高度留给内容 */
+@media (max-width: 900px) and (max-height: 480px) {
+    .titlebar { height: calc(36px + env(safe-area-inset-top)); }
+    .tab-item { min-height: 44px; gap: 0; }
+    .tabbar { min-height: 44px; }
+    .toolbar { height: 40px; }
+    .page-title { font-size: 13px; }
+}
+
