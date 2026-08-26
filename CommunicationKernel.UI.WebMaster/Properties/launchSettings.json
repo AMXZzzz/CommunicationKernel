@@ -3,6 +3,7 @@
     "CommunicationKernel.UI.WebMaster": {
       "commandName": "Project",
       "launchBrowser": false,
+      "dotnetRunMessages": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
