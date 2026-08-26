@@ -9,6 +9,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
@@ -73,6 +74,17 @@ public sealed class EngineRuntime : IAsyncDisposable {
     // 路由编排器：管理路由表与读合并，注销时保证「先摘表、再释放」
     private readonly IRouterOrchestrator _orchestrator;
 
+    /// <summary>
+    /// 本机只允许一份 EngineRuntime（跨进程）。
+    /// 两份会争用同一条串口/同一台 PLC 的 TCP。
+    /// </summary>
+    internal const string ProcessMutexName = @"Local\CommunicationKernel.Engine.Runtime";
+
+    private static readonly object ProcessMutexGate = new();
+    private static Mutex? ProcessMutex;
+    private static int ProcessInstanceCount;
+    private readonly bool _holdsProcessMutex;
+
     // ============================================================================
     // 构造
     // ============================================================================
@@ -104,8 +116,10 @@ public sealed class EngineRuntime : IAsyncDisposable {
 
         _routeAssemblyService = routeAssemblyService;
         _orchestrator         = orchestrator;
-        // 未注入日志时退化为空实现，保持可测试性
         _logger               = logger ?? NullLogger<EngineRuntime>.Instance;
+
+        // 本机只能有一份引擎。测试宿主（testhost）放行，以便套件并行 new 多个。
+        _holdsProcessMutex = TryEnterProcess();
 
         // 间隔 <= 0 表示关闭链路巡检（单元测试与「只按需读写」的场景用）
         if (linkCheckIntervalMs > 0) {
@@ -446,6 +460,8 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 重启宿主会因串口被占用而连不上。DI 容器在关闭时会调用本方法。
     /// </remarks>
     public async ValueTask DisposeAsync() {
+        try
+        {
         // 先停巡检：否则它可能在路由注销途中读到半拆状态的 RouteEntry
         if (_linkCheckCts is not null) {
             await _linkCheckCts.CancelAsync().ConfigureAwait(false);
@@ -461,7 +477,8 @@ public sealed class EngineRuntime : IAsyncDisposable {
 
         // 先复制键列表：Unregister 会改字典，直接遍历 Keys 会抛 InvalidOperationException
         string[] routeIds = _registrationsByRouteId.Keys.ToArray();
-        if (routeIds.Length == 0) return;
+        if (routeIds.Length == 0)
+            return;
 
         _logger.LogInformation("EngineRuntime disposing: closing {Count} route(s).", routeIds.Length);
 
@@ -474,6 +491,75 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 _logger.LogError(ex, "EngineRuntime dispose: failed to unregister route '{RouteId}'.", routeId);
             }
         }
+        }
+        finally
+        {
+            LeaveProcess();
+        }
+    }
+
+    /// <summary>本机已有引擎时抛错；测试进程放行。</summary>
+    private static bool TryEnterProcess()
+    {
+        if (IsTestHost())
+            return false;
+
+        lock (ProcessMutexGate)
+        {
+            if (ProcessInstanceCount > 0)
+                throw new InvalidOperationException(
+                    "当前进程已经有一份 EngineRuntime。通讯内核在同一进程里也只能构造一次。");
+
+            Mutex mutex;
+            try
+            {
+                mutex = new Mutex(initiallyOwned: true, ProcessMutexName, out bool createdNew);
+                if (!createdNew)
+                {
+                    mutex.Dispose();
+                    throw new InvalidOperationException(
+                        "本机已经有一份 Engine.Runtime 在运行（EngineHost.App 或 WebMaster）。\n" +
+                        "同时只能有一份引擎，否则会争用同一条 PLC 连接。\n" +
+                        "请先退出正在跑的那一个，再启动本程序。");
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                // 上一份崩溃后互斥量被遗弃。再 Open 一次拿到同一把锁即可。
+                mutex = Mutex.OpenExisting(ProcessMutexName);
+            }
+
+            ProcessMutex = mutex;
+            ProcessInstanceCount = 1;
+            return true;
+        }
+    }
+
+    private void LeaveProcess()
+    {
+        if (!_holdsProcessMutex)
+            return;
+
+        lock (ProcessMutexGate)
+        {
+            ProcessInstanceCount = Math.Max(0, ProcessInstanceCount - 1);
+            if (ProcessInstanceCount == 0 && ProcessMutex is not null)
+            {
+                try { ProcessMutex.Dispose(); }
+                catch { }
+                ProcessMutex = null;
+            }
+        }
+    }
+
+    /// <summary>单元测试跑在 testhost 里，允许同一进程构造多份。</summary>
+    private static bool IsTestHost()
+    {
+        string? name = Assembly.GetEntryAssembly()?.GetName().Name;
+        if (string.IsNullOrEmpty(name))
+            return false;
+        return name.Contains("testhost", StringComparison.OrdinalIgnoreCase)
+            || name.Contains(".Tests", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

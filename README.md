@@ -19,6 +19,7 @@
 - **形态 A（嵌入）**：本进程引用 `Engine.Runtime` 直连 PLC。`UI.WebMaster` 已是这种形态，不必再开 `EngineHost.App`。
 - **形态 B（独立宿主）**：现场跑 `EngineHost.App`；上位机引用 `EngineHost.Sdk`，通过 gRPC 远程读写。
   多台上位机同时访问同一批 PLC **只能用形态 B**——形态 A 里每个进程各自持有串口/socket。
+  本机同时只能有一份 `Engine.Runtime`：WebMaster 与 EngineHost.App 互斥，开着一个就不要开另一个。
 
 跨机部署（树莓派当网关、办公室当上位机）走形态 B，步骤见 [部署文档](部署-Linux与树莓派.md)。
 

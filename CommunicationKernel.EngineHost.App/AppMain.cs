@@ -130,6 +130,9 @@ builder.Services.AddSingleton<EngineRuntime>();
 // 冻结服务容器，生成可运行的 WebApplication
 var app = builder.Build();
 
+// 立刻构造引擎：WebMaster 已内嵌一份时，现在就失败并说明，而不是等第一笔 gRPC
+_ = app.Services.GetRequiredService<EngineRuntime>();
+
 // 映射 gRPC 服务端点（Health / 路由 / 读写均走 HostGrpcService）
 app.MapGrpcService<HostGrpcService>();
 
@@ -273,7 +276,7 @@ static void ReportDuplicateInstance()
 {
     const string message =
         "CommunicationKernel.EngineHost.App 已经在运行，不必再开一份。\n\n" +
-        "关掉浏览器不会停宿主。本机 Web 打开 http://localhost:64000 即可。\n" +
+        "本机只能有一份 Engine.Runtime。WebMaster 也内嵌引擎，两者不能同时开。\n" +
         "真要重启：任务管理器结束 CommunicationKernel.EngineHost.App，再双击本程序。";
     Console.Error.WriteLine();
     Console.Error.WriteLine("[启动失败] " + message);

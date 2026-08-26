@@ -35,7 +35,7 @@
         <label>监听端口</label>
         <input @bind="_portText" placeholder="64000" inputmode="numeric" />
         <div class="form-actions">
-            <button class="btn primary" type="button" @onclick="SavePort" disabled="@_busy">保存端口</button>
+            <button class="btn primary" type="button" @onclick="SavePort">保存端口</button>
         </div>
         <div class="connect-status @_portStatusClass" style="margin-top:12px">@_portStatus</div>
         <label>本机浏览器</label>
@@ -64,7 +64,6 @@
 </div>
 
 @code {
-    private bool _busy;
     private int _listenPort = LanAccess.DefaultPort;
     private string _portText = LanAccess.DefaultPort.ToString();
     private string _portStatus = "未保存过则使用 64000";
