@@ -35,172 +35,163 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 // 托盘程序不需要控制台。WinExe 双击本来没有；VS / dotnet run 会塞一个黑框过来。
 HideAttachedConsole();
 
+//! 互斥体
 Mutex? instanceLock = null;
 Mutex? hostingLock = null;
 EventWaitHandle? showEvent = null;
 
-try
-{
+try {
 
-// ============================================================================
-// 单实例：已经在托盘里跑时，再双击只是把界面唤出来
-// ============================================================================
-try
-{
-    instanceLock = new Mutex(initiallyOwned: true, TrayHost.MutexName, out bool createdNew);
-    if (!createdNew)
-    {
-        NotifyRunningInstance();
-        return;
+    // ============================================================================
+    // 单实例：已经在托盘里跑时，再双击只是把界面唤出来
+    // ============================================================================
+    try {
+        //! 尝试创建一个互斥体, 创建成功返回true ,  创建失败,即存在一个互斥体,则返回false
+        instanceLock = new Mutex(initiallyOwned: true, TrayHost.MutexName, out bool createdNew);
+        if (!createdNew) {
+            //! 唤起互斥体寄生进程
+            NotifyRunningInstance();
+            return;
+        }
+    } catch (AbandonedMutexException) {
+        // 上一份崩溃后互斥量被遗弃，本进程已经接手，继续启动
+    } catch {
+        // 没命名互斥量权限：不因此放弃启动
     }
-}
-catch (AbandonedMutexException)
-{
-    // 上一份崩溃后互斥量被遗弃，本进程已经接手，继续启动
-}
-catch
-{
-    // 没命名互斥量权限：不因此放弃启动
-}
 
-showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, TrayHost.ShowEventName);
-EventWaitHandle showSignal = showEvent;
+    //! 创建事件句柄
+    showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, TrayHost.ShowEventName);
+    EventWaitHandle showSignal = showEvent;
 
-// 本进程同时持有 Hosting.App 互斥量：独立 exe 再开会抢同一份引擎和 :5000
-try
-{
-    hostingLock = new Mutex(initiallyOwned: true, HostingComposition.InstanceMutexName, out bool hostingFree);
-    if (!hostingFree)
-    {
-        ReportHostingAlreadyRunning();
-        return;
+    // 本进程同时持有 Hosting.App 互斥量：独立 exe 再开会抢同一份引擎和 :5000
+    try {
+        hostingLock = new Mutex(initiallyOwned: true, HostingComposition.InstanceMutexName, out bool hostingFree);
+        if (!hostingFree) {
+            //! 弹出提示
+            ReportHostingAlreadyRunning();
+            return;
+        }
+    } catch (AbandonedMutexException) {
+        // 上一份 Hosting.App 崩溃后互斥量被遗弃，本进程已经接手
+    } catch {
+        // 没权限不因此放弃；后面绑 :5000 失败仍会接住
     }
-}
-catch (AbandonedMutexException)
-{
-    // 上一份 Hosting.App 崩溃后互斥量被遗弃，本进程已经接手
-}
-catch
-{
-    // 没权限不因此放弃；后面绑 :5000 失败仍会接住
-}
 
-// ASPNETCORE_URLS 会压掉下面的双端口绑定
-string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
-if (!string.IsNullOrWhiteSpace(inheritedUrls))
-    Environment.SetEnvironmentVariable("ASPNETCORE_URLS", null);
+    // ASPNETCORE_URLS 会压掉下面的双端口绑定
+    string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+    if (!string.IsNullOrWhiteSpace(inheritedUrls)) {
+        Environment.SetEnvironmentVariable("ASPNETCORE_URLS", null);
+    }
 
-WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+    //! 创建Web App工厂
+    WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-int listenPort = WebSettingsStore.ResolveListenPort(builder.Configuration, inheritedUrls);
-int grpcPort = builder.Configuration.GetValue("Hosting:GrpcPort", HostingComposition.DefaultGrpcPort);
-if (grpcPort is < 1024 or > 65535 || grpcPort == listenPort)
-    grpcPort = HostingComposition.DefaultGrpcPort == listenPort ? 5001 : HostingComposition.DefaultGrpcPort;
+    //! 枚举端口
+    int listenPort = WebSettingsStore.ResolveListenPort(builder.Configuration, inheritedUrls);
+    int grpcPort = builder.Configuration.GetValue("Hosting:GrpcPort", HostingComposition.DefaultGrpcPort);
+    if (grpcPort is < 1024 or > 65535 || grpcPort == listenPort)
+        grpcPort = HostingComposition.DefaultGrpcPort == listenPort ? 5001 : HostingComposition.DefaultGrpcPort;
 
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.ListenAnyIP(listenPort, listen => listen.Protocols = HttpProtocols.Http1AndHttp2);
-    options.ListenAnyIP(grpcPort, HostingComposition.ListenGrpc);
-});
+    //! 配置协议
+    builder.WebHost.ConfigureKestrel(options => {
+        options.ListenAnyIP(listenPort, listen => listen.Protocols = HttpProtocols.Http1AndHttp2);
+        options.ListenAnyIP(grpcPort, HostingComposition.ListenGrpc);
+    });
 
-// ============================================================================
-// 服务注册
-// ============================================================================
+    // ============================================================================
+    // 服务注册
+    // ============================================================================
 
-// 操作员日志：先建 Store，再挂到 Logging，保证页面与 ILogger 共用一份缓冲
-AppLogStore logStore = new();
-builder.Services.AddSingleton(logStore);
-builder.Logging.AddProvider(new AppLogLoggerProvider(logStore));
+    // 操作员日志：先建 Store，再挂到 Logging，保证页面与 ILogger 共用一份缓冲
+    AppLogStore logStore = new();
+    builder.Services.AddSingleton(logStore);
+    builder.Logging.AddProvider(new AppLogLoggerProvider(logStore));
 
-// Blazor Server 组件和交互支持
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    // Blazor Server 组件和交互支持
+    builder.Services.AddRazorComponents()
+        .AddInteractiveServerComponents();
 
-// 断线保留电路，避免操作员刷新前短暂掉线就把页面状态清掉
-builder.Services.Configure<CircuitOptions>(options =>
-{
-    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
-    options.DetailedErrors = builder.Environment.IsDevelopment();
-});
+    // 断线保留电路，避免操作员刷新前短暂掉线就把页面状态清掉
+    builder.Services.Configure<CircuitOptions>(options => {
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
+        options.DetailedErrors = builder.Environment.IsDevelopment();
+    });
 
-// 本地持久化（设备 / 变量 / Web 端口）
-builder.Services.AddSingleton<WebSettingsStore>();
-builder.Services.AddSingleton<WebDeviceStore>();
-builder.Services.AddSingleton<WebVariableStore>();
+    // 本地持久化（设备 / 变量 / Web 端口）
+    builder.Services.AddSingleton<WebSettingsStore>();
+    builder.Services.AddSingleton<WebDeviceStore>();
+    builder.Services.AddSingleton<WebVariableStore>();
 
-// 本进程带上 Hosting.App：同一份组合根，gRPC 对外，UI 经 HostingClient 走回环。
-HostingComposition.AddServices(builder.Services, builder.Configuration);
-string localGrpc = "http://127.0.0.1:" + grpcPort;
-builder.Services.AddSingleton<IHostingClient>(sp =>
-    new HostingClient(localGrpc, sp.GetRequiredService<ILogger<HostingClient>>()));
+    // 本进程带上 Hosting.App：同一份组合根，gRPC 对外，UI 经 HostingClient 走回环。
+    HostingComposition.AddServices(builder.Services, builder.Configuration);
+    string localGrpc = "http://127.0.0.1:" + grpcPort;
+    builder.Services.AddSingleton<IHostingClient>(sp =>
+        new HostingClient(localGrpc, sp.GetRequiredService<ILogger<HostingClient>>()));
 
-// 会话：单例即 HostedService
-builder.Services.AddSingleton<EngineSession>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<EngineSession>());
+    // 会话：单例即 HostedService
+    builder.Services.AddSingleton<EngineSession>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<EngineSession>());
 
-// 设备操作：页面唯一的设备入口，页面不得再直接持有 IHostingClient。
-// 对应 WPF 端的 IDeviceService / GrpcDeviceService。
-builder.Services.AddSingleton<IWebDeviceService, WebDeviceService>();
+    // 设备操作：页面唯一的设备入口，页面不得再直接持有 IHostingClient。
+    // 对应 WPF 端的 IDeviceService / GrpcDeviceService。
+    builder.Services.AddSingleton<IWebDeviceService, WebDeviceService>();
 
-// 变量读写：页面与后台轮询器共用，保证字节序处理不再分叉。
-builder.Services.AddSingleton<IWebVariableService, WebVariableService>();
+    // 变量读写：页面与后台轮询器共用，保证字节序处理不再分叉。
+    builder.Services.AddSingleton<IWebVariableService, WebVariableService>();
 
-// 变量轮询：Host 离线时跳过
-builder.Services.AddHostedService<VariablePoller>();
+    // 变量轮询：Host 离线时跳过
+    builder.Services.AddHostedService<VariablePoller>();
 
-// 托盘：关浏览器不等于退出
-builder.Services.AddSingleton(showSignal);
-builder.Services.AddHostedService<TrayHost>();
+    // 托盘：关浏览器不等于退出
+    builder.Services.AddSingleton(showSignal);
+    builder.Services.AddHostedService<TrayHost>();
 
-// ============================================================================
-// 构建应用
-// ============================================================================
+    // ============================================================================
+    // 构建应用
+    // ============================================================================
 
-WebApplication app = builder.Build();
+    WebApplication app = builder.Build();
 
-{
-    var protocols = HostingComposition.Warmup(app);
-    HostingComposition.MapEndpoints(app);
-    if (protocols.Count == 0)
-        logStore.Error("Engine", "未加载到任何协议插件，设备将无法选择协议");
-    else
-        logStore.Info("Engine", "已加载 " + protocols.Count + " 个协议；gRPC " + localGrpc);
-}
+    {
+        var protocols = HostingComposition.Warmup(app);
+        HostingComposition.MapEndpoints(app);
+        if (protocols.Count == 0)
+            logStore.Error("Engine", "未加载到任何协议插件，设备将无法选择协议");
+        else
+            logStore.Info("Engine", "已加载 " + protocols.Count + " 个协议；gRPC " + localGrpc);
+    }
 
-// 生产环境：异常处理中间件（开发环境 Blazor 有内置错误 UI）
-if (!app.Environment.IsDevelopment())
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    // 生产环境：异常处理中间件（开发环境 Blazor 有内置错误 UI）
+    if (!app.Environment.IsDevelopment())
+        app.UseExceptionHandler("/Error", createScopeForErrors: true);
 
-// 静态文件（wwwroot 下的 CSS、图片、脚本）
-app.UseStaticFiles();
+    // 静态文件（wwwroot 下的 CSS、图片、脚本）
+    app.UseStaticFiles();
 
-// 防 CSRF（Blazor 表单组件需要）
-app.UseAntiforgery();
+    // 防 CSRF（Blazor 表单组件需要）
+    app.UseAntiforgery();
 
-// Blazor 组件路由（含 Interactive Server）
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    // Blazor 组件路由（含 Interactive Server）
+    app.MapRazorComponents<App>()
+        .AddInteractiveServerRenderMode();
 
-// 监听就绪后再开浏览器、记下局域网地址。
-//
-// 必须挂在 ApplicationStarted 上而不是 Run 之前：端口尚未绑定时打开浏览器，
-// 用户看到的是"无法访问此网站"，然后手动刷新才好——那比不开还差。
-//
-// 地址从 IServerAddressesFeature 取实际绑定值，不写死端口：
-// appsettings 或命令行随时可能改端口，写死会打开一个空白页。
-app.Lifetime.ApplicationStarted.Register(() =>
-{
-    LogListenAddresses(app, listenPort, grpcPort);
-    if (builder.Configuration.GetValue("Web:LaunchBrowser", defaultValue: true))
-        LanAccess.OpenBrowser(app.Services.GetService<IServer>());
-});
+    // 监听就绪后再开浏览器、记下局域网地址。
+    //
+    // 必须挂在 ApplicationStarted 上而不是 Run 之前：端口尚未绑定时打开浏览器，
+    // 用户看到的是"无法访问此网站"，然后手动刷新才好——那比不开还差。
+    //
+    // 地址从 IServerAddressesFeature 取实际绑定值，不写死端口：
+    // appsettings 或命令行随时可能改端口，写死会打开一个空白页。
+    app.Lifetime.ApplicationStarted.Register(() => {
+        LogListenAddresses(app, listenPort, grpcPort);
+        if (builder.Configuration.GetValue("Web:LaunchBrowser", defaultValue: true))
+            LanAccess.OpenBrowser(app.Services.GetService<IServer>());
+    });
 
-// 阻塞监听，直到进程收到停止信号（托盘「退出」或系统关机）
-app.Run();
+    // 阻塞监听，直到进程收到停止信号（托盘「退出」或系统关机）
+    app.Run();
 
-}
-catch (Exception ex)
-{
+} catch (Exception ex) {
     // 无控制台时这是唯一的错误出口。最常见的两种：
     //   端口被占（上一次没退干净，或别的程序占了 5000/64000）
     //   appsettings.json 语法错误（改配置时漏了逗号或引号）
@@ -208,9 +199,7 @@ catch (Exception ex)
 
     // 非 0 退出码便于脚本与看门狗识别启动失败
     Environment.ExitCode = 1;
-}
-finally
-{
+} finally {
     showEvent?.Dispose();
     hostingLock?.Dispose();
     instanceLock?.Dispose();
@@ -227,16 +216,14 @@ finally
 /// 默认绑 <c>0.0.0.0</c> 之后，操作员最常问的就是「手机打开哪个地址」。
 /// 启动时直接写出来，避免再去跑 ipconfig。
 /// </remarks>
-static void LogListenAddresses(WebApplication app, int listenPort, int grpcPort)
-{
+static void LogListenAddresses (WebApplication app, int listenPort, int grpcPort) {
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Web.Endpoint");
     ICollection<string>? addresses = app.Services
         .GetService<IServer>()?
         .Features.Get<IServerAddressesFeature>()?
         .Addresses;
 
-    if (addresses is null || addresses.Count == 0)
-    {
+    if (addresses is null || addresses.Count == 0) {
         logger.LogWarning("无法获取实际监听地址。");
         return;
     }
@@ -252,11 +239,11 @@ static void LogListenAddresses(WebApplication app, int listenPort, int grpcPort)
         logger.LogInformation("同网段设备访问：http://{Address}:{Port}", ip, port);
 }
 
-/// <summary>独立 Hosting.App.exe 已经占着引擎时的提示。</summary>
-static void ReportHostingAlreadyRunning()
-{
-    try
-    {
+/// <summary>
+/// 独立 Hosting.App.exe 已经占着引擎时的提示。
+/// </summary>
+static void ReportHostingAlreadyRunning () {
+    try {
         _ = MessageBoxW(
             IntPtr.Zero,
             "Hosting.App 已经在运行。\n\n" +
@@ -265,36 +252,29 @@ static void ReportHostingAlreadyRunning()
             "树莓派现场网关才需要单独跑 Hosting.App。",
             "CommunicationKernel Web",
             0x00000040 | 0x00040000);
-    }
-    catch
-    {
+    } catch {
     }
 }
 
-/// <summary>已有实例在跑：唤出它的界面，本进程直接退出。</summary>
-static void NotifyRunningInstance()
-{
-    try
-    {
+/// <summary>
+/// 已有实例在跑：唤出它的界面，本进程直接退出。
+/// </summary>
+static void NotifyRunningInstance () {
+    try {
         using EventWaitHandle show = EventWaitHandle.OpenExisting(TrayHost.ShowEventName);
         show.Set();
         return;
-    }
-    catch
-    {
+    } catch {
         // 事件还没建好或没有权限：退回到弹框
     }
 
-    try
-    {
+    try {
         _ = MessageBoxW(
             IntPtr.Zero,
             "CommunicationKernel Web 上位机已经在运行。\n请看右下角托盘图标，右键可打开界面或退出。",
             "CommunicationKernel Web",
             0x00000040 | 0x00040000);
-    }
-    catch
-    {
+    } catch {
         // 无桌面会话
     }
 }
@@ -310,13 +290,11 @@ static void NotifyRunningInstance()
 /// 本方法自身绝不能抛异常——它是最后一道出口，
 /// 在这里再抛一次会让进程带着一个更没头绪的异常退出。
 /// </remarks>
-static void ReportStartupFailure(Exception ex)
-{
+static void ReportStartupFailure (Exception ex) {
     string extra = string.Empty;
     if (ex.Message.Contains(":5000", StringComparison.Ordinal)
         || ex.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase)
-        || ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase))
-    {
+        || ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase)) {
         extra =
             "端口被占用。本程序同时听 Web 口（默认 64000）和 gRPC 口（默认 5000）。\n" +
             "关掉独立的 Hosting.App.exe，或结束上一份没退干净的 WebMaster。\n\n";
@@ -333,23 +311,18 @@ static void ReportStartupFailure(Exception ex)
 
     // 先落盘：弹框可能因为会话隔离等原因显示不出来，日志是更可靠的那一条路
     string logPath = string.Empty;
-    try
-    {
+    try {
         logPath = Path.Combine(AppContext.BaseDirectory, "startup-error.log");
         File.WriteAllText(
             logPath,
             DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine +
             ex + Environment.NewLine);
-    }
-    catch
-    {
+    } catch {
         // 目录只读或磁盘满：还有弹框这条路，不因写日志失败而中断
     }
 
-    try
-    {
-        if (OperatingSystem.IsWindows())
-        {
+    try {
+        if (OperatingSystem.IsWindows()) {
             // 直接 P/Invoke user32，避免启动失败路径再依赖 WinForms 消息循环
             // 0x00000010 = MB_ICONERROR，0x00040000 = MB_TOPMOST（保证不被浏览器盖住）
             _ = MessageBoxW(
@@ -357,51 +330,43 @@ static void ReportStartupFailure(Exception ex)
                 message + (logPath.Length == 0 ? string.Empty : "\n" + logPath),
                 "CommunicationKernel 启动失败",
                 0x00000010 | 0x00040000);
-        }
-        else
-        {
+        } else {
             Console.Error.WriteLine(message);
             Console.Error.WriteLine(ex);
         }
-    }
-    catch
-    {
+    } catch {
         // 无桌面会话（服务模式）时弹框会失败，此时日志文件已经写好了
     }
 }
 
 /// <summary>Win32 消息框，仅用于启动失败 / 重复启动提示。</summary>
 [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+static extern int MessageBoxW (IntPtr hWnd, string text, string caption, uint type);
 
 /// <summary>本进程自己的控制台窗口句柄（Windows Terminal / conhost）。</summary>
 [DllImport("kernel32.dll")]
-static extern IntPtr GetConsoleWindow();
+static extern IntPtr GetConsoleWindow ();
 
 /// <summary>拆掉本进程的控制台窗口。</summary>
 [DllImport("kernel32.dll")]
-static extern bool FreeConsole();
+static extern bool FreeConsole ();
 
 [DllImport("user32.dll")]
-static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+static extern bool ShowWindow (IntPtr hWnd, int nCmdShow);
 
 /// <summary>
 /// 隐藏本进程挂着的控制台。WinExe 双击本来没有；
 /// 若仍被 VS / 旧 Web SDK 塞了一个黑框，先藏再拆。
 /// </summary>
-static void HideAttachedConsole()
-{
+static void HideAttachedConsole () {
     if (!OperatingSystem.IsWindows())
         return;
-    try
-    {
+    try {
         IntPtr hwnd = GetConsoleWindow();
         if (hwnd != IntPtr.Zero)
             ShowWindow(hwnd, 0);
         FreeConsole();
-    }
-    catch
-    {
+    } catch {
         // 没有控制台时失败是正常的
     }
 }
