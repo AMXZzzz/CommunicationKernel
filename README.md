@@ -124,7 +124,8 @@ Blazor Server 操作员客户端。只持有 `route_id` 与 EngineHost.Sdk DTO�
 | 系统设置 | `/settings` | 本 exe 旁 `config/settings.json` 的 `HostAddress`；测试连接走临时客户端，不动正在用的会话 |
 
 进程内单例 `HostSession`：5 秒健康检查、全站一条状态流、Host 恢复后按 `web-devices.json` 对账。
-Windows 下 `OutputType=WinExe`，双击 exe 不弹控制台；`dotnet run` 时日志仍打到当前终端。
+Windows 下双击 exe 驻留在右下角托盘：关浏览器不会退出。托盘右键可打开界面、查看日志、退出。
+再双击一次 exe 会唤出已在跑的实例，而不是再起一份。`dotnet run` 时日志仍打到当前终端。
 
 ```bash
 dotnet run --project CommunicationKernel.UI.WebMaster
