@@ -3,7 +3,7 @@
 // 层级: UI 层 — Web 服务
 // 作用: 变量的读取与写入，负责按设备配置的字节序编解码。
 // 调用链:
-//   VariablesPage.razor / VariablePoller → IWebVariableService → HostClient → gRPC
+//   VariablesPage.razor / VariablePoller → IWebVariableService → IHostClient → 本进程 EngineRuntime
 //
 // 为什么要有这个类:
 //   读写此前散落在两处且<b>行为不一致</b>——

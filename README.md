@@ -16,7 +16,7 @@
 
 ## 两种形态
 
-- **形态 A（嵌入）**：你的程序直接引用 `Engine.Runtime`，本进程连 PLC。不用 `EngineHost.App`，也不用 `EngineHost.Sdk`。
+- **形态 A（嵌入）**：本进程引用 `Engine.Runtime` 直连 PLC。`UI.WebMaster` 已是这种形态，不必再开 `EngineHost.App`。
 - **形态 B（独立宿主）**：现场跑 `EngineHost.App`；上位机引用 `EngineHost.Sdk`，通过 gRPC 远程读写。
   多台上位机同时访问同一批 PLC **只能用形态 B**——形态 A 里每个进程各自持有串口/socket。
 
@@ -121,9 +121,11 @@ Blazor Server 操作员客户端。只持有 `route_id` 与 EngineHost.Sdk DTO�
 | 设备管理 | `/devices` | `IWebDeviceService`：`QueryProtocols` / `QuerySerialPorts` / `Connect` / `Disconnect` |
 | 变量配置 | `/variables` | 本地 `web-variables.json` + `IWebVariableService` 的 `Read` / `Write` |
 | 通讯日志 | `/log` | 进程内 `AppLogStore` |
-| 系统设置 | `/settings` | 本 exe 旁 `config/settings.json` 的 `HostAddress`；测试连接走临时客户端，不动正在用的会话 |
+| 系统设置 | `/settings` | Web 监听端口；引擎已内嵌本进程 |
 
-进程内单例 `HostSession`：5 秒健康检查、全站一条状态流、Host 恢复后按 `web-devices.json` 对账。
+进程内单例 `HostSession`：5 秒健康检查、全站一条状态流、按 `web-devices.json` 对账。
+**形态 A**：WebMaster 本进程持有 `EngineRuntime` 和 `plugins/`，不必再启动 `EngineHost.App`。
+WPF 远端 / 树莓派场景仍用独立的 `EngineHost.App`。
 Windows 下双击 exe 驻留在右下角托盘：关浏览器不会退出。托盘右键可打开界面、查看日志、退出。
 再双击一次 exe 会唤出已在跑的实例，而不是再起一份。`dotnet run` 时日志仍打到当前终端。
 
@@ -134,11 +136,8 @@ dotnet run --project CommunicationKernel.UI.WebMaster
 默认听 `http://0.0.0.0:64000`：本机浏览器打开 `http://localhost:64000`，
 同一 WiFi 的手机打开 `http://<电脑IP>:64000`（启动日志会打印这条地址）。
 端口可在系统设置页改，写入本 exe 旁 `config/web-listen.json`，
-重启 Web 后生效；不能改成 `5000`（那是 EngineHost.App）。
-EngineHost.App 仍绑本机 `:5000`，不用改。双击 exe 同样生效，不必加 `--urls`。
-
-默认连 `http://localhost:5000`（`appsettings.json` 的 `EngineHost.App:Address`，
-可被本 exe 旁 `config/settings.json` 覆盖）。
+重启 Web 后生效；不要改成 `5000`（留给独立宿主 EngineHost.App / WPF）。
+双击 exe 同样生效，不必加 `--urls`，也不必先起 EngineHost.App。
 
 ## WPF 上位机（UI.Wpf）
 

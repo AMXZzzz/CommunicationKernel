@@ -3,8 +3,8 @@
   <!-- ========================================================================
        文件: CommunicationKernel.UI.WebMaster.csproj
        层级: UI 层 — Blazor Server Web 客户端
-       作用: 通过 gRPC-Web 或 gRPC 连接 EngineHost.App，提供浏览器端监控界面。
-             Blazor Server 模式：组件在服务端渲染，通过 SignalR 推送 DOM diff 到浏览器。
+       作用: 本进程内嵌 EngineRuntime，通过 Blazor Server 提供浏览器监控界面。
+             形态 A：不必再单独启动 EngineHost.App。WPF 远端场景仍用 EngineHost.App。
        ======================================================================== -->
 
   <PropertyGroup>
@@ -31,10 +31,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 共享 gRPC 客户端：proto 代码生成、通道管理、DTO、断线重连全在库内。
-         此前本项目自持一份 EngineHost.AppWebClient，长期缺 RegisterRoute /
-         RemoveRoute / QueryProtocols，也没有断线重连。
-         proto 已收敛到单一来源，客户端封装没有理由再分裂两份。 -->
+    <!-- 内嵌引擎：UI 只经 IHostClient 访问，不引用具体协议类型。 -->
+    <ProjectReference Include="..\CommunicationKernel.Engine.Runtime\CommunicationKernel.Engine.Runtime.csproj" />
+    <!-- DTO / JsonFileStore / ValueCodec。远端 gRPC HostClient 仍给 WPF 用。 -->
     <ProjectReference Include="..\CommunicationKernel.EngineHost.Sdk\CommunicationKernel.EngineHost.Sdk.csproj" />
   </ItemGroup>
 
@@ -56,5 +55,67 @@
          Include 会产生重复项并直接报 NETSDK1022。这里只是给已有项加一条元数据。 -->
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- 插件只建立构建顺序，不产生编译期引用，UI 不得使用插件类型。 -->
+  <ItemGroup>
+    <PluginProject Include="..\CommunicationKernel.Plugins.Protocol.Modbus\CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Protocol.Panasonic\CommunicationKernel.Plugins.Protocol.Panasonic.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Protocol.Siemens.S7\CommunicationKernel.Plugins.Protocol.Siemens.S7.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Transport.Tcp\CommunicationKernel.Plugins.Transport.Tcp.csproj" />
+    <PluginProject Include="..\CommunicationKernel.Plugins.Transport.SerialPort\CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
+    <ProjectReference Include="@(PluginProject)"
+                      ReferenceOutputAssembly="false"
+                      Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishReadyToRun" />
+  </ItemGroup>
+
+  <Target Name="CopyPluginsToOutput" AfterTargets="Build">
+    <MSBuild Projects="@(PluginProject)"
+             Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishReadyToRun">
+      <Output TaskParameter="TargetOutputs" ItemName="_PluginAssembly" />
+    </MSBuild>
+    <Copy SourceFiles="@(_PluginAssembly)"
+          DestinationFolder="$(OutDir)plugins"
+          SkipUnchangedFiles="true" />
+    <Message Importance="high"
+             Text="已部署 @(_PluginAssembly->Count()) 个插件到 $(OutDir)plugins" />
+  </Target>
+
+  <Target Name="CopyPluginThirdPartyDeps"
+          AfterTargets="CopyPluginsToOutput"
+          Outputs="%(_PluginAssembly.Identity)">
+    <ItemGroup>
+      <_PluginDep Remove="@(_PluginDep)" />
+      <_PluginRuntimeAsset Remove="@(_PluginRuntimeAsset)" />
+      <_PluginDepsJson Remove="@(_PluginDepsJson)" />
+      <_PluginDep Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)*.dll"
+                  Exclude="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Core.Abstractions.dll;
+                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Protocol.dll;
+                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Transport.dll;
+                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Plugin.Loader.dll" />
+      <_PluginDepsJson Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)%(_PluginAssembly.Filename).deps.json" />
+      <_PluginRuntimeAsset Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)runtimes\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PluginDep)"
+          DestinationFolder="$(OutDir)plugins"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_PluginDepsJson)"
+          DestinationFolder="$(OutDir)plugins"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(_PluginDepsJson.FullPath)')" />
+    <Copy SourceFiles="@(_PluginRuntimeAsset)"
+          DestinationFiles="@(_PluginRuntimeAsset->'$(OutDir)plugins\runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyPluginsToPublishDir" AfterTargets="Publish">
+    <ItemGroup>
+      <_DeployedPluginFile Include="$(OutDir)plugins\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_DeployedPluginFile)"
+          DestinationFiles="@(_DeployedPluginFile->'$(PublishDir)plugins\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
