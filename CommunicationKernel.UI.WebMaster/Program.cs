@@ -22,6 +22,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Runtime.InteropServices;
+using CommunicationKernel.Engine.Router;
+using CommunicationKernel.Engine.Router.Abstractions;
+using CommunicationKernel.Engine.Runtime;
+using CommunicationKernel.EngineHost.Sdk;
 using CommunicationKernel.UI.WebMaster.Components;
 using CommunicationKernel.UI.WebMaster.Services;
 using Microsoft.AspNetCore.Components.Server;
@@ -92,16 +96,41 @@ builder.Services.Configure<CircuitOptions>(options =>
     options.DetailedErrors = builder.Environment.IsDevelopment();
 });
 
-// 本地持久化（地址 / 设备 / 变量）
+// 本地持久化（设备 / 变量 / Web 端口）
 builder.Services.AddSingleton<WebSettingsStore>();
 builder.Services.AddSingleton<WebDeviceStore>();
 builder.Services.AddSingleton<WebVariableStore>();
 
-// 会话：单例即 HostedService，避免两份 HostClient
+// ============================================================================
+// 本进程内嵌 EngineRuntime（形态 A）
+// ============================================================================
+builder.Services.AddSingleton<IRouteAssemblyService>(sp =>
+{
+    string pluginDirectorySetting = builder.Configuration["EngineRuntime:PluginDirectory"] ?? "plugins";
+    int defaultSerialIntervalMs = int.TryParse(
+        builder.Configuration["EngineRuntime:DefaultSerialMinIoIntervalMs"], out int value)
+        ? value
+        : 15;
+    string resolvedPluginDirectory = Path.IsPathRooted(pluginDirectorySetting)
+        ? pluginDirectorySetting
+        : Path.Combine(AppContext.BaseDirectory, pluginDirectorySetting);
+    return new PluginRouteAssemblyService(
+        pluginDirectory: resolvedPluginDirectory,
+        defaultSerialMinIoIntervalMs: defaultSerialIntervalMs,
+        loggerFactory: sp.GetRequiredService<ILoggerFactory>());
+});
+builder.Services.AddSingleton<IConnectionRouter>(sp =>
+    new ConnectionRouter(sp.GetService<ILogger<ConnectionRouter>>()));
+builder.Services.AddSingleton<IReadCoordinator, ReadCoordinator>();
+builder.Services.AddSingleton<IRouterOrchestrator, RouterOrchestrator>();
+builder.Services.AddSingleton<EngineRuntime>();
+builder.Services.AddSingleton<IHostClient, InProcessHostClient>();
+
+// 会话：单例即 HostedService
 builder.Services.AddSingleton<HostSession>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HostSession>());
 
-// 设备操作：页面唯一的设备入口，页面不得再直接持有 HostClient 发 gRPC。
+// 设备操作：页面唯一的设备入口，页面不得再直接持有 IHostClient。
 // 对应 WPF 端的 IDeviceService / GrpcDeviceService。
 builder.Services.AddSingleton<IWebDeviceService, WebDeviceService>();
 
@@ -120,6 +149,23 @@ builder.Services.AddHostedService<TrayHost>();
 // ============================================================================
 
 WebApplication app = builder.Build();
+
+{
+    ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Engine.Startup");
+    IRouteAssemblyService assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
+    var protocols = assemblyService.GetAvailableProtocols();
+    if (protocols.Count == 0)
+    {
+        logger.LogError("未加载到任何协议插件。请检查 exe 旁 plugins 目录。");
+        logStore.Error("Engine", "未加载到任何协议插件，设备将无法选择协议");
+    }
+    else
+    {
+        logger.LogInformation("已加载 {Count} 个协议：{Protocols}",
+            protocols.Count, string.Join(", ", protocols.Select(p => p.ProtocolId)));
+        logStore.Info("Engine", "已加载 " + protocols.Count + " 个协议");
+    }
+}
 
 // 生产环境：异常处理中间件（开发环境 Blazor 有内置错误 UI）
 if (!app.Environment.IsDevelopment())

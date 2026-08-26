@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/HostSession.cs
 // 层级: UI 层 — Blazor Server
-// 作用: 持有当前 HostClient、健康轮询、全量状态流、路由清单、设备对账。
+// 作用: 持有当前 IHostClient、健康轮询、全量状态流、路由清单、设备对账。
 //       页面禁止各自开 WatchRouteStatus：N 条流会在断线时把卡片钉死在「在线」。
 // -----------------------------------------------------------------------------
 
@@ -10,19 +10,13 @@ using CommunicationKernel.EngineHost.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 
-/// <summary>Web UI 对 EngineHost.App 的会话门面。单例 + IHostedService。</summary>
+/// <summary>Web UI 对内嵌 EngineRuntime 的会话门面。单例 + IHostedService。</summary>
 public sealed class HostSession : IHostedService, IAsyncDisposable
 {
-    /// <summary>日志工厂，用于为切换地址后新建的 <see cref="HostClient"/> 造记录器。</summary>
-    private readonly ILoggerFactory _loggerFactory;
-
     /// <summary>框架日志器，记录会话循环自身的异常。</summary>
     private readonly ILogger<HostSession> _logger;
 
-    /// <summary>设置存储，提供 Host 地址。</summary>
-    private readonly WebSettingsStore _settings;
-
-    /// <summary>本地设备配置库，宿主恢复后按它对账重新注册。</summary>
+    /// <summary>本地设备配置库，引擎重启后按它对账重新注册。</summary>
     private readonly WebDeviceStore _devices;
 
     /// <summary>面向操作员的日志。</summary>
@@ -38,14 +32,11 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
     /// </remarks>
     private readonly ConcurrentDictionary<string, RouteStatusDto> _status = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>保护 <see cref="_client"/> 引用替换的锁。切换 Host 地址时会换掉整个客户端。</summary>
-    private readonly object _clientGate = new();
+    /// <summary>当前通讯客户端。内嵌引擎时整进程一份，不会替换。</summary>
+    private readonly IHostClient _client;
 
     /// <summary>保护 <see cref="_routes"/> 引用替换的锁。</summary>
     private readonly object _routesGate = new();
-
-    /// <summary>当前 gRPC 客户端。地址变更时整体替换，不复用旧通道。</summary>
-    private HostClient _client;
 
     /// <summary>两个后台循环的取消源；<see cref="StartAsync"/> 时重建，停止时取消。</summary>
     private CancellationTokenSource _loopCts = new();
@@ -66,50 +57,30 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
     /// <summary>最近一次拉到的路由清单，见 <see cref="Routes"/>。</summary>
     private IReadOnlyList<RouteDto> _routes = Array.Empty<RouteDto>();
 
-    /// <param name="loggerFactory">日志工厂。</param>
+    /// <param name="client">进程内引擎客户端，由组合根注入。</param>
     /// <param name="logger">框架日志器。</param>
-    /// <param name="settings">设置存储，构造时即用于读出 Host 地址。</param>
     /// <param name="devices">本地设备配置库。</param>
     /// <param name="log">操作员日志。</param>
-    /// <remarks>
-    /// 构造时就建好客户端而不等到 <see cref="StartAsync"/>：
-    /// Blazor 组件可能在 HostedService 启动之前就注入本类并访问 <see cref="Client"/>，
-    /// 那时若 <c>_client</c> 还是 null 就会空引用崩溃。
-    /// </remarks>
     public HostSession(
-        ILoggerFactory loggerFactory,
+        IHostClient client,
         ILogger<HostSession> logger,
-        WebSettingsStore settings,
         WebDeviceStore devices,
         AppLogStore log)
     {
-        _loggerFactory = loggerFactory;
+        _client = client;
         _logger = logger;
-        _settings = settings;
         _devices = devices;
         _log = log;
-
-        Address = _settings.LoadAddress();
-        _client = CreateClient(Address);
+        Address = "in-process";
     }
 
-    /// <summary>
-    /// 当前 gRPC 客户端。
-    /// </summary>
-    /// <remarks>
-    /// 加锁读取：切换 Host 地址时本字段会被整体替换，
-    /// 无锁读可能拿到正在被释放的旧客户端。
-    /// 调用方应当每次都经本属性取用，不要缓存到局部字段跨 await 使用。
-    /// </remarks>
-    public HostClient Client
-    {
-        get { lock (_clientGate) return _client; }
-    }
+    /// <summary>当前通讯客户端。每次经本属性取用。</summary>
+    public IHostClient Client => _client;
 
-    /// <summary>当前 EngineHost.App 地址，形如 <c>http://192.168.1.10:5000</c>。</summary>
-    public string Address { get; private set; }
+    /// <summary>固定为进程内引擎，不再指向远端 gRPC 地址。</summary>
+    public string Address { get; }
 
-    /// <summary>EngineHost.App 是否可达。由健康循环维护。</summary>
+    /// <summary>内嵌引擎是否就绪。由健康循环维护。</summary>
     public bool Online { get; private set; }
 
     /// <summary>宿主版本号；离线时为 "--"。</summary>
@@ -180,7 +151,7 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
         _ = Task.Run(() => HealthLoopAsync(ct), ct);
         _ = Task.Run(() => WatchLoopAsync(ct), ct);
 
-        _log.Info("Host", "会话已启动，目标 " + Address);
+        _log.Info("Host", "会话已启动，本进程内嵌 EngineRuntime");
         return Task.CompletedTask;
     }
 
@@ -206,11 +177,7 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
 
         await CancelLoopsAsync().ConfigureAwait(false);
         _loopCts.Dispose();
-
-        HostClient client;
-        lock (_clientGate)
-            client = _client;
-        await client.DisposeAsync().ConfigureAwait(false);
+        await _client.DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -232,56 +199,21 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
         }
     }
 
-    /// <summary>设置页切换地址：释放旧通道，重建客户端并立即探测。</summary>
-    public async Task SwitchAddressAsync(string address, CancellationToken ct = default)
+    /// <summary>内嵌引擎不切换远端地址；保留方法以免设置页旧调用编译不过。</summary>
+    public Task SwitchAddressAsync(string address, CancellationToken ct = default)
     {
-        string normalized = (address ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(normalized))
-            throw new ArgumentException("地址不能为空。", nameof(address));
-
-        _settings.SaveAddress(normalized);
-        HostClient old;
-        lock (_clientGate)
-        {
-            old = _client;
-            Address = normalized;
-            _client = CreateClient(normalized);
-        }
-        try { await old.DisposeAsync().ConfigureAwait(false); }
-        catch (Exception ex) { _logger.LogDebug(ex, "释放旧 HostClient"); }
-
-        _status.Clear();
-        lock (_routesGate)
-            _routes = Array.Empty<RouteDto>();
-        Online = false;
-        HostVersion = "--";
-        RouteCount = 0;
-        RaiseChanged();
-        await ProbeAsync(ct).ConfigureAwait(false);
-        _log.Info("Host", "已切换地址: " + normalized);
+        _ = address;
+        _log.Info("Host", "本进程已内嵌引擎，忽略地址切换");
+        return ProbeAsync(ct);
     }
 
-    /// <summary>
-    /// 用临时客户端探测指定地址，不切换当前会话。
-    /// 设置页「测试连接」必须走这里，否则测的是旧地址。
-    /// </summary>
-    public async Task<HealthResultDto> ProbeAddressAsync(
+    /// <summary>探测即本进程引擎健康检查，不再另开 gRPC 通道。</summary>
+    public Task<HealthResultDto> ProbeAddressAsync(
         string address,
         CancellationToken ct = default)
     {
-        string normalized = (address ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(normalized))
-            return HealthResultDto.Offline();
-
-        HostClient temp = new(normalized, _loggerFactory.CreateLogger<HostClient>());
-        try
-        {
-            return await temp.HealthAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            await temp.DisposeAsync().ConfigureAwait(false);
-        }
+        _ = address;
+        return _client.HealthAsync(ct);
     }
 
     /// <summary>
@@ -301,14 +233,14 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
     /// </remarks>
     public async Task ProbeAsync(CancellationToken ct = default)
     {
-        HostClient client = Client;
+        IHostClient client = Client;
         var (ok, version, count) = await client.HealthAsync(ct).ConfigureAwait(false);
 
         bool wasOnline = Online;
         Online = ok;
         HostVersion = ok ? version : "--";
         RouteCount = count;
-        LastError = ok ? string.Empty : "EngineHost.App 无响应";
+        LastError = ok ? string.Empty : "内嵌引擎无响应";
 
         if (ok && !wasOnline)
             // 刚恢复：按本地配置补注册所有设备
@@ -350,14 +282,6 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
 
     /// <summary>操作员手动触发对账（Host 已在线但部分本地设备未上线路由）。</summary>
     public Task ReconcileNowAsync(CancellationToken ct = default) => ReconcileAsync(ct);
-
-    /// <summary>为指定地址创建 gRPC 客户端。</summary>
-    /// <remarks>
-    /// 每个 <see cref="HostClient"/> 持有独立的 HTTP/2 连接池，切换地址必须整体换新，
-    /// 不能复用旧实例——通道的目标地址在构造时就固定了。
-    /// </remarks>
-    private HostClient CreateClient(string address) =>
-        new(address, _loggerFactory.CreateLogger<HostClient>());
 
     /// <summary>
     /// 健康探测循环，5 秒一次。
@@ -404,7 +328,7 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            HostClient client = Client;
+            IHostClient client = Client;
             try
             {
                 // 空 routeId = 订阅全部路由，全站共用一条流

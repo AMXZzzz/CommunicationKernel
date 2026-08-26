@@ -3,7 +3,7 @@
 // 层级: UI 层 — Web 服务
 // 作用: 设备的连接/断开/注销与宿主侧清单查询，是 Blazor 页面唯一的设备操作入口。
 // 调用链:
-//   DevicesPage.razor → IWebDeviceService → HostClient → gRPC → EngineHost.App
+//   DevicesPage.razor → IWebDeviceService → IHostClient → 本进程 EngineRuntime
 //
 // 为什么要有这个类:
 //   Web 端此前没有任何设备服务抽象，DevicesPage.razor 直接持有 Session.Client
@@ -71,7 +71,7 @@ public sealed record DeviceOperationResult(
 // ============================================================================
 
 /// <summary>
-/// Web 端设备操作契约。页面只依赖本接口，不直接接触 <see cref="HostClient"/>。
+/// Web 端设备操作契约。页面只依赖本接口，不直接接触 <see cref="IHostClient"/>。
 /// </summary>
 public interface IWebDeviceService
 {
@@ -113,7 +113,7 @@ public interface IWebDeviceService
 /// </summary>
 public sealed class WebDeviceService : IWebDeviceService
 {
-    /// <summary>会话，提供当前的 <see cref="HostClient"/> 与在线状态。</summary>
+    /// <summary>会话，提供当前的 <see cref="IHostClient"/> 与在线状态。</summary>
     private readonly HostSession _session;
 
     /// <summary>本地设备配置库，连接时从中取参数。</summary>
