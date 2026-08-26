@@ -35,6 +35,13 @@
   - [回滚](#回滚)
   - [设备配置去哪了](#设备配置去哪了)
   - [卸载](#卸载)
+- [公网中转：全国访问 Web](#公网中转全国访问-web)
+  - [拓扑](#拓扑)
+  - [第 1 步：车间照常跑 WebMaster](#第-1-步车间照常跑-webmaster)
+  - [第 2 步：公网机只留一套面板](#第-2-步公网机只留一套面板)
+  - [第 3 步：frp 把 64000 顶到服务器](#第-3-步frp-把-64000-顶到服务器)
+  - [第 4 步：1Panel / 宝塔反代 HTTPS](#第-4-步1panel--宝塔反代-https)
+  - [必须加上的两件事](#必须加上的两件事)
 - [排障速查](#排障速查)
 
 ---
@@ -577,6 +584,106 @@ sudo systemctl daemon-reload
 sudo rm -rf /opt/communication-kernel
 ```
 
+---
+
+## 公网中转：全国访问 Web
+
+引擎和 PLC 仍在车间。公网服务器（1Panel / 宝塔）只做 **HTTPS 门口**：
+把浏览器请求转到车间 WebMaster 的 `:64000`。`:5000` gRPC **不要**映射到公网。
+
+```
+手机 / 外地电脑
+    │  https://你的域名
+    ▼
+公网机 Nginx（证书 + 反代）
+    │  本机 127.0.0.1:16400   ← frps 从车间顶上来的口
+    ▼
+车间 WebMaster :64000（内含宿主 :5000，PLC 在旁边）
+```
+
+### 拓扑
+
+| 机器 | 做什么 |
+|---|---|
+| 车间 Windows / 工控机 | 照常双击 `UI.WebMaster.exe`，防火墙放行本机 64000 给 frpc 即可 |
+| 公网（1Panel 或宝塔，只留一套） | frps + Nginx HTTPS 反代 |
+| 外地浏览器 | 打开域名，和连车间 WiFi 看到的是同一套界面 |
+
+WPF 仍应走车间内网或 VPN 连 `:5000`，不要把 gRPC 挂到 443。
+
+### 第 1 步：车间照常跑 WebMaster
+
+不改代码、不改端口。确认本机浏览器 `http://localhost:64000` 正常。
+托盘常驻，关浏览器不会停引擎。
+
+### 第 2 步：公网机只留一套面板
+
+1Panel 和宝塔都会占 80/443。**只留一个当网站入口**，另一个改掉网站端口或卸掉。
+域名 A 记录指到这台公网 IP，面板里给站点签发 Let's Encrypt。
+
+### 第 3 步：frp 把 64000 顶到服务器
+
+公网 `frps.toml`（只给本机反代用，不要把 16400 防火墙对世界放开）：
+
+```toml
+bindPort = 7000
+# 鉴权，车间 frpc 必须相同
+auth.token = "换成足够长的随机串"
+```
+
+车间 `frpc.toml`：
+
+```toml
+serverAddr = "你的公网IP"
+serverPort = 7000
+auth.token = "和上面相同"
+
+[[proxies]]
+name = "ck-web"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 64000
+remotePort = 16400
+```
+
+公网安全组只放行 **80 / 443 / 7000**。`16400` 仅本机 Nginx 来连。
+
+1Panel 应用商店有 Frp；宝塔也可装 frp 插件。自己 systemd 跑同样可以。
+
+### 第 4 步：1Panel / 宝塔反代 HTTPS
+
+站点根反代到 `http://127.0.0.1:16400`。Blazor Server 靠 WebSocket，必须加上：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:16400;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+
+宝塔：网站 → 反向代理 → 目标 `http://127.0.0.1:16400`，然后在配置里核对上面这几行。
+1Panel：网站 → 创建反向代理，目标相同。
+
+手机开 `https://你的域名` 即车间那套 MES。底栏适配走的是浏览器宽度，和在局域网打开一样。
+
+### 必须加上的两件事
+
+1. **访问限制。** 这套 Web 能添加设备、写寄存器，现在没有登录。
+   面板给站点加「访问认证 / 授权访问」（HTTP Basic）或 IP 白名单，
+   不要把裸地址发到群里。
+2. **不要反代 5000。** 那是明文 gRPC，能连上就能写 PLC。
+   外地 WPF 用 Tailscale / 组网，不要走这个中转。
+
+车间断网或 WebMaster 没开：域名打不开，PLC 不受影响。
+
+---
 
 ## 排障速查
 
