@@ -33,7 +33,7 @@
 - 字节序换算一律走 `EngineHost.Sdk.ValueCodec` 并显式传入设备配置的 `ByteOrder`，
   禁止直接用 `BitConverter`——本机是小端，协议插件上抛的是大端。
 - 两个 UI 的平行实现**刻意不强行合并**（功能并不对等）；只抽取真正同源的 substrate。
-- 改动 `EngineHost.Sdk` / `Engine.Runtime` 公共 API 需同步更新 `ApiBaselines/` 并让 diff 进评审。
+- 改动 `EngineHost.Sdk` / `Core.EngineRuntime` 公共 API 需同步更新 `ApiBaselines/` 并让 diff 进评审。
 - **UI 不得硬编码协议列表或串口列表**。协议来自 `QueryProtocols`，串口来自 `QuerySerialPorts`（列的是宿主机器上的口）。
 - 串口三层命名必须分开：引擎 `SerialPortInfo`、gRPC `SerialPortDescriptor`、SDK `SerialPortDto`。禁止再引入第四个同义类型。
 - Panasonic 的 ProtocolId 是 `panasonic-mewtocol`（TCP 与串口共用），没有 `-tcp` / `-serial` 后缀。

@@ -16,10 +16,10 @@
 
 ## 两种形态
 
-- **形态 A（嵌入）**：本进程引用 `Engine.Runtime` 直连 PLC。`UI.WebMaster` 已是这种形态，不必再开 `EngineHostingServiceApp`。
+- **形态 A（嵌入）**：本进程引用 `Core.EngineRuntime` 直连 PLC。`UI.WebMaster` 已是这种形态，不必再开 `EngineHostingServiceApp`。
 - **形态 B（独立宿主）**：现场跑 `EngineHostingServiceApp`；上位机引用 `EngineHost.Sdk`，通过 gRPC 远程读写。
   多台上位机同时访问同一批 PLC **只能用形态 B**——形态 A 里每个进程各自持有串口/socket。
-  本机同时只能有一份 `Engine.Runtime`：WebMaster 与 EngineHostingServiceApp 互斥，开着一个就不要开另一个。
+  本机同时只能有一份 `Core.EngineRuntime`：WebMaster 与 EngineHostingServiceApp 互斥，开着一个就不要开另一个。
 
 跨机部署（树莓派当网关、办公室当上位机）走形态 B，步骤见 [部署文档](部署-Linux与树莓派.md)。
 
@@ -31,8 +31,8 @@
 ```
 L7  UI.Wpf / UI.WebMaster          只持有 route_id 与 SDK DTO
 L6  EngineHost.Sdk / EngineHostingServiceApp      唯一入口；EngineHost.Sdk 零工程引用，UI 无法绕过它触达内部
-L5  Engine.Runtime           路由生命周期、轮询、链路巡检、单次重连
-L4  Engine.Router            路由表 + 同键读合并；读写互斥在 RouteEntry 独占门
+L5  Core.EngineRuntime           路由生命周期、轮询、链路巡检、单次重连
+L4  Core.EngineRouter            路由表 + 同键读合并；读写互斥在 RouteEntry 独占门
 L3  Plugin.Loader            ALC 隔离加载，只认 Core.Abstractions
 L2  Plugins.Protocol.*       协议知识全部封在这里，外层一律禁知
 L1  Communication.Transport  字节级收发，不解释内容（现实现：Tcp / Serial）
@@ -48,8 +48,8 @@ L0  Core.Abstractions        契约根，零工程引用
 | `Core.Abstractions` | 错误码、结果模型、版本契约 |
 | `Communication.Protocol` / `Communication.Transport` | 协议 / 传输抽象；`Abstractions` 只放契约，实现在 `Framing` 等子命名空间 |
 | `Plugin.Loader` | 插件发现、校验、隔离加载 |
-| `Engine.Router` | 路由表、读合并、`RouteEntry` 独占 I/O 门控 |
-| `Engine.Runtime` | 通讯内核库（形态 A 直接用） |
+| `Core.EngineRouter` | 路由表、读合并、`RouteEntry` 独占 I/O 门控 |
+| `Core.EngineRuntime` | 通讯内核库（形态 A 直接用） |
 | `EngineHostingServiceApp` | 现场进程：托管 Runtime + gRPC（形态 B） |
 | `EngineHost.Sdk` | 连 EngineHostingServiceApp 的客户端库；含两个 UI 共用的 `ValueCodec` 与 `JsonFileStore` |
 | `Plugins.Protocol.*` | Modbus / Panasonic MEWTOCOL / Siemens S7 |
@@ -180,7 +180,7 @@ dotnet test CommunicationKernel.Tests -c Release
 `TreatWarningsAsErrors=true`，带警告即构建失败。WPF 只能在 Windows 上构建；
 Linux CI 跑的是不含 WPF 的子集，见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。
 
-改动 `EngineHost.Sdk` 或 `Engine.Runtime` 的公共 API 会让 `PublicApiSurfaceTests` 失败并列出增删的成员。
+改动 `EngineHost.Sdk` 或 `Core.EngineRuntime` 的公共 API 会让 `PublicApiSurfaceTests` 失败并列出增删的成员。
 确认是有意变更后更新基线，并把 diff 一并提交：
 
 ```bash

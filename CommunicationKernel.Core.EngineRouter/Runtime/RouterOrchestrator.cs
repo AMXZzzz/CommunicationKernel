@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: RouterOrchestrator.cs
-// 层级: Engine.Router / Runtime
+// 层级: Core.EngineRouter / Runtime
 // 作用: 聚合路由表与读合并的编排门面，是路由层唯一对外入口。
 // -----------------------------------------------------------------------------
 
@@ -8,15 +8,15 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Router;
+namespace CommunicationKernel.Core.EngineRouter;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: RouterOrchestrator.cs
-/// 层级: Engine.Router
+/// 层级: Core.EngineRouter
 /// 作用: 聚合路由表与读合并的编排门面。
 /// 说明:
 /// - 子组件通过构造注入，可在测试中替换为假实现，也可替换合并策略。

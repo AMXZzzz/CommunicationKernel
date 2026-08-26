@@ -52,7 +52,7 @@
 
   <ItemGroup>
     <!-- 内嵌引擎：UI 只经 IHostClient 访问，不引用具体协议类型。 -->
-    <ProjectReference Include="..\CommunicationKernel.Engine.Runtime\CommunicationKernel.Engine.Runtime.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.EngineRuntime\CommunicationKernel.Core.EngineRuntime.csproj" />
     <!-- DTO / JsonFileStore / ValueCodec。远端 gRPC HostClient 仍给 WPF 用。 -->
     <ProjectReference Include="..\CommunicationKernel.EngineHost.Sdk\CommunicationKernel.EngineHost.Sdk.csproj" />
   </ItemGroup>

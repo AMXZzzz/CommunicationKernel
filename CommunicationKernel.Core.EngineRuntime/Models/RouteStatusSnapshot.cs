@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteStatusSnapshot.cs
-// 层级: Engine.Runtime / Models
+// 层级: Core.EngineRuntime / Models
 // 作用: 某条路由在某一时刻的在线/离线状态，供 WatchRouteStatus 流推给 UI。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Core.Abstractions.Errors;
 
-namespace CommunicationKernel.Engine.Runtime.Models;
+namespace CommunicationKernel.Core.EngineRuntime.Models;
 
 /// <summary>某条路由在某一时刻的连接状态。</summary>
 /// <remarks>

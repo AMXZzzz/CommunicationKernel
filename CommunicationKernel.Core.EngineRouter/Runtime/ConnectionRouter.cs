@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: ConnectionRouter.cs
-// 层级: Engine.Router / Runtime
+// 层级: Core.EngineRouter / Runtime
 // 作用: 维护 RouteKey → RouteEntry 的线程安全路由表，不执行读写。
 // -----------------------------------------------------------------------------
 
@@ -8,17 +8,17 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace CommunicationKernel.Engine.Router;
+namespace CommunicationKernel.Core.EngineRouter;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: ConnectionRouter.cs
-/// 层级: Engine.Router
+/// 层级: Core.EngineRouter
 /// 作用: 维护 RouteKey 到 RouteEntry 的线程安全路由表。
 /// 说明:
 /// - 面向多 UI + 多 PLC 并发场景，路由表读写采用无锁并发字典。

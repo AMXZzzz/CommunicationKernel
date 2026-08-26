@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: PluginRouteAssemblyService.cs
-// 层级: Engine.Runtime
+// 层级: Core.EngineRuntime
 // 作用: 扫描插件目录，动态加载协议与传输工厂，再委托 RouteAssembler 装配路由。
 // -----------------------------------------------------------------------------
 
@@ -8,13 +8,13 @@ using System.Reflection;
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Runtime.Models;
-using CommunicationKernel.Engine.Router.Abstractions;
+using CommunicationKernel.Core.EngineRuntime.Models;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
 using CommunicationKernel.Plugin.Loader;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace CommunicationKernel.Engine.Runtime;
+namespace CommunicationKernel.Core.EngineRuntime;
 
 /// <summary>运行时扫描插件目录，动态加载协议与传输工厂的装配服务。</summary>
 /// <remarks>

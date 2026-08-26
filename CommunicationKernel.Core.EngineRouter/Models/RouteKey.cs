@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteKey.cs
-// 层级: Engine.Router / Models
+// 层级: Core.EngineRouter / Models
 // 作用: 路由唯一键——协议 + 介质 + 地址 + 端口 + 站号，标识一条物理连接。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Communication.Transport.Abstractions;
 
-namespace CommunicationKernel.Engine.Router.Models;
+namespace CommunicationKernel.Core.EngineRouter.Models;
 
 // 同一物理设备只允许一条路由；键冲突时注册被拒绝，避免两套 I/O 争用同一 socket/串口
 //

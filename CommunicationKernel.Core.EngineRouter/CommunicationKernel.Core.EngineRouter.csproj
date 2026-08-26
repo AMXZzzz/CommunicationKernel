@@ -10,9 +10,13 @@
       Communication.Protocol   IProtocolCodec（分派目标之一）
 
     这里刻意不引用 Plugin.Loader：路由层接收的是已经实例化好的传输与协议对象，
-    "从哪个 DLL 加载出来的"属于上层（Engine.Runtime）的组装职责。
+    "从哪个 DLL 加载出来的"属于上层（Core.EngineRuntime）的组装职责。
     引用它会让路由层在纸面上背负插件加载的知识，而代码里一行都用不到。
   -->
+  <PropertyGroup>
+    <AssemblyName>CommunicationKernel.Core.EngineRouter</AssemblyName>
+    <RootNamespace>CommunicationKernel.Core.EngineRouter</RootNamespace>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />

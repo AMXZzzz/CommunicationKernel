@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: StaticRouteAssemblyService.cs
-// 层级: Engine.Runtime
+// 层级: Core.EngineRuntime
 // 作用: 由调用方在编译期直接提供工厂实例的装配服务，不扫描文件系统。
 // -----------------------------------------------------------------------------
 
@@ -8,13 +8,13 @@ using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Runtime.Models;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRuntime.Models;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace CommunicationKernel.Engine.Runtime;
+namespace CommunicationKernel.Core.EngineRuntime;
 
 /// <summary>
 /// 由调用方在编译期直接提供工厂实例的装配服务。

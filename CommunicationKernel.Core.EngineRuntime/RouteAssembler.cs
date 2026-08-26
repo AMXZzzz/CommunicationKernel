@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteAssembler.cs
-// 层级: Engine.Runtime
+// 层级: Core.EngineRuntime
 // 作用: 从工厂集合装配一条路由：选工厂 → 建连接 → 造驱动 → 组装 RouteEntry。
 // -----------------------------------------------------------------------------
 
@@ -9,12 +9,12 @@ using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Runtime.Models;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRuntime.Models;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 using Microsoft.Extensions.Logging;
 
-namespace CommunicationKernel.Engine.Runtime;
+namespace CommunicationKernel.Core.EngineRuntime;
 
 /// <summary>
 /// 从工厂集合装配一条路由：选工厂 → 建连接 → 造驱动 → 组装 RouteEntry。

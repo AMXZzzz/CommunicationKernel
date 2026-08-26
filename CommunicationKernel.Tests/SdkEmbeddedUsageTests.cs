@@ -17,10 +17,10 @@ using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Runtime;
-using CommunicationKernel.Engine.Runtime.Models;
-using CommunicationKernel.Engine.Router;
-using CommunicationKernel.Engine.Router.Abstractions;
+using CommunicationKernel.Core.EngineRuntime;
+using CommunicationKernel.Core.EngineRuntime.Models;
+using CommunicationKernel.Core.EngineRouter;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
 using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 
 namespace CommunicationKernel.Tests;

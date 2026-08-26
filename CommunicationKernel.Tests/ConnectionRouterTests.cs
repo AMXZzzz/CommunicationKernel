@@ -13,9 +13,9 @@ using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CommunicationKernel.Tests;

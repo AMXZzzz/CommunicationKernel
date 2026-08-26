@@ -8,7 +8,7 @@
   <ItemGroup>
     <!-- 只依赖引擎；路由层与抽象层由引擎传递引用。
          本项目现在是"引擎 + gRPC 端点"的薄壳，业务逻辑全在 Engine 内。 -->
-    <ProjectReference Include="..\CommunicationKernel.Engine.Runtime\CommunicationKernel.Engine.Runtime.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.EngineRuntime\CommunicationKernel.Core.EngineRuntime.csproj" />
   </ItemGroup>
 
   <ItemGroup>

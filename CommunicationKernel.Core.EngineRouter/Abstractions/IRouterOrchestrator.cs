@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: IRouterOrchestrator.cs
-// 层级: Engine.Router / Abstractions
+// 层级: Core.EngineRouter / Abstractions
 // 作用: 路由编排器接口——管理路由表并协调读取合并，是路由层唯一对外入口。
 // -----------------------------------------------------------------------------
 
@@ -8,14 +8,14 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Router.Abstractions;
+namespace CommunicationKernel.Core.EngineRouter.Abstractions;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: IRouterOrchestrator.cs
-/// 层级: Engine.Router / Abstractions
+/// 层级: Core.EngineRouter / Abstractions
 /// 作用: 路由编排器接口——管理路由表并协调读取合并。
 /// 说明:
 /// 1) <b>并发串行化不在本接口</b>：一条路由对应一个物理连接，读写互斥由

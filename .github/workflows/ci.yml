@@ -161,7 +161,7 @@ jobs:
       - name: 构建引擎与插件（不含 WPF）
         run: |
           for p in \
-            CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj \
+            CommunicationKernel.Core.EngineRuntime/CommunicationKernel.Core.EngineRuntime.csproj \
             CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj \
             CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj
           do
@@ -185,12 +185,12 @@ jobs:
               <TargetFramework>net8.0</TargetFramework>
             </PropertyGroup>
             <ItemGroup>
-              <ProjectReference Include="$(GITHUB_WORKSPACE)/CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj" />
+              <ProjectReference Include="$(GITHUB_WORKSPACE)/CommunicationKernel.Core.EngineRuntime/CommunicationKernel.Core.EngineRuntime.csproj" />
             </ItemGroup>
           </Project>
           EOF
           sed -i "s|\$(GITHUB_WORKSPACE)|$GITHUB_WORKSPACE|" /tmp/sdkprobe/sdkprobe.csproj
-          echo 'System.Console.WriteLine(typeof(CommunicationKernel.Engine.Runtime.EngineRuntime).FullName);' > /tmp/sdkprobe/Program.cs
+          echo 'System.Console.WriteLine(typeof(CommunicationKernel.Core.EngineRuntime.EngineRuntime).FullName);' > /tmp/sdkprobe/Program.cs
           dotnet build /tmp/sdkprobe/sdkprobe.csproj
 
           if grep -q '"Microsoft\.AspNetCore' /tmp/sdkprobe/obj/project.assets.json; then
