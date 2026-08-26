@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>CommunicationKernel.Core.Protocol</AssemblyName>
+    <RootNamespace>CommunicationKernel.Core.Protocol</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.Transport\CommunicationKernel.Core.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

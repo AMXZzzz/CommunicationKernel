@@ -7,7 +7,7 @@
 // 调用链:
 //   DevicePage → DevicePageViewModel
 //     → IDeviceService.Add/Update/Remove/ConnectAsync/Disconnect
-//       → GrpcDeviceService → HostClient
+//       → GrpcDeviceService → HostingClient
 // -----------------------------------------------------------------------------
 
 using System;

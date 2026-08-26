@@ -7,7 +7,7 @@
 // 调用链:
 //   VariableConfigPage → VariablePageViewModel
 //     → IVariableService.Add/Update/Remove/WriteAsync
-//       → LocalVariableStore → HostClient
+//       → LocalVariableStore → HostingClient
 // -----------------------------------------------------------------------------
 
 using System;
@@ -15,7 +15,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Logging;
 using CommunicationKernel.UI.Wpf.Core.Models;
@@ -230,7 +230,7 @@ public sealed class VariablePageViewModel : ViewModelBase {
             return;
         }
 
-        HostOperationResult result;
+        HostingOperationResult result;
         try {
             // 经 gRPC WriteAsync 下发到 PLC
             result = await _variables.WriteAsync(variableId, value, CancellationToken.None)

@@ -10,8 +10,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.Transport\CommunicationKernel.Core.Transport.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.Protocol\CommunicationKernel.Core.Protocol.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Plugin.Context\CommunicationKernel.Plugin.Context.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Core.EngineRouter\CommunicationKernel.Core.EngineRouter.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Core.EngineRuntime\CommunicationKernel.Core.EngineRuntime.csproj" />
@@ -25,7 +25,7 @@
     <!-- 串口插件：验证 ListPorts 在无串口的机器（如 CI 运行器）上也不抛异常 -->
     <ProjectReference Include="..\CommunicationKernel.Plugins.Transport.SerialPort\CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
     <!-- 客户端库：重注册闸门的合并与节流是纯时序逻辑，与界面无关，可直接测 -->
-    <ProjectReference Include="..\CommunicationKernel.EngineHost.Sdk\CommunicationKernel.EngineHost.Sdk.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Hosting.Sdk\CommunicationKernel.Hosting.Sdk.csproj" />
   </ItemGroup>
 
 </Project>

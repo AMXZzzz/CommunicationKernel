@@ -3,7 +3,7 @@
 // 层级: 测试
 // 作用: 锁定两个打包库的公共 API 面，使其变更成为显式动作。
 //
-// 这两个库（Core.EngineRuntime 与 EngineHost.Sdk）会以 NuGet 包发给外部消费者，
+// 这两个库（Core.EngineRuntime 与 Hosting.Sdk）会以 NuGet 包发给外部消费者，
 // 公共成员一旦发布就是承诺：改签名、删成员、动可见性都会让下游编译不过。
 //
 // 为什么不用 Microsoft.CodeAnalysis.PublicApiAnalyzers：
@@ -38,10 +38,10 @@ public class PublicApiSurfaceTests {
     public void EngineAssembly_PublicApi_MatchesBaseline()
         => AssertSurfaceMatchesBaseline(typeof(CommunicationKernel.Core.EngineRuntime.EngineRuntime).Assembly);
 
-    // EngineHost.Sdk 的公开面必须与基线一致
+    // Hosting.Sdk 的公开面必须与基线一致
     [TestMethod]
     public void ClientAssembly_PublicApi_MatchesBaseline()
-        => AssertSurfaceMatchesBaseline(typeof(CommunicationKernel.EngineHost.Sdk.RouteReconcileGate).Assembly);
+        => AssertSurfaceMatchesBaseline(typeof(CommunicationKernel.Hosting.Sdk.RouteReconcileGate).Assembly);
 
     // =========================================================================
     // 比对与基线维护
@@ -132,7 +132,7 @@ public class PublicApiSurfaceTests {
 
         foreach (Type type in assembly.GetExportedTypes()) {
             // 跳过工具生成的类型（Protobuf 的消息与 stub）。
-            // 它们的形状完全由 Protos/V1/engine_host.proto 决定，
+            // 它们的形状完全由 Protos/V1/hosting.proto 决定，
             // 而那份契约是单一来源且另有 CI 作业守着；
             // 收进来只会让基线里 600 行生成代码淹没掉十几行手写 API。
             if (IsGenerated(type)) continue;
@@ -159,7 +159,7 @@ public class PublicApiSurfaceTests {
     }
 
     /// <summary>Protobuf 生成代码所在的命名空间（proto 的 csharp_namespace）。</summary>
-    private const string GeneratedProtoNamespace = "CommunicationKernel.EngineHost.Grpc.V1";
+    private const string GeneratedProtoNamespace = "CommunicationKernel.Hosting.Grpc.V1";
 
     /// <summary>该类型（或其外层类型）是否由工具生成。</summary>
     /// <remarks>

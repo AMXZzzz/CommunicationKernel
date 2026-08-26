@@ -4,7 +4,7 @@
 // 作用: 按 ScanRateMs 轮询已勾选的变量；Host 离线或路由离线时跳过，避免错误刷屏。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 
@@ -16,7 +16,7 @@ namespace CommunicationKernel.UI.WebMaster.Services;
 public sealed class VariablePoller : IHostedService
 {
     /// <summary>会话，提供 Host 在线状态与各路由的实时状态。</summary>
-    private readonly HostSession _session;
+    private readonly EngineSession _session;
 
     /// <summary>变量表，读值回填的目标。</summary>
     private readonly WebVariableStore _store;
@@ -43,7 +43,7 @@ public sealed class VariablePoller : IHostedService
     /// <param name="store">变量表。</param>
     /// <param name="variables">变量读写服务。</param>
     /// <param name="logger">框架日志器。</param>
-    public VariablePoller(HostSession session, WebVariableStore store, IWebVariableService variables, ILogger<VariablePoller> logger)
+    public VariablePoller(EngineSession session, WebVariableStore store, IWebVariableService variables, ILogger<VariablePoller> logger)
     {
         _session = session;
         _store = store;

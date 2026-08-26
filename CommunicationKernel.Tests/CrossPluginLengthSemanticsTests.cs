@@ -17,7 +17,7 @@
 
 using System;
 using System.Collections.Generic;
-using CommunicationKernel.Communication.Protocol.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Plugins.Protocol.Modbus.Ascii;
 using CommunicationKernel.Plugins.Protocol.Modbus.Rtu;

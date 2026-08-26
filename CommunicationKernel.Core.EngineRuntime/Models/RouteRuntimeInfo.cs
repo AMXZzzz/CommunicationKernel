@@ -4,7 +4,7 @@
 // 作用: 已注册路由的只读元数据快照，供 gRPC/UI 查询，不暴露 TransportClient。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.EngineRouter.Models;
 
 namespace CommunicationKernel.Core.EngineRuntime.Models;

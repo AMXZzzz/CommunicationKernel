@@ -12,8 +12,8 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Core.EngineRouter;
@@ -518,7 +518,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 {
                     mutex.Dispose();
                     throw new InvalidOperationException(
-                        "本机已经有一份 Core.EngineRuntime 在运行（EngineHostingServiceApp 或 WebMaster）。\n" +
+                        "本机已经有一份 Core.EngineRuntime 在运行（Hosting.App 或 WebMaster）。\n" +
                         "同时只能有一份引擎，否则会争用同一条 PLC 连接。\n" +
                         "请先退出正在跑的那一个，再启动本程序。");
                 }

@@ -4,7 +4,7 @@
 // 作用: 路由唯一键——协议 + 介质 + 地址 + 端口 + 站号，标识一条物理连接。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 
 namespace CommunicationKernel.Core.EngineRouter.Models;
 

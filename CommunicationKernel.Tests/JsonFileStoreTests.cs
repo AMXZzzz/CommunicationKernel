@@ -10,7 +10,7 @@
 //   实际上只有一处带崩溃防护，而缺的那处只在掉电那天才暴露：
 //   留下一个被截断的 JSON，下次启动整份设备配置全部丢失，且没有任何提示。
 //
-//   这就是重复实现最典型的代价，所以把这一层收敛进了 EngineHost.Sdk。
+//   这就是重复实现最典型的代价，所以把这一层收敛进了 Hosting.Sdk。
 //   本测试锁住收敛后的行为，防止哪一端再退回非原子写。
 // -----------------------------------------------------------------------------
 
@@ -18,7 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 
 namespace CommunicationKernel.Tests;
 

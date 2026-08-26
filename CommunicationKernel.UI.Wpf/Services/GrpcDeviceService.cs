@@ -22,7 +22,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 {
     /// <summary>
     /// <see cref="IDeviceService"/> 的 gRPC 实现。
-    /// 通过 <see cref="HostClient"/> 与 EngineHostingServiceApp 通信，
+    /// 通过 <see cref="HostingClient"/> 与 Hosting.App 通信，
     /// 将路由信息映射为本地 <see cref="DeviceInfo"/> 对象。
     /// </summary>
     public sealed class GrpcDeviceService : IDeviceService, IRouteReconciler
@@ -32,7 +32,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         // ============================================================================
 
         /// <summary>gRPC 客户端，用于调用 RegisterRoute / QueryRoutes / WatchRouteStatus。</summary>
-        private readonly HostClient _client;
+        private readonly HostingClient _client;
 
         /// <summary>应用日志记录器，可为 null（此时不记录日志）。</summary>
         private readonly IAppLogger _log;
@@ -99,7 +99,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// </summary>
         /// <param name="client">已初始化的 gRPC 客户端。</param>
         /// <param name="log">可选日志记录器，为 null 时不记录日志。</param>
-        public GrpcDeviceService(HostClient client, IAppLogger log = null)
+        public GrpcDeviceService(HostingClient client, IAppLogger log = null)
         {
             // gRPC 客户端必填；日志可空；本地配置用于名称还原与宿主重启后重注册
             _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -161,7 +161,7 @@ namespace CommunicationKernel.UI.Wpf.Services
             {
                 try
                 {
-                    // 向 EngineHostingServiceApp 查询当前内存中的全部路由
+                    // 向 Hosting.App 查询当前内存中的全部路由
                     IReadOnlyList<RouteDto> routes = await _client
                         .QueryRoutesAsync()
                         .ConfigureAwait(false);
@@ -273,7 +273,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         }
 
         /// <summary>
-        /// 以新参数重新注册已有路由（EngineHostingServiceApp 支持幂等 RegisterRoute），
+        /// 以新参数重新注册已有路由（Hosting.App 支持幂等 RegisterRoute），
         /// 完成后刷新本地设备列表。
         /// </summary>
         /// <param name="info">已修改参数的设备信息，Id 须与现有设备匹配。</param>
@@ -285,7 +285,7 @@ namespace CommunicationKernel.UI.Wpf.Services
             // 先更新本地配置，即使后续 RPC 失败名称也不会丢
             SaveMeta(info.Id, info);
 
-            // EngineHostingServiceApp 的 RegisterRoute 拒绝重复 RouteId，因此改参数必须先注销再注册。
+            // Hosting.App 的 RegisterRoute 拒绝重复 RouteId，因此改参数必须先注销再注册。
             Task.Run(async () =>
             {
                 (bool removed, string rmCode, string rmMsg) =
@@ -327,7 +327,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 ? info.Station.Trim()
                 : (info.StationNo > 0 ? info.StationNo.ToString() : string.Empty);
 
-            // 向 EngineHostingServiceApp 注册路由（协议、介质、地址、站号、串口参数）
+            // 向 Hosting.App 注册路由（协议、介质、地址、站号、串口参数）
             (bool success, string code, string msg, string _) =
                 await _client.RegisterRouteAsync(
                     routeId,
@@ -514,7 +514,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>
         /// 删除指定路由：
         /// 1. 停止本地状态监听（取消 WatchRouteStatus 流）；
-        /// 2. 通过 gRPC RemoveRoute 通知 EngineHostingServiceApp 注销路由并断开 PLC 连接；
+        /// 2. 通过 gRPC RemoveRoute 通知 Hosting.App 注销路由并断开 PLC 连接；
         ///    服务端返回 Unimplemented 时优雅降级，仅执行本地删除；
         /// 3. 从本地 Devices 集合移除对应条目。
         /// </summary>

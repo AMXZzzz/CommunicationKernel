@@ -5,7 +5,7 @@
 //       返回正确的字节帧（驱动级别，不依赖 internal 类）。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Protocol.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
 using CommunicationKernel.Plugins.Protocol.Modbus.Rtu;

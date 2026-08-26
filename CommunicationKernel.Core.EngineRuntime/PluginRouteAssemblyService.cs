@@ -5,8 +5,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Core.EngineRuntime.Models;
 using CommunicationKernel.Core.EngineRouter.Abstractions;

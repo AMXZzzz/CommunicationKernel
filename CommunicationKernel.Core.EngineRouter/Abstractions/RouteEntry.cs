@@ -7,8 +7,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.EngineRouter.Models;
 
 namespace CommunicationKernel.Core.EngineRouter.Abstractions;

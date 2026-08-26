@@ -42,7 +42,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly IVariableService _variableService;
 
         /// <summary>gRPC 客户端，用于调用 ReadAsync。</summary>
-        private readonly HostClient _client;
+        private readonly HostingClient _client;
 
         /// <summary>
         /// 路由对账器：宿主重启导致路由消失时，据本地配置把它重新注册回去。
@@ -51,7 +51,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly IRouteReconciler _reconciler;
 
         /// <summary>
-        /// EngineHostingServiceApp 在路由不存在时返回的错误码字面量。
+        /// Hosting.App 在路由不存在时返回的错误码字面量。
         /// </summary>
         /// <remarks>
         /// 服务端以 <c>KernelErrorCode.RouteNotFound.ToString()</c> 填充 error_code，
@@ -98,7 +98,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// </param>
         public VariablePollingService(
             IVariableService variableService,
-            HostClient client,
+            HostingClient client,
             IRouteReconciler reconciler = null)
         {
             // 变量服务与 gRPC 客户端必填；对账器可空（空则 RouteNotFound 只能退避）
@@ -237,7 +237,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         /// <summary>
         /// 单变量轮询循环。
-        /// 每隔 <paramref name="scanRateMs"/> 毫秒向 EngineHostingServiceApp 发起一次 Read，
+        /// 每隔 <paramref name="scanRateMs"/> 毫秒向 Hosting.App 发起一次 Read，
         /// 将结果写入 <see cref="VariableItem.LastValue"/> / <see cref="VariableItem.LastError"/>。
         /// </summary>
         /// <param name="variableId">目标变量 ID。</param>

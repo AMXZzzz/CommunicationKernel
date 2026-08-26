@@ -3,7 +3,7 @@
 // 层级: UI 层 — Web 服务
 // 作用: 变量的读取与写入，负责按设备配置的字节序编解码。
 // 调用链:
-//   VariablesPage.razor / VariablePoller → IWebVariableService → IHostClient → 本进程 EngineRuntime
+//   VariablesPage.razor / VariablePoller → IWebVariableService → IHostingClient → 本进程 EngineRuntime
 //
 // 为什么要有这个类:
 //   读写此前散落在两处且<b>行为不一致</b>——
@@ -19,7 +19,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 
@@ -38,7 +38,7 @@ namespace CommunicationKernel.UI.WebMaster.Services;
 /// </param>
 public sealed record VariableReadOutcome(
     bool Success, string ErrorCode, string ErrorMessage, string DisplayValue)
-    : HostOperationResult(Success, ErrorCode, ErrorMessage);
+    : HostingOperationResult(Success, ErrorCode, ErrorMessage);
 
 // ============================================================================
 // 契约
@@ -61,7 +61,7 @@ public interface IWebVariableService
     /// 编码失败（例如把 "abc" 当 Int16）不会发起任何 I/O，
     /// 直接返回 <c>PARSE_ERROR</c>。
     /// </remarks>
-    Task<HostOperationResult> WriteAsync(WebVariable row, CancellationToken ct = default);
+    Task<HostingOperationResult> WriteAsync(WebVariable row, CancellationToken ct = default);
 
     /// <summary>
     /// 查询某条路由所配置的字节序，用于界面提示。
@@ -82,15 +82,15 @@ public interface IWebVariableService
 /// </summary>
 public sealed class WebVariableService : IWebVariableService
 {
-    /// <summary>会话，提供 <see cref="HostClient"/>。</summary>
-    private readonly HostSession _session;
+    /// <summary>会话，提供 <see cref="HostingClient"/>。</summary>
+    private readonly EngineSession _session;
 
     /// <summary>设备配置库，字节序的来源。</summary>
     private readonly WebDeviceStore _devices;
 
     /// <param name="session">会话服务，必填。</param>
     /// <param name="devices">设备配置库，必填。</param>
-    public WebVariableService(HostSession session, WebDeviceStore devices)
+    public WebVariableService(EngineSession session, WebDeviceStore devices)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
@@ -124,7 +124,7 @@ public sealed class WebVariableService : IWebVariableService
     }
 
     /// <inheritdoc />
-    public async Task<HostOperationResult> WriteAsync(
+    public async Task<HostingOperationResult> WriteAsync(
         WebVariable row, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -134,7 +134,7 @@ public sealed class WebVariableService : IWebVariableService
                 row.WriteText, row.DataType, row.Length,
                 out byte[] data, out string err, OrderOf(row.RouteId)))
         {
-            return HostOperationResult.Fail("PARSE_ERROR", err);
+            return HostingOperationResult.Fail("PARSE_ERROR", err);
         }
 
         return await _session.Client

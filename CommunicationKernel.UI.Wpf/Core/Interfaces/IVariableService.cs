@@ -10,7 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Models;
 
 namespace CommunicationKernel.UI.Wpf.Core.Interfaces
@@ -61,6 +61,6 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
         /// <param name="value">要写入的值（类型由变量的 DataType 字段决定）。</param>
         /// <param name="ct">取消令牌。</param>
         /// <returns>操作结果，Success = true 表示写入成功。</returns>
-        Task<HostOperationResult> WriteAsync(string id, object value, CancellationToken ct);
+        Task<HostingOperationResult> WriteAsync(string id, object value, CancellationToken ct);
     }
 }

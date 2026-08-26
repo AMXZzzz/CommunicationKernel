@@ -12,11 +12,11 @@
 //   三个协议插件出来的字节都已经是大端（Modbus 寄存器本就是网络序、
 //   S7 原生大端、MEWTOCOL 插件内部已 SwapBytes 转成大端），
 //   所以 ABCD 才是正确基准。WPF 端一直是显式大端、恰好正确，
-//   两份实现同源不同命——现已统一收敛到 EngineHost.Sdk，两个 UI 共用这一份。
+//   两份实现同源不同命——现已统一收敛到 Hosting.Sdk，两个 UI 共用这一份。
 // -----------------------------------------------------------------------------
 
 using System;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 
 namespace CommunicationKernel.Tests;
 

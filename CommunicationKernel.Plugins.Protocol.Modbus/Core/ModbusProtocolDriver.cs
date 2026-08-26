@@ -4,8 +4,8 @@
 // 作用: 三种 Modbus 变体共用的驱动：解析地址、组 PDU、经 Envelope 封装后与传输层交换。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 
 namespace CommunicationKernel.Plugins.Protocol.Modbus.Core;

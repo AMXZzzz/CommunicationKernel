@@ -15,8 +15,8 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Plugins.Protocol.Siemens.S7.Internal;

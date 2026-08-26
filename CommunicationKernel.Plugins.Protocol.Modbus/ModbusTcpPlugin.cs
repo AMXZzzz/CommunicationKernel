@@ -7,8 +7,8 @@
 //   共享的 Modbus.Core，与 RTU / ASCII 两个插件完全一致。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Communication.Protocol.Abstractions;
-using CommunicationKernel.Communication.Transport.Abstractions;
+using CommunicationKernel.Core.Protocol.Abstractions;
+using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Plugin.Context.Abstractions;
 using CommunicationKernel.Plugins.Protocol.Modbus.Core;
 

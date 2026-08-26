@@ -3,7 +3,7 @@
 // 层级: UI 层 — Web 服务
 // 作用: 设备的连接/断开/注销与宿主侧清单查询，是 Blazor 页面唯一的设备操作入口。
 // 调用链:
-//   DevicesPage.razor → IWebDeviceService → IHostClient → 本进程 EngineRuntime
+//   DevicesPage.razor → IWebDeviceService → IHostingClient → 本进程 EngineRuntime
 //
 // 为什么要有这个类:
 //   Web 端此前没有任何设备服务抽象，DevicesPage.razor 直接持有 Session.Client
@@ -25,7 +25,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 
@@ -37,7 +37,7 @@ namespace CommunicationKernel.UI.WebMaster.Services;
 /// 一次设备操作的结果。
 /// </summary>
 /// <remarks>
-/// 派生自 <see cref="HostOperationResult"/>，与 SDK 的失败形态保持同一形状，
+/// 派生自 <see cref="HostingOperationResult"/>，与 SDK 的失败形态保持同一形状，
 /// 额外携带 <see cref="FailureKind"/> 供界面决定措辞——
 /// "目标不可达"要提示检查现场，"配置错误"要提示去改参数，两者动作不同。
 /// </remarks>
@@ -50,9 +50,9 @@ public sealed record DeviceOperationResult(
     string ErrorCode,
     string ErrorMessage,
     RegisterFailureKind FailureKind)
-    : HostOperationResult(Success, ErrorCode, ErrorMessage)
+    : HostingOperationResult(Success, ErrorCode, ErrorMessage)
 {
-    /// <summary>构造成功结果。刻意不叫 Ok，避免遮蔽基类的 HostOperationResult.Ok()。</summary>
+    /// <summary>构造成功结果。刻意不叫 Ok，避免遮蔽基类的 HostingOperationResult.Ok()。</summary>
     public static DeviceOperationResult Succeeded() =>
         new(true, string.Empty, string.Empty, RegisterFailureKind.None);
 
@@ -71,7 +71,7 @@ public sealed record DeviceOperationResult(
 // ============================================================================
 
 /// <summary>
-/// Web 端设备操作契约。页面只依赖本接口，不直接接触 <see cref="IHostClient"/>。
+/// Web 端设备操作契约。页面只依赖本接口，不直接接触 <see cref="IHostingClient"/>。
 /// </summary>
 public interface IWebDeviceService
 {
@@ -109,12 +109,12 @@ public interface IWebDeviceService
 // ============================================================================
 
 /// <summary>
-/// <see cref="IWebDeviceService"/> 的 gRPC 实现，作用域随 <see cref="HostSession"/>。
+/// <see cref="IWebDeviceService"/> 的 gRPC 实现，作用域随 <see cref="EngineSession"/>。
 /// </summary>
 public sealed class WebDeviceService : IWebDeviceService
 {
-    /// <summary>会话，提供当前的 <see cref="IHostClient"/> 与在线状态。</summary>
-    private readonly HostSession _session;
+    /// <summary>会话，提供当前的 <see cref="IHostingClient"/> 与在线状态。</summary>
+    private readonly EngineSession _session;
 
     /// <summary>本地设备配置库，连接时从中取参数。</summary>
     private readonly WebDeviceStore _store;
@@ -125,7 +125,7 @@ public sealed class WebDeviceService : IWebDeviceService
     /// <param name="session">会话服务，必填。</param>
     /// <param name="store">本地配置库，必填。</param>
     /// <param name="log">应用日志，必填。</param>
-    public WebDeviceService(HostSession session, WebDeviceStore store, AppLogStore log)
+    public WebDeviceService(EngineSession session, WebDeviceStore store, AppLogStore log)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _store   = store   ?? throw new ArgumentNullException(nameof(store));

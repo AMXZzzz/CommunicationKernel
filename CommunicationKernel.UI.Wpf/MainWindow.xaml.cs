@@ -7,13 +7,13 @@
 // 调用链:
 //   navSidebar.NavigateRequested → NavigateTo(pageType)
 //     → DI.GetRequiredService(pageType) → MainFrame.Navigate(page)
-//   HostSessionService.Changed → OnSessionChanged → UpdateConnectionStatus
+//   HostingSessionService.Changed → OnSessionChanged → UpdateConnectionStatus
 //
 // 职责边界:
 //   本类只做"把状态画出来"，不管连接生命周期。
 //   健康轮询曾经就写在这里，导致连接节奏、取消逻辑与窗口生命周期绑死，
 //   既无法脱离窗口测试，其他页面想知道 Host 在不在线也只能反向来问窗口。
-//   现已移入 Services/HostSessionService.cs，本类改为订阅它的 Changed 事件。
+//   现已移入 Services/HostingSessionService.cs，本类改为订阅它的 Changed 事件。
 //
 //   仍保留 IServiceProvider，但<b>仅</b>用于按 Type 解析导航目标页——
 //   这是运行时才知道类型的场景，构造注入无法表达。
@@ -46,8 +46,8 @@ public partial class MainWindow : Window {
     /// </summary>
     private readonly IServiceProvider _services;
 
-    /// <summary>EngineHostingServiceApp 会话状态源，顶栏指示灯的唯一数据来源。</summary>
-    private readonly HostSessionService _session;
+    /// <summary>Hosting.App 会话状态源，顶栏指示灯的唯一数据来源。</summary>
+    private readonly HostingSessionService _session;
 
     // ============================================================================
     // 构造函数
@@ -55,7 +55,7 @@ public partial class MainWindow : Window {
 
     /// <param name="services">从 App DI 容器注入，用于按 Type 解析 Page 实例。</param>
     /// <param name="session">会话状态服务，提供在线状态与版本信息。</param>
-    public MainWindow(IServiceProvider services, HostSessionService session) {
+    public MainWindow(IServiceProvider services, HostingSessionService session) {
         // DI 容器必填，导航目标页均从中解析
         _services = services ?? throw new ArgumentNullException(nameof(services));
 
@@ -104,7 +104,7 @@ public partial class MainWindow : Window {
     /// 会话状态变化时刷新顶栏。
     /// </summary>
     /// <remarks>
-    /// 本方法可能在<b>后台线程</b>上被调用——<see cref="HostSessionService"/>
+    /// 本方法可能在<b>后台线程</b>上被调用——<see cref="HostingSessionService"/>
     /// 刻意不引用 Dispatcher，切回 UI 线程是订阅方的责任。
     /// <see cref="UpdateConnectionStatus"/> 内部已经用 InvokeAsync 包好了。
     /// </remarks>
@@ -173,13 +173,13 @@ public partial class MainWindow : Window {
             if (connected) {
                 // 在线：绿色指示灯
                 statusIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
-                txtStatus.Text = "EngineHostingServiceApp 在线";
-                txtCurrentDevice.Text = string.IsNullOrEmpty(info) ? "EngineHostingServiceApp 在线" : info;
+                txtStatus.Text = "Hosting.App 在线";
+                txtCurrentDevice.Text = string.IsNullOrEmpty(info) ? "Hosting.App 在线" : info;
             } else {
                 // 离线：灰色指示灯
                 statusIndicator.Fill = (Brush)FindResource("SF.Brush.Text.Secondary");
                 txtStatus.Text = "未连接";
-                txtCurrentDevice.Text = "EngineHostingServiceApp 离线";
+                txtCurrentDevice.Text = "Hosting.App 离线";
             }
         });
     }

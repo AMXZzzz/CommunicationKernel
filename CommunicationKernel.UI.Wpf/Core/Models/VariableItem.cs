@@ -48,7 +48,7 @@ public sealed class VariableItem : INotifyPropertyChanged {
 
     private string _address = string.Empty;
     /// <summary>
-    /// gRPC 数据地址字符串，传递给 HostClient.ReadAsync/WriteAsync。
+    /// gRPC 数据地址字符串，传递给 HostingClient.ReadAsync/WriteAsync。
     /// 格式取决于协议，例如 Modbus 为 "40001"，S7 为 "DB10.DBW0"。
     /// </summary>
     public string Address { get => _address; set { _address = value; Notify(); } }

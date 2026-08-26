@@ -26,7 +26,7 @@ using System.Runtime.InteropServices;
 using CommunicationKernel.Core.EngineRouter;
 using CommunicationKernel.Core.EngineRouter.Abstractions;
 using CommunicationKernel.Core.EngineRuntime;
-using CommunicationKernel.EngineHost.Sdk;
+using CommunicationKernel.Hosting.Sdk;
 using CommunicationKernel.UI.WebMaster.Components;
 using CommunicationKernel.UI.WebMaster.Services;
 using Microsoft.AspNetCore.Components.Server;
@@ -66,7 +66,7 @@ catch
 showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, TrayHost.ShowEventName);
 EventWaitHandle showSignal = showEvent;
 
-// EngineHostingServiceApp 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
+// Hosting.App 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
 // 而且 Visual Studio / 上次跑宿主时可能把 ASPNETCORE_URLS 留在环境里。
 string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
 if (!string.IsNullOrWhiteSpace(inheritedUrls) && LanAccess.ContainsPort(inheritedUrls, WebSettingsStore.HostPort))
@@ -128,13 +128,13 @@ builder.Services.AddSingleton<IConnectionRouter>(sp =>
 builder.Services.AddSingleton<IReadCoordinator, ReadCoordinator>();
 builder.Services.AddSingleton<IRouterOrchestrator, RouterOrchestrator>();
 builder.Services.AddSingleton<EngineRuntime>();
-builder.Services.AddSingleton<IHostClient, InProcessHostClient>();
+builder.Services.AddSingleton<IHostingClient, InProcessHostingClient>();
 
 // 会话：单例即 HostedService
-builder.Services.AddSingleton<HostSession>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<HostSession>());
+builder.Services.AddSingleton<EngineSession>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EngineSession>());
 
-// 设备操作：页面唯一的设备入口，页面不得再直接持有 IHostClient。
+// 设备操作：页面唯一的设备入口，页面不得再直接持有 IHostingClient。
 // 对应 WPF 端的 IDeviceService / GrpcDeviceService。
 builder.Services.AddSingleton<IWebDeviceService, WebDeviceService>();
 
@@ -156,7 +156,7 @@ WebApplication app = builder.Build();
 
 {
     ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Engine.Startup");
-    // 立刻构造引擎：本机已有 EngineHostingServiceApp / 另一份 WebMaster 时，现在就失败并弹框
+    // 立刻构造引擎：本机已有 Hosting.App / 另一份 WebMaster 时，现在就失败并弹框
     _ = app.Services.GetRequiredService<EngineRuntime>();
     IRouteAssemblyService assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
     var protocols = assemblyService.GetAvailableProtocols();
@@ -315,8 +315,8 @@ static void ReportStartupFailure(Exception ex)
         || ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase))
     {
         extra =
-            "端口 5000 是 EngineHostingServiceApp 的，Web 上位机应使用 64000。\n" +
-            "请确认 EngineHostingServiceApp 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
+            "端口 5000 是 Hosting.App 的，Web 上位机应使用 64000。\n" +
+            "请确认 Hosting.App 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
     }
 
     string message =
@@ -324,7 +324,7 @@ static void ReportStartupFailure(Exception ex)
         extra +
         ex.Message + "\n\n" +
         "常见原因：\n" +
-        "· 端口被占用——上一次没退干净，或误绑了 EngineHostingServiceApp 的 5000 端口\n" +
+        "· 端口被占用——上一次没退干净，或误绑了 Hosting.App 的 5000 端口\n" +
         "· appsettings.json 语法错误\n\n" +
         "详细信息见日志文件。";
 
