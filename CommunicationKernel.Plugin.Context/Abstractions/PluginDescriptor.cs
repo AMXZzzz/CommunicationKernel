@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: PluginDescriptor.cs
-// 层级: Plugin.Loader / Abstractions
+// 层级: Plugin.Context / Abstractions
 // 作用: 描述插件元数据，用于插件发现、版本校验、分类路由与运维展示。
 // 说明:
 // - Descriptor 是插件“身份卡”，由插件自行声明。
@@ -8,12 +8,12 @@
 // - 该对象应保持可序列化、可记录、可诊断，不包含运行时句柄。
 // -----------------------------------------------------------------------------
 
-namespace CommunicationKernel.Plugin.Loader.Abstractions;
+namespace CommunicationKernel.Plugin.Context.Abstractions;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: PluginDescriptor.cs
-/// 层级: Plugin.Loader / Abstractions
+/// 层级: Plugin.Context / Abstractions
 /// 作用: 描述插件元数据，用于插件发现、版本校验、分类路由与运维展示。
 /// 说明:
 /// - Descriptor 是插件“身份卡”，由插件自行声明。

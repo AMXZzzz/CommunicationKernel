@@ -33,7 +33,7 @@ L7  UI.Wpf / UI.WebMaster          只持有 route_id 与 SDK DTO
 L6  EngineHost.Sdk / EngineHostingServiceApp      唯一入口；EngineHost.Sdk 零工程引用，UI 无法绕过它触达内部
 L5  Core.EngineRuntime           路由生命周期、轮询、链路巡检、单次重连
 L4  Core.EngineRouter            路由表 + 同键读合并；读写互斥在 RouteEntry 独占门
-L3  Plugin.Loader            ALC 隔离加载，只认 Core.Abstractions
+L3  Plugin.Context            ALC 隔离加载，只认 Core.Abstractions
 L2  Plugins.Protocol.*       协议知识全部封在这里，外层一律禁知
 L1  Communication.Transport  字节级收发，不解释内容（现实现：Tcp / Serial）
 L0  Core.Abstractions        契约根，零工程引用
@@ -47,7 +47,7 @@ L0  Core.Abstractions        契约根，零工程引用
 |------|------|
 | `Core.Abstractions` | 错误码、结果模型、版本契约 |
 | `Communication.Protocol` / `Communication.Transport` | 协议 / 传输抽象；`Abstractions` 只放契约，实现在 `Framing` 等子命名空间 |
-| `Plugin.Loader` | 插件发现、校验、隔离加载 |
+| `Plugin.Context` | 插件发现、校验、隔离加载 |
 | `Core.EngineRouter` | 路由表、读合并、`RouteEntry` 独占 I/O 门控 |
 | `Core.EngineRuntime` | 通讯内核库（形态 A 直接用） |
 | `EngineHostingServiceApp` | 现场进程：托管 Runtime + gRPC（形态 B） |

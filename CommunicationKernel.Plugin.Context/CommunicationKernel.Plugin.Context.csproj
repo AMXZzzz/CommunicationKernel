@@ -15,6 +15,10 @@
     插件目录里绝不能出现它们的副本，否则同名类型会分属两个 ALC 而无法互转。
     多引用一个工程就多一份被误复制进插件目录的风险，所以这里保持最小面。
   -->
+  <PropertyGroup>
+    <AssemblyName>CommunicationKernel.Plugin.Context</AssemblyName>
+    <RootNamespace>CommunicationKernel.Plugin.Context</RootNamespace>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
   </ItemGroup>

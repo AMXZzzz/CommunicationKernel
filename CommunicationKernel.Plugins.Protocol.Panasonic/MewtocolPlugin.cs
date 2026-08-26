@@ -32,7 +32,7 @@ using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Plugin.Loader.Abstractions;
+using CommunicationKernel.Plugin.Context.Abstractions;
 using CommunicationKernel.Plugins.Protocol.Panasonic.Internal;
 
 namespace CommunicationKernel.Plugins.Protocol.Panasonic;

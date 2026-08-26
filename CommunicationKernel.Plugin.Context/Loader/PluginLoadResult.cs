@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: PluginLoadResult.cs
-// 层级: Plugin.Loader / Loader
+// 层级: Plugin.Context / Loader
 // 作用: 表示插件成功加载后的结果快照。
 // 说明:
 // - 聚合 Descriptor、Assembly 与 LoadContext，便于宿主后续组装与管理。
@@ -9,14 +9,14 @@
 
 using System.Reflection;
 using System.Runtime.Loader;
-using CommunicationKernel.Plugin.Loader.Abstractions;
+using CommunicationKernel.Plugin.Context.Abstractions;
 
-namespace CommunicationKernel.Plugin.Loader;
+namespace CommunicationKernel.Plugin.Context;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: PluginLoadResult.cs
-/// 层级: Plugin.Loader / Loader
+/// 层级: Plugin.Context / Loader
 /// 作用: 表示插件成功加载后的结果快照。
 /// 说明:
 /// - 聚合 Descriptor、Assembly 与 LoadContext，便于宿主后续组装与管理。

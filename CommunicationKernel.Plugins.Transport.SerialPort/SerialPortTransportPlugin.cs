@@ -39,7 +39,7 @@ using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Communication.Transport.Framing;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Plugin.Loader.Abstractions;
+using CommunicationKernel.Plugin.Context.Abstractions;
 
 namespace CommunicationKernel.Plugins.Transport.SerialPort;
 

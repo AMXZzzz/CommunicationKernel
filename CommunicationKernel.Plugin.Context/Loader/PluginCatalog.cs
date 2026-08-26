@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: PluginCatalog.cs
-// 层级: Plugin.Loader / Loader
+// 层级: Plugin.Context / Loader
 // 作用: 提供插件"发现 -> 校验 -> 加载"流程的统一入口。
 // 设计原则:
 // 1) 校验与加载合并为单次加载：在 PluginLoadContext 内完成 ApiVersion 检查，
@@ -18,16 +18,16 @@ using System.Linq;
 using System.Reflection;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Versioning;
-using CommunicationKernel.Plugin.Loader.Abstractions;
+using CommunicationKernel.Plugin.Context.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace CommunicationKernel.Plugin.Loader;
+namespace CommunicationKernel.Plugin.Context;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: PluginCatalog.cs
-/// 层级: Plugin.Loader / Loader
+/// 层级: Plugin.Context / Loader
 /// 作用: 提供插件"发现 -> 校验 -> 加载"流程的统一入口。
 /// 设计原则:
 /// 1) 校验与加载合并为单次加载：在 PluginLoadContext 内完成 ApiVersion 检查，

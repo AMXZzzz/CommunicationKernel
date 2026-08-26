@@ -9,7 +9,7 @@
 
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
-using CommunicationKernel.Plugin.Loader.Abstractions;
+using CommunicationKernel.Plugin.Context.Abstractions;
 using CommunicationKernel.Plugins.Protocol.Modbus.Core;
 
 namespace CommunicationKernel.Plugins.Protocol.Modbus.Tcp;
