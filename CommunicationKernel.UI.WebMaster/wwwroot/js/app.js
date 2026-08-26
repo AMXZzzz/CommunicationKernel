@@ -16,9 +16,9 @@ window.ck = {
         var minSide = Math.min(screen.width || 9999, screen.height || 9999);
         if ((navigator.maxTouchPoints || 0) > 0 && minSide <= 920)
             return true;
-        return window.matchMedia("(max-width: 720px)").matches
+        return window.matchMedia("(max-width: 900px)").matches
             || (window.matchMedia("(pointer: coarse)").matches
-                && window.matchMedia("(max-width: 900px)").matches);
+                && window.matchMedia("(max-width: 1100px)").matches);
     }
 
     function sync() {
