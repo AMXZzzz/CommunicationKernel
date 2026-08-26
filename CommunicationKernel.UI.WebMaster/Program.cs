@@ -23,20 +23,20 @@
 // -----------------------------------------------------------------------------
 
 using System.Runtime.InteropServices;
-using CommunicationKernel.Core.EngineRouter;
-using CommunicationKernel.Core.EngineRouter.Abstractions;
-using CommunicationKernel.Core.EngineRuntime;
+using CommunicationKernel.Hosting.App;
 using CommunicationKernel.Hosting.Sdk;
 using CommunicationKernel.UI.WebMaster.Components;
 using CommunicationKernel.UI.WebMaster.Services;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 // 托盘程序不需要控制台。WinExe 双击本来没有；VS / dotnet run 会塞一个黑框过来。
 HideAttachedConsole();
 
 Mutex? instanceLock = null;
+Mutex? hostingLock = null;
 EventWaitHandle? showEvent = null;
 
 try
@@ -66,19 +66,42 @@ catch
 showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, TrayHost.ShowEventName);
 EventWaitHandle showSignal = showEvent;
 
-// Hosting.App 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
-// 而且 Visual Studio / 上次跑宿主时可能把 ASPNETCORE_URLS 留在环境里。
+// 本进程同时持有 Hosting.App 互斥量：独立 exe 再开会抢同一份引擎和 :5000
+try
+{
+    hostingLock = new Mutex(initiallyOwned: true, HostingComposition.InstanceMutexName, out bool hostingFree);
+    if (!hostingFree)
+    {
+        ReportHostingAlreadyRunning();
+        return;
+    }
+}
+catch (AbandonedMutexException)
+{
+    // 上一份 Hosting.App 崩溃后互斥量被遗弃，本进程已经接手
+}
+catch
+{
+    // 没权限不因此放弃；后面绑 :5000 失败仍会接住
+}
+
+// ASPNETCORE_URLS 会压掉下面的双端口绑定
 string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
-if (!string.IsNullOrWhiteSpace(inheritedUrls) && LanAccess.ContainsPort(inheritedUrls, WebSettingsStore.HostPort))
+if (!string.IsNullOrWhiteSpace(inheritedUrls))
     Environment.SetEnvironmentVariable("ASPNETCORE_URLS", null);
 
-// 读取 appsettings / 环境变量，准备 DI 与配置
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-// 端口来源：设置页 web-listen.json → 命令行 --urls → appsettings Web:ListenPort → 64000。
-// 在代码里 UseUrls，不再靠 appsettings 的 Kestrel:Endpoints（那段会把这里的设置压掉）。
 int listenPort = WebSettingsStore.ResolveListenPort(builder.Configuration, inheritedUrls);
-builder.WebHost.UseUrls("http://0.0.0.0:" + listenPort);
+int grpcPort = builder.Configuration.GetValue("Hosting:GrpcPort", HostingComposition.DefaultGrpcPort);
+if (grpcPort is < 1024 or > 65535 || grpcPort == listenPort)
+    grpcPort = HostingComposition.DefaultGrpcPort == listenPort ? 5001 : HostingComposition.DefaultGrpcPort;
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(listenPort, listen => listen.Protocols = HttpProtocols.Http1AndHttp2);
+    options.ListenAnyIP(grpcPort, HostingComposition.ListenGrpc);
+});
 
 // ============================================================================
 // 服务注册
@@ -105,30 +128,11 @@ builder.Services.AddSingleton<WebSettingsStore>();
 builder.Services.AddSingleton<WebDeviceStore>();
 builder.Services.AddSingleton<WebVariableStore>();
 
-// ============================================================================
-// 本进程内嵌 EngineRuntime（形态 A）
-// ============================================================================
-builder.Services.AddSingleton<IRouteAssemblyService>(sp =>
-{
-    string pluginDirectorySetting = builder.Configuration["EngineRuntime:PluginDirectory"] ?? "plugins";
-    int defaultSerialIntervalMs = int.TryParse(
-        builder.Configuration["EngineRuntime:DefaultSerialMinIoIntervalMs"], out int value)
-        ? value
-        : 15;
-    string resolvedPluginDirectory = Path.IsPathRooted(pluginDirectorySetting)
-        ? pluginDirectorySetting
-        : Path.Combine(AppContext.BaseDirectory, pluginDirectorySetting);
-    return new PluginRouteAssemblyService(
-        pluginDirectory: resolvedPluginDirectory,
-        defaultSerialMinIoIntervalMs: defaultSerialIntervalMs,
-        loggerFactory: sp.GetRequiredService<ILoggerFactory>());
-});
-builder.Services.AddSingleton<IConnectionRouter>(sp =>
-    new ConnectionRouter(sp.GetService<ILogger<ConnectionRouter>>()));
-builder.Services.AddSingleton<IReadCoordinator, ReadCoordinator>();
-builder.Services.AddSingleton<IRouterOrchestrator, RouterOrchestrator>();
-builder.Services.AddSingleton<EngineRuntime>();
-builder.Services.AddSingleton<IHostingClient, InProcessHostingClient>();
+// 本进程带上 Hosting.App：同一份组合根，gRPC 对外，UI 经 HostingClient 走回环。
+HostingComposition.AddServices(builder.Services, builder.Configuration);
+string localGrpc = "http://127.0.0.1:" + grpcPort;
+builder.Services.AddSingleton<IHostingClient>(sp =>
+    new HostingClient(localGrpc, sp.GetRequiredService<ILogger<HostingClient>>()));
 
 // 会话：单例即 HostedService
 builder.Services.AddSingleton<EngineSession>();
@@ -155,22 +159,12 @@ builder.Services.AddHostedService<TrayHost>();
 WebApplication app = builder.Build();
 
 {
-    ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Engine.Startup");
-    // 立刻构造引擎：本机已有 Hosting.App / 另一份 WebMaster 时，现在就失败并弹框
-    _ = app.Services.GetRequiredService<EngineRuntime>();
-    IRouteAssemblyService assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
-    var protocols = assemblyService.GetAvailableProtocols();
+    var protocols = HostingComposition.Warmup(app);
+    HostingComposition.MapEndpoints(app);
     if (protocols.Count == 0)
-    {
-        logger.LogError("未加载到任何协议插件。请检查 exe 旁 plugins 目录。");
         logStore.Error("Engine", "未加载到任何协议插件，设备将无法选择协议");
-    }
     else
-    {
-        logger.LogInformation("已加载 {Count} 个协议：{Protocols}",
-            protocols.Count, string.Join(", ", protocols.Select(p => p.ProtocolId)));
-        logStore.Info("Engine", "已加载 " + protocols.Count + " 个协议");
-    }
+        logStore.Info("Engine", "已加载 " + protocols.Count + " 个协议；gRPC " + localGrpc);
 }
 
 // 生产环境：异常处理中间件（开发环境 Blazor 有内置错误 UI）
@@ -196,7 +190,7 @@ app.MapRazorComponents<App>()
 // appsettings 或命令行随时可能改端口，写死会打开一个空白页。
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    LogListenAddresses(app);
+    LogListenAddresses(app, listenPort, grpcPort);
     if (builder.Configuration.GetValue("Web:LaunchBrowser", defaultValue: true))
         LanAccess.OpenBrowser(app.Services.GetService<IServer>());
 });
@@ -218,6 +212,7 @@ catch (Exception ex)
 finally
 {
     showEvent?.Dispose();
+    hostingLock?.Dispose();
     instanceLock?.Dispose();
 }
 
@@ -232,7 +227,7 @@ finally
 /// 默认绑 <c>0.0.0.0</c> 之后，操作员最常问的就是「手机打开哪个地址」。
 /// 启动时直接写出来，避免再去跑 ipconfig。
 /// </remarks>
-static void LogListenAddresses(WebApplication app)
+static void LogListenAddresses(WebApplication app, int listenPort, int grpcPort)
 {
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Web.Endpoint");
     ICollection<string>? addresses = app.Services
@@ -249,7 +244,10 @@ static void LogListenAddresses(WebApplication app)
     foreach (string address in addresses)
         logger.LogInformation("Web 监听 {Address}", address);
 
-    int port = TryGetListenPort(addresses) ?? LanAccess.DefaultPort;
+    logger.LogInformation("gRPC 监听 0.0.0.0:{Port}（WPF / 本机 HostingClient 连 127.0.0.1:{Port}）",
+        grpcPort, grpcPort);
+
+    int port = listenPort;
     foreach (string ip in LanAccess.EnumerateIPv4())
         logger.LogInformation("同网段设备访问：http://{Address}:{Port}", ip, port);
 }
@@ -266,6 +264,25 @@ static int? TryGetListenPort(IEnumerable<string> addresses)
             return uri.Port;
     }
     return null;
+}
+
+/// <summary>独立 Hosting.App.exe 已经占着引擎时的提示。</summary>
+static void ReportHostingAlreadyRunning()
+{
+    try
+    {
+        _ = MessageBoxW(
+            IntPtr.Zero,
+            "Hosting.App 已经在运行。\n\n" +
+            "Web 上位机把宿主带在本进程里，不能再开一份独立 exe。\n" +
+            "请先结束 CommunicationKernel.Hosting.App，再打开本程序。\n" +
+            "树莓派现场网关才需要单独跑 Hosting.App。",
+            "CommunicationKernel Web",
+            0x00000040 | 0x00040000);
+    }
+    catch
+    {
+    }
 }
 
 /// <summary>已有实例在跑：唤出它的界面，本进程直接退出。</summary>
@@ -315,8 +332,8 @@ static void ReportStartupFailure(Exception ex)
         || ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase))
     {
         extra =
-            "端口 5000 是 Hosting.App 的，Web 上位机应使用 64000。\n" +
-            "请确认 Hosting.App 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
+            "端口被占用。本程序同时听 Web 口（默认 64000）和 gRPC 口（默认 5000）。\n" +
+            "关掉独立的 Hosting.App.exe，或结束上一份没退干净的 WebMaster。\n\n";
     }
 
     string message =
@@ -324,7 +341,7 @@ static void ReportStartupFailure(Exception ex)
         extra +
         ex.Message + "\n\n" +
         "常见原因：\n" +
-        "· 端口被占用——上一次没退干净，或误绑了 Hosting.App 的 5000 端口\n" +
+        "· 端口被占用——上一次没退干净，或独立 Hosting.App.exe 还在听 5000\n" +
         "· appsettings.json 语法错误\n\n" +
         "详细信息见日志文件。";
 
