@@ -4,10 +4,10 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
-using CommunicationKernel.Engine.Router;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Runtime;
-using CommunicationKernel.Engine.Runtime.Models;
+using CommunicationKernel.Core.EngineRouter;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRuntime;
+using CommunicationKernel.Core.EngineRuntime.Models;
 using CommunicationKernel.EngineHostingServiceApp.Services;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -276,7 +276,7 @@ static void ReportDuplicateInstance()
 {
     const string message =
         "CommunicationKernel.EngineHostingServiceApp 已经在运行，不必再开一份。\n\n" +
-        "本机只能有一份 Engine.Runtime。WebMaster 也内嵌引擎，两者不能同时开。\n" +
+        "本机只能有一份 Core.EngineRuntime。WebMaster 也内嵌引擎，两者不能同时开。\n" +
         "真要重启：任务管理器结束 CommunicationKernel.EngineHostingServiceApp，再双击本程序。";
     Console.Error.WriteLine();
     Console.Error.WriteLine("[启动失败] " + message);

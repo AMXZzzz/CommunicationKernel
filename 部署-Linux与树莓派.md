@@ -67,12 +67,12 @@
 ## 形态 A：把内核当 SDK 嵌进上位机
 
 树莓派直连 PLC 时不需要 EngineHostingServiceApp，也不需要 gRPC——多一个进程和一趟本机
-网络往返，只会增加故障面。直接引用 `CommunicationKernel.Engine.Runtime`，
+网络往返，只会增加故障面。直接引用 `CommunicationKernel.Core.EngineRuntime`，
 用 `StaticRouteAssemblyService` 在编译期交出工厂即可。
 
 ```xml
 <ItemGroup>
-  <ProjectReference Include="../CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj" />
+  <ProjectReference Include="../CommunicationKernel.Core.EngineRuntime/CommunicationKernel.Core.EngineRuntime.csproj" />
   <ProjectReference Include="../CommunicationKernel.Plugins.Protocol.Modbus/CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
   <ProjectReference Include="../CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
 </ItemGroup>

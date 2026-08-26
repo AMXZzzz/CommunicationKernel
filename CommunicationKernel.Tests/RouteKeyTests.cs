@@ -8,7 +8,7 @@
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Communication.Transport.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Models;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CommunicationKernel.Tests;

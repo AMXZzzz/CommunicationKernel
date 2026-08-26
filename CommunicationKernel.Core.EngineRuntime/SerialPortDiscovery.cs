@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------------------
 // 文件: SerialPortDiscovery.cs
-// 层级: Engine.Runtime
+// 层级: Core.EngineRuntime
 // 作用: 在传输工厂中寻找能枚举串口的插件，汇总宿主本机可用串口清单。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Communication.Transport.Abstractions;
 
-namespace CommunicationKernel.Engine.Runtime;
+namespace CommunicationKernel.Core.EngineRuntime;
 
 /// <summary>
 /// 在传输工厂集合中寻找能枚举串口的工厂，并汇总其结果。

@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: IReadCoordinator.cs
-// 层级: Engine.Router / Abstractions
+// 层级: Core.EngineRouter / Abstractions
 // 作用: 读合并契约——相同 (路由, 地址, 长度) 的并发读合成一次设备 I/O。
 // -----------------------------------------------------------------------------
 
@@ -8,9 +8,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Router.Abstractions;
+namespace CommunicationKernel.Core.EngineRouter.Abstractions;
 
 // ============================================================================
 // 读合并契约

@@ -1,10 +1,10 @@
 // -----------------------------------------------------------------------------
 // 文件: EngineRuntime.cs
-// 层级: Engine.Runtime
+// 层级: Core.EngineRuntime
 // 作用: 通讯内核入口，负责路由注册、读写策略、重连与状态发布。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Engine.Runtime.Models;
+using CommunicationKernel.Core.EngineRuntime.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,18 +16,18 @@ using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace CommunicationKernel.Engine.Runtime;
+namespace CommunicationKernel.Core.EngineRuntime;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: EngineRuntime.cs
-/// 层级: Engine.Runtime
+/// 层级: Core.EngineRuntime
 /// 作用: 通讯内核入口，负责路由注册与运行时执行策略。
 /// 说明:
 /// 1) Facade 属性为 internal：外部（gRPC 服务）应通过 EngineRuntime 公开方法
@@ -78,7 +78,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// 本机只允许一份 EngineRuntime（跨进程）。
     /// 两份会争用同一条串口/同一台 PLC 的 TCP。
     /// </summary>
-    internal const string ProcessMutexName = @"Local\CommunicationKernel.Engine.Runtime";
+    internal const string ProcessMutexName = @"Local\CommunicationKernel.Core.EngineRuntime";
 
     private static readonly object ProcessMutexGate = new();
     private static Mutex? ProcessMutex;
@@ -518,7 +518,7 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 {
                     mutex.Dispose();
                     throw new InvalidOperationException(
-                        "本机已经有一份 Engine.Runtime 在运行（EngineHostingServiceApp 或 WebMaster）。\n" +
+                        "本机已经有一份 Core.EngineRuntime 在运行（EngineHostingServiceApp 或 WebMaster）。\n" +
                         "同时只能有一份引擎，否则会争用同一条 PLC 连接。\n" +
                         "请先退出正在跑的那一个，再启动本程序。");
                 }

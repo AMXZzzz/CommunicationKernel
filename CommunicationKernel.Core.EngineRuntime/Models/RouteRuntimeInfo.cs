@@ -1,13 +1,13 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteRuntimeInfo.cs
-// 层级: Engine.Runtime / Models
+// 层级: Core.EngineRuntime / Models
 // 作用: 已注册路由的只读元数据快照，供 gRPC/UI 查询，不暴露 TransportClient。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Communication.Transport.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Runtime.Models;
+namespace CommunicationKernel.Core.EngineRuntime.Models;
 
 /// <summary>一条已注册路由的只读运行时信息，供查询接口使用。</summary>
 public sealed class RouteRuntimeInfo {

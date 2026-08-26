@@ -10,12 +10,12 @@
   <Project Path="CommunicationKernel.Plugin.Loader/CommunicationKernel.Plugin.Loader.csproj" />
 
   <!-- 路由引擎 -->
-  <Project Path="CommunicationKernel.Engine.Router/CommunicationKernel.Engine.Router.csproj" />
+  <Project Path="CommunicationKernel.Core.EngineRouter/CommunicationKernel.Core.EngineRouter.csproj" />
 
   <!-- 通讯内核库（形态 A 直接引用） -->
-  <Project Path="CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj" />
+  <Project Path="CommunicationKernel.Core.EngineRuntime/CommunicationKernel.Core.EngineRuntime.csproj" />
 
-  <!-- 现场宿主进程（形态 B）：托管 Engine.Runtime + gRPC -->
+  <!-- 现场宿主进程（形态 B）：托管 Core.EngineRuntime + gRPC -->
   <Project Path="CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj" />
 
   <!-- 协议插件 -->

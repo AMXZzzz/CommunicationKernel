@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: ReadCoordinator.cs
-// 层级: Engine.Router / Runtime
+// 层级: Core.EngineRouter / Runtime
 // 作用: 协调同一读请求键的并发读取，避免多 UI 轮询重复打点同一 PLC 地址。
 // -----------------------------------------------------------------------------
 
@@ -10,15 +10,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Router;
+namespace CommunicationKernel.Core.EngineRouter;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: ReadCoordinator.cs
-/// 层级: Engine.Router
+/// 层级: Core.EngineRouter
 /// 作用: 协调同一读请求键的并发读取，避免重复打点设备。
 /// 说明:
 /// - 读合并键为 (RouteKey, DataAddress, Length)。

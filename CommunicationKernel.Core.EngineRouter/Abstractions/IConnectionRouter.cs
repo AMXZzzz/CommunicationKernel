@@ -1,18 +1,18 @@
 // -----------------------------------------------------------------------------
 // 文件: IConnectionRouter.cs
-// 层级: Engine.Router / Abstractions
+// 层级: Core.EngineRouter / Abstractions
 // 作用: 定义路由注册表最小契约——只负责 RouteEntry 的登记、查询、摘除与快照。
 // -----------------------------------------------------------------------------
 
 using System.Collections.Generic;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Router.Abstractions;
+namespace CommunicationKernel.Core.EngineRouter.Abstractions;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: IConnectionRouter.cs
-/// 层级: Engine.Router / Abstractions
+/// 层级: Core.EngineRouter / Abstractions
 /// 作用: 定义路由注册表最小契约。
 /// 说明:
 /// 1) 负责 RouteEntry 的注册、查询、移除与快照读取。

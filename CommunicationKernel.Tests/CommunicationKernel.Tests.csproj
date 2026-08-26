@@ -13,8 +13,8 @@
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Plugin.Loader\CommunicationKernel.Plugin.Loader.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Engine.Router\CommunicationKernel.Engine.Router.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Engine.Runtime\CommunicationKernel.Engine.Runtime.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.EngineRouter\CommunicationKernel.Core.EngineRouter.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Core.EngineRuntime\CommunicationKernel.Core.EngineRuntime.csproj" />
     <!-- Modbus 三个变体（TCP / RTU / ASCII）与其协议语义已合并为单一程序集 -->
     <ProjectReference Include="..\CommunicationKernel.Plugins.Protocol.Modbus\CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Plugins.Protocol.Panasonic\CommunicationKernel.Plugins.Protocol.Panasonic.csproj" />

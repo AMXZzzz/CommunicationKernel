@@ -1,10 +1,10 @@
 // -----------------------------------------------------------------------------
 // 文件: IRouteAssemblyService.cs
-// 层级: Engine.Runtime
+// 层级: Core.EngineRuntime
 // 作用: 抽象路由装配服务，屏蔽协议/传输工厂与插件发现细节。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Engine.Runtime.Models;
+using CommunicationKernel.Core.EngineRuntime.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -12,15 +12,15 @@ using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Router.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Abstractions;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Runtime;
+namespace CommunicationKernel.Core.EngineRuntime;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: IRouteAssemblyService.cs
-/// 层级: Engine.Runtime
+/// 层级: Core.EngineRuntime
 /// 作用: 抽象路由装配服务，屏蔽协议/传输工厂与插件发现细节。
 /// 说明:
 /// 1) EngineRuntime 仅依赖该抽象，避免直接持有具体协议装配逻辑。

@@ -9,8 +9,8 @@ using System.Threading.Channels;
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
-using CommunicationKernel.Engine.Runtime;
-using CommunicationKernel.Engine.Runtime.Models;
+using CommunicationKernel.Core.EngineRuntime;
+using CommunicationKernel.Core.EngineRuntime.Models;
 using CommunicationKernel.EngineHost.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;

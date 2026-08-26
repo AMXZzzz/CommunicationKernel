@@ -1,0 +1,63 @@
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime..ctor(CommunicationKernel.Core.EngineRuntime.IRouteAssemblyService routeAssemblyService, CommunicationKernel.Core.EngineRouter.Abstractions.IRouterOrchestrator orchestrator, Microsoft.Extensions.Logging.ILogger<CommunicationKernel.Core.EngineRuntime.EngineRuntime> logger, System.Int32 linkCheckIntervalMs)
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.DisposeAsync() -> System.Threading.Tasks.ValueTask
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.PendingRouteCount { get; } -> System.Int32
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.ReadByRouteIdAsync(System.String routeId, System.String dataAddress, System.Int32 length, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult<System.Byte[]>>
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.RegisterRouteAsync(CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand command, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult<System.String>>
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.RouteCount { get; } -> System.Int32
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.SnapshotRoutes() -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Core.EngineRuntime.Models.RouteRuntimeInfo>
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.SnapshotStatuses(System.String routeId) -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot>
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.UnregisterRouteAsync(System.String routeId, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult>
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.WriteByRouteIdAsync(System.String routeId, System.String dataAddress, System.Byte[] payload, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult>
+    CommunicationKernel.Core.EngineRuntime.EngineRuntime.event RouteStatusChanged : System.Action<CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot>
+    CommunicationKernel.Core.EngineRuntime.IRouteAssemblyService.AssembleAsync(CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand command, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult<CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult>>
+    CommunicationKernel.Core.EngineRuntime.IRouteAssemblyService.GetAvailableProtocols() -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Communication.Protocol.Abstractions.ProtocolMetadata>
+    CommunicationKernel.Core.EngineRuntime.IRouteAssemblyService.GetAvailableSerialPorts() -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Communication.Transport.Abstractions.SerialPortInfo>
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand..ctor()
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.Address { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.BaudRate { get; set; } -> System.Int32
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.DataBits { get; set; } -> System.Int32
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.MinIoIntervalMs { get; set; } -> System.Int32
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.Parity { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.Port { get; set; } -> System.Int32
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.ProtocolId { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.RouteId { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.SerialPort { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.Station { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.StopBits { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.TransportId { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand.TransportKind { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RouteRuntimeInfo..ctor()
+    CommunicationKernel.Core.EngineRuntime.Models.RouteRuntimeInfo.Endpoint { get; set; } -> CommunicationKernel.Communication.Transport.Abstractions.TransportEndpoint
+    CommunicationKernel.Core.EngineRuntime.Models.RouteRuntimeInfo.RouteId { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RouteRuntimeInfo.RouteKey { get; set; } -> CommunicationKernel.Core.EngineRouter.Models.RouteKey
+    CommunicationKernel.Core.EngineRuntime.Models.RouteRuntimeInfo.TransportId { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot..ctor()
+    CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot.ErrorCode { get; set; } -> CommunicationKernel.Core.Abstractions.Errors.KernelErrorCode
+    CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot.ErrorMessage { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot.Online { get; set; } -> System.Boolean
+    CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot.RouteId { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot.TimestampUtc { get; set; } -> System.DateTimeOffset
+    CommunicationKernel.Core.EngineRuntime.PluginRouteAssemblyService..ctor(System.String pluginDirectory, System.Int32 defaultSerialMinIoIntervalMs, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory)
+    CommunicationKernel.Core.EngineRuntime.PluginRouteAssemblyService.AssembleAsync(CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand command, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult<CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult>>
+    CommunicationKernel.Core.EngineRuntime.PluginRouteAssemblyService.GetAvailableProtocols() -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Communication.Protocol.Abstractions.ProtocolMetadata>
+    CommunicationKernel.Core.EngineRuntime.PluginRouteAssemblyService.GetAvailableSerialPorts() -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Communication.Transport.Abstractions.SerialPortInfo>
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult..ctor()
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult.Endpoint { get; set; } -> CommunicationKernel.Communication.Transport.Abstractions.TransportEndpoint
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult.IsSerialRoute { get; set; } -> System.Boolean
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult.MinIoIntervalMs { get; set; } -> System.Int32
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult.RollbackAsync { get; set; } -> System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task>
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult.RouteEntry { get; set; } -> CommunicationKernel.Core.EngineRouter.Abstractions.RouteEntry
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult.RouteKey { get; set; } -> CommunicationKernel.Core.EngineRouter.Models.RouteKey
+    CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult.TransportId { get; set; } -> System.String
+    CommunicationKernel.Core.EngineRuntime.StaticRouteAssemblyService..ctor(System.Collections.Generic.IEnumerable<CommunicationKernel.Communication.Transport.Abstractions.ITransportFactory> transportFactories, System.Collections.Generic.IEnumerable<CommunicationKernel.Communication.Protocol.Abstractions.IProtocolDriverFactory> protocolFactories, System.Int32 defaultSerialMinIoIntervalMs, Microsoft.Extensions.Logging.ILogger<CommunicationKernel.Core.EngineRuntime.StaticRouteAssemblyService> logger)
+    CommunicationKernel.Core.EngineRuntime.StaticRouteAssemblyService.AssembleAsync(CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand command, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<CommunicationKernel.Core.Abstractions.Results.OperationResult<CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult>>
+    CommunicationKernel.Core.EngineRuntime.StaticRouteAssemblyService.GetAvailableProtocols() -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Communication.Protocol.Abstractions.ProtocolMetadata>
+    CommunicationKernel.Core.EngineRuntime.StaticRouteAssemblyService.GetAvailableSerialPorts() -> System.Collections.Generic.IReadOnlyList<CommunicationKernel.Communication.Transport.Abstractions.SerialPortInfo>
+class sealed CommunicationKernel.Core.EngineRuntime.EngineRuntime
+class sealed CommunicationKernel.Core.EngineRuntime.Models.RegisterRouteCommand
+class sealed CommunicationKernel.Core.EngineRuntime.Models.RouteRuntimeInfo
+class sealed CommunicationKernel.Core.EngineRuntime.Models.RouteStatusSnapshot
+class sealed CommunicationKernel.Core.EngineRuntime.PluginRouteAssemblyService
+class sealed CommunicationKernel.Core.EngineRuntime.RouteAssemblyResult
+class sealed CommunicationKernel.Core.EngineRuntime.StaticRouteAssemblyService
+interface CommunicationKernel.Core.EngineRuntime.IRouteAssemblyService

@@ -3,7 +3,7 @@
 // 层级: 测试
 // 作用: 锁定两个打包库的公共 API 面，使其变更成为显式动作。
 //
-// 这两个库（Engine.Runtime 与 EngineHost.Sdk）会以 NuGet 包发给外部消费者，
+// 这两个库（Core.EngineRuntime 与 EngineHost.Sdk）会以 NuGet 包发给外部消费者，
 // 公共成员一旦发布就是承诺：改签名、删成员、动可见性都会让下游编译不过。
 //
 // 为什么不用 Microsoft.CodeAnalysis.PublicApiAnalyzers：
@@ -33,10 +33,10 @@ namespace CommunicationKernel.Tests;
 [TestClass]
 public class PublicApiSurfaceTests {
 
-    // Engine.Runtime 的公开面必须与基线一致
+    // Core.EngineRuntime 的公开面必须与基线一致
     [TestMethod]
     public void EngineAssembly_PublicApi_MatchesBaseline()
-        => AssertSurfaceMatchesBaseline(typeof(CommunicationKernel.Engine.Runtime.EngineRuntime).Assembly);
+        => AssertSurfaceMatchesBaseline(typeof(CommunicationKernel.Core.EngineRuntime.EngineRuntime).Assembly);
 
     // EngineHost.Sdk 的公开面必须与基线一致
     [TestMethod]

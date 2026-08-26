@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteEntry.cs
-// 层级: Engine.Router / Abstractions
+// 层级: Core.EngineRouter / Abstractions
 // 作用: 路由条目，持有传输客户端、协议驱动，以及读写共用的独占 I/O 门控。
 // -----------------------------------------------------------------------------
 
@@ -9,14 +9,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
-using CommunicationKernel.Engine.Router.Models;
+using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Engine.Router.Abstractions;
+namespace CommunicationKernel.Core.EngineRouter.Abstractions;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: RouteEntry.cs
-/// 层级: Engine.Router / Abstractions
+/// 层级: Core.EngineRouter / Abstractions
 /// 作用: 路由条目，持有特定路由的传输客户端、协议驱动与独占 I/O 门控。
 /// 说明:
 /// - 实现 IAsyncDisposable：路由注销时必须调用 DisposeAsync 释放 TransportClient，
