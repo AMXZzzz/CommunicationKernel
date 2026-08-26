@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunicationKernel.Communication.Protocol.Abstractions;
 using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Errors;
 using CommunicationKernel.Core.Abstractions.Results;
@@ -139,11 +140,13 @@ public sealed class EngineRuntime : IAsyncDisposable {
     /// <b>只查不发。</b>巡检调用 <see cref="ITransportClient.IsConnectionAlive"/>，
     /// 那是介质层的廉价探测（查套接字/端口句柄），不产生任何协议报文，
     /// 因此不占用路由的 I/O 门，也不会干扰正在进行的读写或串口帧间静默。
+    /// 套接字仍活着、但本周期没人读写时，再发一帧协议心跳（<see cref="IProtocolDriver.ProbeAsync"/>），
+    /// 避免从站/模拟器按空闲超时拆掉 TCP，也让「只降不升」的状态能自己探回来。
     /// </para>
     /// <para>
-    /// <b>只降不升。</b>探测到断链就置为离线；反过来「探测说还连着」并不等于
-    /// PLC 能应答（半开连接、PLC 死机都可能维持着 TCP 连接），
-    /// 所以这里绝不把状态从离线改回在线——恢复在线只认一次真正成功的读写。
+    /// <b>套接字活着不够。</b>半开连接、PLC 死机都可能维持着 TCP。
+    /// 所以「Poll 说还连着」不能单独把状态从离线改回在线；
+    /// 必须有一次真正的协议心跳或读写成功才标绿。
     /// </para>
     /// </remarks>
     private async Task LinkCheckLoopAsync(int intervalMs, CancellationToken ct) {
@@ -158,23 +161,9 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 if (ct.IsCancellationRequested) return;
 
                 try {
-                    if (registration.RouteEntry.TransportClient.IsConnectionAlive) continue;
-
-                    // 只在「原本认为在线」时广播，避免对已离线路由反复刷同一条事件
-                    if (_routeStatuses.TryGetValue(registration.RouteId, out RouteStatusSnapshot? prev)
-                        && !prev.Online) {
-                        continue;
-                    }
-
-                    _logger.LogWarning(
-                        "链路巡检：路由 '{RouteId}' 的连接已断开（{Endpoint}）。",
-                        registration.RouteId, registration.Endpoint);
-
-                    PublishStatus(
-                        registration.RouteId,
-                        online: false,
-                        KernelErrorCode.TransportIoError,
-                        "链路巡检发现连接已断开");
+                    await InspectRouteLinkAsync(registration, intervalMs, ct).ConfigureAwait(false);
+                } catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+                    return;
                 } catch (Exception ex) {
                     // 单条路由探测失败不能中断整轮巡检
                     _logger.LogWarning(ex,
@@ -182,6 +171,103 @@ public sealed class EngineRuntime : IAsyncDisposable {
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// 检查一条路由：套接字死了就重连；闲置则发协议心跳。
+    /// </summary>
+    private async Task InspectRouteLinkAsync(
+        RouteRuntimeRegistration registration, int intervalMs, CancellationToken ct)
+    {
+        ITransportClient transport = registration.RouteEntry.TransportClient;
+
+        if (!transport.IsConnectionAlive)
+        {
+            await RecoverDeadLinkAsync(registration, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // 本周期已有读写（含上一轮心跳）：不必再打一枪
+        if (registration.RouteEntry.HasCompletedIoWithin(intervalMs))
+            return;
+
+        await ProbeIdleRouteAsync(registration, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>套接字已死：在独占门里重连；连不上或连上仍死则标离线。</summary>
+    private async Task RecoverDeadLinkAsync(
+        RouteRuntimeRegistration registration, CancellationToken ct)
+    {
+        if (_routeStatuses.TryGetValue(registration.RouteId, out RouteStatusSnapshot? prev)
+            && !prev.Online)
+        {
+            // 已离线则仍尝试重连，但不再刷同一条离线事件
+        }
+        else
+        {
+            _logger.LogWarning(
+                "链路巡检：路由 '{RouteId}' 的连接已断开（{Endpoint}），尝试重连。",
+                registration.RouteId, registration.Endpoint);
+        }
+
+        bool reconnected = await registration.RouteEntry.ExecuteExclusiveAsync(
+            inner => TryReconnectAsync(registration, inner),
+            ct).ConfigureAwait(false);
+
+        if (!reconnected || !registration.RouteEntry.TransportClient.IsConnectionAlive)
+        {
+            PublishStatus(
+                registration.RouteId,
+                online: false,
+                KernelErrorCode.TransportIoError,
+                "链路巡检发现连接已断开");
+        }
+    }
+
+    /// <summary>闲置路由发一帧协议心跳；失败则重连再探一次。</summary>
+    private async Task ProbeIdleRouteAsync(
+        RouteRuntimeRegistration registration, CancellationToken ct)
+    {
+        await registration.RouteEntry.ExecuteExclusiveAsync(async inner =>
+        {
+            IProtocolDriver driver = registration.RouteEntry.ProtocolDriver;
+            ITransportClient transport = registration.RouteEntry.TransportClient;
+
+            OperationResult probe = await driver.ProbeAsync(transport, inner).ConfigureAwait(false);
+            if (probe.Success)
+            {
+                PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
+                return true;
+            }
+
+            if (!ShouldAttemptReconnect(probe.ErrorCode))
+            {
+                PublishStatus(registration.RouteId, online: false, probe.ErrorCode, probe.ErrorMessage);
+                return false;
+            }
+
+            _logger.LogWarning(
+                "链路心跳：路由 '{RouteId}' 探活失败（{Error}），尝试重连。",
+                registration.RouteId, probe.ErrorMessage);
+
+            bool reconnected = await TryReconnectAsync(registration, inner).ConfigureAwait(false);
+            if (!reconnected)
+                return false;
+
+            OperationResult again = await driver.ProbeAsync(transport, inner).ConfigureAwait(false);
+            if (again.Success)
+            {
+                PublishStatus(registration.RouteId, online: true, KernelErrorCode.None, string.Empty);
+                return true;
+            }
+
+            PublishStatus(
+                registration.RouteId,
+                online: false,
+                again.ErrorCode,
+                again.ErrorMessage);
+            return false;
+        }, ct).ConfigureAwait(false);
     }
 
     /// <summary>当前注册路由数量（供 gRPC Health / Diagnostics 端点使用）。</summary>

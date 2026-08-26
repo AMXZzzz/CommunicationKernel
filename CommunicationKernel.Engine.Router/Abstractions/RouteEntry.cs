@@ -122,6 +122,16 @@ public sealed class RouteEntry : IAsyncDisposable {
     }
 
     /// <summary>
+    /// 本路由是否刚做过 I/O（含心跳）。用于跳过多余探活，避免轮询中的路由再打一枪。
+    /// </summary>
+    public bool HasCompletedIoWithin(int milliseconds)
+    {
+        if (milliseconds <= 0) return false;
+        int elapsed = GetElapsedSinceLastIoMs();
+        return elapsed < milliseconds;
+    }
+
+    /// <summary>
     /// 释放传输客户端底层资源（socket / 串口句柄）。
     /// 必须在路由从路由表移除后调用。
     /// </summary>

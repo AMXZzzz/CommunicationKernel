@@ -190,6 +190,15 @@ internal sealed class SiemensS7ProtocolDriver : IProtocolDriver {
         return S7Frame.ParseWriteResponse(response.Value);
     }
 
+    /// <inheritdoc />
+    public Task<OperationResult> ProbeAsync(
+        ITransportClient client, CancellationToken cancellationToken)
+    {
+        // 200Smart 的 V 区即 DB1；1200 用标志位 MB0，几乎每台都有。
+        string address = _remoteTsap == 0x0200 ? "VB0" : "MB0";
+        return ProtocolProbe.ReadAsync(this, client, address, 1, cancellationToken);
+    }
+
     /// <summary>
     /// 帧完整性判定：ISO on TCP 的 TPKT 头自带总长字段。
     /// </summary>
