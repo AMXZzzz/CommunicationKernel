@@ -35,5 +35,5 @@
 
   <!-- UI 客户端 -->
   <Project Path="CommunicationKernel.UI.Wpf/CommunicationKernel.UI.Wpf.csproj" />
-  <Project Path="CommunicationKernel.UI.Web/CommunicationKernel.UI.Web.csproj" />
+  <Project Path="CommunicationKernel.UI.WebMaster/CommunicationKernel.UI.WebMaster.csproj" />
 </Solution>

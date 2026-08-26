@@ -19,8 +19,8 @@
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using CommunicationKernel.UI.Web.Components;
-using CommunicationKernel.UI.Web.Services;
+using CommunicationKernel.UI.WebMaster.Components;
+using CommunicationKernel.UI.WebMaster.Services;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;

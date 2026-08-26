@@ -13,7 +13,7 @@
 
 using System;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>纯展示辅助方法，不含任何通讯或协议语义。</summary>
 internal static class UiHelpers

@@ -28,7 +28,7 @@
 事件——下层发布、上层订阅，不产生反向引用。
 
 ```
-L7  UI.Wpf / UI.Web          只持有 route_id 与 SDK DTO
+L7  UI.Wpf / UI.WebMaster          只持有 route_id 与 SDK DTO
 L6  Host.Sdk / Host.App      唯一入口；Host.Sdk 零工程引用，UI 无法绕过它触达内部
 L5  Engine.Runtime           路由生命周期、轮询、链路巡检、单次重连
 L4  Engine.Router            路由表 + 同键读合并；读写互斥在 RouteEntry 独占门
@@ -53,7 +53,7 @@ L0  Core.Abstractions        契约根，零工程引用
 | `Host.Sdk` | 连 Host.App 的客户端库；含两个 UI 共用的 `ValueCodec` 与 `JsonFileStore` |
 | `Plugins.Protocol.*` | Modbus / Panasonic MEWTOCOL / Siemens S7 |
 | `Plugins.Transport.*` | Tcp / SerialPort（`TransportKind` 枚举另有 Wifi/Bluetooth，尚无插件） |
-| `UI.Wpf` / `UI.Web` | 上位机界面，职责对称（见下） |
+| `UI.Wpf` / `UI.WebMaster` | 上位机界面，职责对称（见下） |
 | `Tests` | 行为与 API 基线 |
 
 gRPC 的 protobuf **只有一份**：根目录 [`Protos/V1/engine_host.proto`](Protos/V1/engine_host.proto)，
@@ -111,7 +111,7 @@ Panasonic **没有** `panasonic-mewtocol-tcp` 这个 ID——TCP 与串口共用
 字节序：Web 按设备 `ByteOrder`（`ABCD` / `CDAB` / `BADC` / `DCBA`）走 `ValueCodec`；
 WPF 变量编解码目前固定 `ABCD`，尚无按设备配置的界面。
 
-## Web 上位机（UI.Web）
+## Web 上位机（UI.WebMaster）
 
 Blazor Server 操作员客户端。只持有 `route_id` 与 Host.Sdk DTO，不解析协议：
 
@@ -127,7 +127,7 @@ Blazor Server 操作员客户端。只持有 `route_id` 与 Host.Sdk DTO，不�
 Windows 下 `OutputType=WinExe`，双击 exe 不弹控制台；`dotnet run` 时日志仍打到当前终端。
 
 ```bash
-dotnet run --project CommunicationKernel.UI.Web
+dotnet run --project CommunicationKernel.UI.WebMaster
 ```
 
 默认听 `http://0.0.0.0:64000`：本机浏览器打开 `http://localhost:64000`，

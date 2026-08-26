@@ -4,7 +4,7 @@
 // 作用: 把框架 ILogger 接到 AppLogStore；框架噪音在 Information 以下丢弃。
 // -----------------------------------------------------------------------------
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>单例 Provider，应用生命周期内只注册一次。</summary>
 /// <remarks>

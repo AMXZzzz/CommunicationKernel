@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!-- ========================================================================
-       文件: CommunicationKernel.UI.Web.csproj
+       文件: CommunicationKernel.UI.WebMaster.csproj
        层级: UI 层 — Blazor Server Web 客户端
        作用: 通过 gRPC-Web 或 gRPC 连接 Host.App，提供浏览器端监控界面。
              Blazor Server 模式：组件在服务端渲染，通过 SignalR 推送 DOM diff 到浏览器。
@@ -9,8 +9,8 @@
 
   <PropertyGroup>
     <!-- TreatWarningsAsErrors 由 Directory.Build.props 继承 -->
-    <AssemblyName>CommunicationKernel.UI.Web</AssemblyName>
-    <RootNamespace>CommunicationKernel.UI.Web</RootNamespace>
+    <AssemblyName>CommunicationKernel.UI.WebMaster</AssemblyName>
+    <RootNamespace>CommunicationKernel.UI.WebMaster</RootNamespace>
 
     <!--
       WinExe：直接运行 exe 时不分配控制台窗口。

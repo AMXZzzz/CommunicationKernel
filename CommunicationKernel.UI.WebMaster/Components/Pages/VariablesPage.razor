@@ -80,22 +80,22 @@
                         @foreach (WebVariable row in Visible)
                         {
                             <tr class="@(row.IsError ? "row-error" : null)">
-                                <td class="name">@row.Name</td>
-                                <td class="addr">@row.RouteId</td>
-                                <td class="mono">@row.Address</td>
-                                <td><span class="type-pill">@row.DataType</span></td>
-                                <td class="val-green mono" title="@row.LastUpdated">@row.DisplayValue</td>
-                                <td class="write-cell">
+                                <td class="name" data-label="名称">@row.Name</td>
+                                <td class="addr" data-label="路由">@row.RouteId</td>
+                                <td class="mono" data-label="地址">@row.Address</td>
+                                <td data-label="类型"><span class="type-pill">@row.DataType</span></td>
+                                <td class="val-green mono" data-label="当前值" title="@row.LastUpdated">@row.DisplayValue</td>
+                                <td class="write-cell" data-label="写入">
                                     <input class="write-input" @bind="row.WriteText" placeholder="值" />
                                     <button class="btn-sm primary" type="button" @onclick="() => WriteAsync(row)" disabled="@(_busy || !Session.Online)">写</button>
                                     <button class="btn-sm ghost" type="button" @onclick="() => ReadAsync(row)" disabled="@(_busy || !Session.Online)">读</button>
                                 </td>
-                                <td>
+                                <td data-label="轮询">
                                     <label class="poll-toggle">
                                         <input type="checkbox" checked="@row.Polling" @onchange="e => TogglePoll(row, e)" />
                                     </label>
                                 </td>
-                                <td class="row-btns">
+                                <td class="row-btns" data-label="">
                                     <button class="btn-sm ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
                                     <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
                                 </td>

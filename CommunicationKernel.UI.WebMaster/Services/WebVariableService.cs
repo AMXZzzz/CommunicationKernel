@@ -21,7 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunicationKernel.Host.Sdk;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 // ============================================================================
 // 结果类型

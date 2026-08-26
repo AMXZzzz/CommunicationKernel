@@ -9,11 +9,15 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#111111" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>通讯调试工具 — CommunicationKernel</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="CommunicationKernel.UI.Web.styles.css" />
+    <link rel="stylesheet" href="CommunicationKernel.UI.WebMaster.styles.css" />
     <link rel="stylesheet" href="css/theme.css" />
     <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
 </head>

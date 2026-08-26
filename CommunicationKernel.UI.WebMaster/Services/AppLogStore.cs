@@ -6,7 +6,7 @@
 
 using System.Collections.Concurrent;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>一条面向操作员的日志。</summary>
 /// <remarks>
