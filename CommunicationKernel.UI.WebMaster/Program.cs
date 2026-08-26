@@ -152,6 +152,8 @@ WebApplication app = builder.Build();
 
 {
     ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Engine.Startup");
+    // 立刻构造引擎：本机已有 EngineHost.App / 另一份 WebMaster 时，现在就失败并弹框
+    _ = app.Services.GetRequiredService<EngineRuntime>();
     IRouteAssemblyService assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
     var protocols = assemblyService.GetAvailableProtocols();
     if (protocols.Count == 0)
