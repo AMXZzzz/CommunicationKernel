@@ -54,6 +54,7 @@ dotnet run --project CommunicationKernel.Hosting.App
 
 Web：`http://localhost:64000`，同一 WiFi 手机 `http://<电脑IP>:64000`。
 不要把 Web 口改成 `5000`。配置在各 exe 旁 `config/`，互不影响。
+全国访问 Web：车间照常跑 WebMaster，公网 1Panel/宝塔只做 HTTPS 中转，步骤见 [部署文档 · 公网中转](部署-Linux与树莓派.md#公网中转全国访问-web)。
 
 ## 协议（对照用，UI 禁止硬编码此表）
 
