@@ -11,7 +11,7 @@
 - 通讯层能力要求：需支持多种通讯介质。**当前已落地 Tcp 与 Serial**；`TransportKind` 枚举含 Wifi/Bluetooth/Custom，但没有对应插件——不得在 UI 里假装它们可用。
 - 架构规范：通讯业务层统一维护所有 PLC 状态与任务；通讯层仅负责收发；协议解析只能在插件内部，其他层禁止出现任何协议解析。
 - 架构链路（实际调用顺序）：
-  UI → EngineHost.Sdk / EngineHost.App（gRPC）→ EngineRuntime → RouterOrchestrator
+  UI → EngineHost.Sdk / EngineHostingServiceApp（gRPC）→ EngineRuntime → RouterOrchestrator
   → IProtocolDriver（插件 DLL）→ ITransportClient（Tcp / Serial 插件）。
   协议层来自 DLL 插件，外层一律禁知帧格式与地址语义。
 

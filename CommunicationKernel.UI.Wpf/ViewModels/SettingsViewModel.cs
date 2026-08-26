@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/SettingsViewModel.cs
 // 层级: UI 层 — WPF 系统设置页 ViewModel
-// 作用: 封装 EngineHost.App 地址配置、连接模式、连接测试及 settings.json 持久化。
+// 作用: 封装 EngineHostingServiceApp 地址配置、连接模式、连接测试及 settings.json 持久化。
 // 调用链:
 //   SettingsPage → TestConnectionCommand → HostClient.HealthAsync
 //                 → SaveCommand → settings.json
@@ -59,7 +59,7 @@ public sealed class SettingsViewModel : ViewModelBase {
     // ============================================================================
 
     /// <summary>
-    /// EngineHost.App gRPC 地址。绑定到 SettingsPage.txtAddress。
+    /// EngineHostingServiceApp gRPC 地址。绑定到 SettingsPage.txtAddress。
     /// 保存命令将此值写入 settings.json。
     /// </summary>
     public string HostAddress {
@@ -180,8 +180,8 @@ public sealed class SettingsViewModel : ViewModelBase {
 
             // 更新测试结果文字
             TestResultText = ok
-                ? string.Format("✔ 连接成功 — EngineHost.App v{0}，路由数: {1}", ver, routes)
-                : "✘ EngineHost.App 无响应";
+                ? string.Format("✔ 连接成功 — EngineHostingServiceApp v{0}，路由数: {1}", ver, routes)
+                : "✘ EngineHostingServiceApp 无响应";
         } catch (Exception ex) {
             // 网络异常或超时
             TestResultText = "✘ " + ex.Message;
@@ -229,7 +229,7 @@ public sealed class SettingsViewModel : ViewModelBase {
 
     /// <summary>settings.json 序列化模型，仅存储 HostAddress。</summary>
     private sealed class AppSettings {
-        /// <summary>EngineHost.App gRPC 服务地址。</summary>
+        /// <summary>EngineHostingServiceApp gRPC 服务地址。</summary>
         public string HostAddress { get; set; } = WpfAppSettings.FallbackAddress;
     }
 }

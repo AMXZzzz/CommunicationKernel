@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: IHostClient.cs
 // 层级: 客户端层 — 抽象
-// 作用: EngineHost.App 访问契约，隔离 UI 与具体传输实现。
+// 作用: EngineHostingServiceApp 访问契约，隔离 UI 与具体传输实现。
 //
 // 为什么要这层接口：
 //   1) UI 的 ViewModel 与服务此前直接依赖具体类，无法在不起 gRPC 服务端的
@@ -20,7 +20,7 @@ using System.Threading.Tasks;
 namespace CommunicationKernel.EngineHost.Sdk
 {
     /// <summary>
-    /// EngineHost.App 客户端契约。
+    /// EngineHostingServiceApp 客户端契约。
     /// </summary>
     /// <remarks>
     /// 所有方法都以「返回结果」而非「抛异常」表达业务失败：

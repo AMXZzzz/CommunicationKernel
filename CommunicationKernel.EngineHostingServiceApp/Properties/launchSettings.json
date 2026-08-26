@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "CommunicationKernel.EngineHost.App": {
+    "CommunicationKernel.EngineHostingServiceApp": {
       "commandName": "Project",
       "launchBrowser": false,
       "environmentVariables": {

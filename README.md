@@ -16,10 +16,10 @@
 
 ## 两种形态
 
-- **形态 A（嵌入）**：本进程引用 `Engine.Runtime` 直连 PLC。`UI.WebMaster` 已是这种形态，不必再开 `EngineHost.App`。
-- **形态 B（独立宿主）**：现场跑 `EngineHost.App`；上位机引用 `EngineHost.Sdk`，通过 gRPC 远程读写。
+- **形态 A（嵌入）**：本进程引用 `Engine.Runtime` 直连 PLC。`UI.WebMaster` 已是这种形态，不必再开 `EngineHostingServiceApp`。
+- **形态 B（独立宿主）**：现场跑 `EngineHostingServiceApp`；上位机引用 `EngineHost.Sdk`，通过 gRPC 远程读写。
   多台上位机同时访问同一批 PLC **只能用形态 B**——形态 A 里每个进程各自持有串口/socket。
-  本机同时只能有一份 `Engine.Runtime`：WebMaster 与 EngineHost.App 互斥，开着一个就不要开另一个。
+  本机同时只能有一份 `Engine.Runtime`：WebMaster 与 EngineHostingServiceApp 互斥，开着一个就不要开另一个。
 
 跨机部署（树莓派当网关、办公室当上位机）走形态 B，步骤见 [部署文档](部署-Linux与树莓派.md)。
 
@@ -30,7 +30,7 @@
 
 ```
 L7  UI.Wpf / UI.WebMaster          只持有 route_id 与 SDK DTO
-L6  EngineHost.Sdk / EngineHost.App      唯一入口；EngineHost.Sdk 零工程引用，UI 无法绕过它触达内部
+L6  EngineHost.Sdk / EngineHostingServiceApp      唯一入口；EngineHost.Sdk 零工程引用，UI 无法绕过它触达内部
 L5  Engine.Runtime           路由生命周期、轮询、链路巡检、单次重连
 L4  Engine.Router            路由表 + 同键读合并；读写互斥在 RouteEntry 独占门
 L3  Plugin.Loader            ALC 隔离加载，只认 Core.Abstractions
@@ -50,8 +50,8 @@ L0  Core.Abstractions        契约根，零工程引用
 | `Plugin.Loader` | 插件发现、校验、隔离加载 |
 | `Engine.Router` | 路由表、读合并、`RouteEntry` 独占 I/O 门控 |
 | `Engine.Runtime` | 通讯内核库（形态 A 直接用） |
-| `EngineHost.App` | 现场进程：托管 Runtime + gRPC（形态 B） |
-| `EngineHost.Sdk` | 连 EngineHost.App 的客户端库；含两个 UI 共用的 `ValueCodec` 与 `JsonFileStore` |
+| `EngineHostingServiceApp` | 现场进程：托管 Runtime + gRPC（形态 B） |
+| `EngineHost.Sdk` | 连 EngineHostingServiceApp 的客户端库；含两个 UI 共用的 `ValueCodec` 与 `JsonFileStore` |
 | `Plugins.Protocol.*` | Modbus / Panasonic MEWTOCOL / Siemens S7 |
 | `Plugins.Transport.*` | Tcp / SerialPort（`TransportKind` 枚举另有 Wifi/Bluetooth，尚无插件） |
 | `UI.Wpf` / `UI.WebMaster` | 上位机界面，职责对称（见下） |
@@ -125,10 +125,10 @@ Blazor Server 操作员客户端。只持有 `route_id` 与 EngineHost.Sdk DTO�
 | 系统设置 | `/settings` | Web 监听端口；引擎已内嵌本进程 |
 
 进程内单例 `HostSession`：5 秒健康检查、全站一条状态流、按 `web-devices.json` 对账。
-**形态 A**：WebMaster 本进程持有 `EngineRuntime` 和 `plugins/`，不必再启动 `EngineHost.App`。
-WPF 远端 / 树莓派场景仍用独立的 `EngineHost.App`。
+**形态 A**：WebMaster 本进程持有 `EngineRuntime` 和 `plugins/`，不必再启动 `EngineHostingServiceApp`。
+WPF 远端 / 树莓派场景仍用独立的 `EngineHostingServiceApp`。
 Windows 下双击 exe 驻留在右下角托盘：关浏览器不会退出。托盘右键可打开界面、查看日志、退出。
-再双击一次 exe 会唤出已在跑的实例，而不是再起一份。`dotnet run` 时日志仍打到当前终端。
+再双击一次 exe 会唤出已在跑的实例，而不是再起一份。Visual Studio 按 Windows 应用启动，不再配控制台黑框。已有终端里 `dotnet run` 时日志仍打到该终端（那是你自己开的窗口）。
 
 ```bash
 dotnet run --project CommunicationKernel.UI.WebMaster
@@ -137,8 +137,8 @@ dotnet run --project CommunicationKernel.UI.WebMaster
 默认听 `http://0.0.0.0:64000`：本机浏览器打开 `http://localhost:64000`，
 同一 WiFi 的手机打开 `http://<电脑IP>:64000`（启动日志会打印这条地址）。
 端口可在系统设置页改，写入本 exe 旁 `config/web-listen.json`，
-重启 Web 后生效；不要改成 `5000`（留给独立宿主 EngineHost.App / WPF）。
-双击 exe 同样生效，不必加 `--urls`，也不必先起 EngineHost.App。
+重启 Web 后生效；不要改成 `5000`（留给独立宿主 EngineHostingServiceApp / WPF）。
+双击 exe 同样生效，不必加 `--urls`，也不必先起 EngineHostingServiceApp。
 
 ## WPF 上位机（UI.Wpf）
 
@@ -148,15 +148,15 @@ dotnet run --project CommunicationKernel.UI.WebMaster
 dotnet run --project CommunicationKernel.UI.Wpf
 ```
 
-同样默认连 `http://localhost:5000`，出厂值在本项目 `appsettings.json` 的 `EngineHost.App:Address`。
+同样默认连 `http://localhost:5000`，出厂值在本项目 `appsettings.json` 的 `EngineHostingServiceApp:Address`。
 系统设置里保存的地址写入本 exe 旁 `config/settings.json`，与 Web 互不影响，优先于 appsettings。
 
 ## 运行宿主（形态 B）
 
-必须先起 EngineHost.App，上位机才有东西可连：
+必须先起 EngineHostingServiceApp，上位机才有东西可连：
 
 ```bash
-dotnet run --project CommunicationKernel.EngineHost.App
+dotnet run --project CommunicationKernel.EngineHostingServiceApp
 ```
 
 默认绑 `http://localhost:5000`、明文 HTTP/2。浏览器打开该地址会失败，**这是正常的**

@@ -73,7 +73,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
 
         /// <summary>
         /// 路由唯一标识，对应 RouteDto.RouteId。
-        /// 在 EngineHost.App 内全局唯一，由 RegisterRoute 时指定或自动生成。
+        /// 在 EngineHostingServiceApp 内全局唯一，由 RegisterRoute 时指定或自动生成。
         /// </summary>
         public string Id
         {

@@ -5,7 +5,7 @@ option csharp_namespace = "CommunicationKernel.EngineHost.Grpc.V1";
 
 // -----------------------------------------------------------------------------
 // 文件: engine_host.proto
-// 层级: EngineHost.App / gRPC 契约
+// 层级: EngineHostingServiceApp / gRPC 契约
 // 作用: EngineHost 对外契约（协议无关模型）。
 // 说明:
 // 1) RegisterRoute 用于一次性注册路由并完成插件组装。

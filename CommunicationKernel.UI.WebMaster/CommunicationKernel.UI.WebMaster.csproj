@@ -1,10 +1,16 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <!-- ========================================================================
        文件: CommunicationKernel.UI.WebMaster.csproj
        层级: UI 层 — Blazor Server Web 客户端
        作用: 本进程内嵌 EngineRuntime，通过 Blazor Server 提供浏览器监控界面。
-             形态 A：不必再单独启动 EngineHost.App。WPF 远端场景仍用 EngineHost.App。
+             形态 A：不必再单独启动 EngineHostingServiceApp。WPF 远端场景仍用 EngineHostingServiceApp。
+
+       不用 Microsoft.NET.Sdk.Web：
+         Web SDK 会把项目登记成 ASP.NET 控制台宿主。Visual Studio F5 /
+         `dotnet run` 必定再开一个黑窗口，WinExe + FreeConsole 都拆不掉
+         （窗口属于 VS / dotnet.exe，不是本进程）。
+         改用 Razor SDK + ASP.NET 共享框架后，VS 按 Windows 应用启动，不再配控制台。
        ======================================================================== -->
 
   <PropertyGroup>
@@ -14,6 +20,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>wwwroot\app.ico</ApplicationIcon>
+    <UseAppHost>true</UseAppHost>
 
     <!--
       WinExe：直接运行 exe 时不分配控制台窗口。
@@ -25,16 +32,34 @@
         没有那段兜底就不该开 WinExe——静默失败比黑框糟糕得多。
 
       托盘依赖 WinForms，因此本项目是 Windows 专用（net8.0-windows）。
-      现场 Linux / 树莓派跑的是 EngineHost.App，Web 上位机留在办公室电脑上。
+      现场 Linux / 树莓派跑的是 EngineHostingServiceApp，Web 上位机留在办公室电脑上。
     -->
     <OutputType>WinExe</OutputType>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 内嵌 Kestrel / Blazor，但不走 Web SDK（避免 VS 配控制台）。 -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- 内嵌引擎：UI 只经 IHostClient 访问，不引用具体协议类型。 -->
     <ProjectReference Include="..\CommunicationKernel.Engine.Runtime\CommunicationKernel.Engine.Runtime.csproj" />
     <!-- DTO / JsonFileStore / ValueCodec。远端 gRPC HostClient 仍给 WPF 用。 -->
     <ProjectReference Include="..\CommunicationKernel.EngineHost.Sdk\CommunicationKernel.EngineHost.Sdk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="appsettings.json" />
+    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--
@@ -51,8 +76,6 @@
     必须成立，因此补上这条。publish 路径不受影响，那边本来就是对的。
   -->
   <ItemGroup>
-    <!-- 用 Update 而非 Include：Web SDK 已隐式把 wwwroot 纳入 Content，
-         Include 会产生重复项并直接报 NETSDK1022。这里只是给已有项加一条元数据。 -->
     <Content Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

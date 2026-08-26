@@ -66,7 +66,7 @@
                 <!-- 当前连接状态文字（居中） -->
                 <TextBlock x:Name="txtCurrentDevice"
                            Grid.Column="1"
-                           Text="未连接 EngineHost.App"
+                           Text="未连接 EngineHostingServiceApp"
                            FontSize="13"
                            Foreground="{StaticResource SF.Brush.Text.Secondary}"
                            HorizontalAlignment="Center"

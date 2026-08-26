@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/HostSessionService.cs
 // 层级: UI 层 — WPF 服务
-// 作用: 维护与 EngineHost.App 的会话状态（在线与否、版本、路由数），后台周期性健康探测。
+// 作用: 维护与 EngineHostingServiceApp 的会话状态（在线与否、版本、路由数），后台周期性健康探测。
 // 调用链:
 //   App 启动 → HostSessionService.Start() → HostClient.HealthAsync() → gRPC
 //   状态变化 → Changed 事件 → MainWindow 更新顶栏指示灯
@@ -30,7 +30,7 @@ using CommunicationKernel.UI.Wpf.Core.Logging;
 namespace CommunicationKernel.UI.Wpf.Services
 {
     /// <summary>
-    /// EngineHost.App 会话状态，单例。周期性健康探测并在状态变化时发出 <see cref="Changed"/>。
+    /// EngineHostingServiceApp 会话状态，单例。周期性健康探测并在状态变化时发出 <see cref="Changed"/>。
     /// </summary>
     public sealed class HostSessionService : IDisposable
     {
@@ -67,7 +67,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         // 构造函数
         // ====================================================================
 
-        /// <param name="client">EngineHost.App 客户端，必填。</param>
+        /// <param name="client">EngineHostingServiceApp 客户端，必填。</param>
         /// <param name="log">可选日志器，为 null 时静默。</param>
         public HostSessionService(IHostClient client, IAppLogger log = null)
         {
@@ -80,7 +80,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         // 会话状态
         // ====================================================================
 
-        /// <summary>EngineHost.App 是否在线。初始为 false，首次探测成功后置 true。</summary>
+        /// <summary>EngineHostingServiceApp 是否在线。初始为 false，首次探测成功后置 true。</summary>
         public bool Online { get; private set; }
 
         /// <summary>宿主版本号；离线时为空字符串。</summary>

@@ -51,7 +51,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         private readonly IRouteReconciler _reconciler;
 
         /// <summary>
-        /// EngineHost.App 在路由不存在时返回的错误码字面量。
+        /// EngineHostingServiceApp 在路由不存在时返回的错误码字面量。
         /// </summary>
         /// <remarks>
         /// 服务端以 <c>KernelErrorCode.RouteNotFound.ToString()</c> 填充 error_code，
@@ -237,7 +237,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         /// <summary>
         /// 单变量轮询循环。
-        /// 每隔 <paramref name="scanRateMs"/> 毫秒向 EngineHost.App 发起一次 Read，
+        /// 每隔 <paramref name="scanRateMs"/> 毫秒向 EngineHostingServiceApp 发起一次 Read，
         /// 将结果写入 <see cref="VariableItem.LastValue"/> / <see cref="VariableItem.LastError"/>。
         /// </summary>
         /// <param name="variableId">目标变量 ID。</param>

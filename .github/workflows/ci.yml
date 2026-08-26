@@ -5,7 +5,7 @@ name: CI
 # 建立动机：本项目经历过多轮大规模重构（Modbus 三份实现合并、传输层分帧重写、
 # 路由门控统一），全程仅靠本地人工验证。期间发生过两类「不报错的损坏」：
 #   · MEWTOCOL 与 Modbus 同类缺陷漏改——按插件排查而非按缺陷模式排查
-#   · EngineHost.App.csproj 插件块被批量编辑整块复制——MSBuild 对重复 Target
+#   · EngineHostingServiceApp.csproj 插件块被批量编辑整块复制——MSBuild 对重复 Target
 #     是「后者覆盖」不报错，构建仍然绿
 # 两者都不会让构建失败，正是自动化基线才能稳定拦住的类型。
 
@@ -91,13 +91,13 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: 构建 EngineHost.App
-        run: dotnet build CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost.App.csproj --configuration Release
+      - name: 构建 EngineHostingServiceApp
+        run: dotnet build CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj --configuration Release
 
       - name: 校验 plugins 目录内容
         shell: pwsh
         run: |
-          $dir = "CommunicationKernel.EngineHost.App/bin/Release/net8.0/plugins"
+          $dir = "CommunicationKernel.EngineHostingServiceApp/bin/Release/net8.0/plugins"
           if (-not (Test-Path $dir)) {
             Write-Error "plugins 目录不存在——插件部署 Target 未执行"
             exit 1
@@ -162,7 +162,7 @@ jobs:
         run: |
           for p in \
             CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj \
-            CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost.App.csproj \
+            CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj \
             CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj
           do
             echo "::group::$p"
@@ -217,7 +217,7 @@ jobs:
 
       - name: 发布 linux-arm64
         run: >
-          dotnet publish CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost.App.csproj
+          dotnet publish CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj
           --configuration Release
           --runtime linux-arm64
           --self-contained true
@@ -275,7 +275,7 @@ jobs:
 
           # 4) 自包含发布必须产出可直接执行的 apphost——
           #    树莓派上通常不预装 .NET 运行时。
-          if [ ! -f "$root/CommunicationKernel.EngineHost.App" ]; then
+          if [ ! -f "$root/CommunicationKernel.EngineHostingServiceApp" ]; then
             echo "::error::缺少自包含 apphost，目标机将需要预装 .NET 运行时才能启动"
             fail=1
           fi
@@ -314,7 +314,7 @@ jobs:
       # 插件部署与 RID 资产的正确性由 publish-linux-arm64 作业负责。
       - name: 发布 linux-x64
         run: >
-          dotnet publish CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost.App.csproj
+          dotnet publish CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj
           --configuration Release
           --runtime linux-x64
           --self-contained true
@@ -325,7 +325,7 @@ jobs:
           cd ./publish/smoke
           # nohup + setsid：每个 step 是独立 shell，进程需脱离该 shell
           # 才能活到后续 step
-          setsid nohup ./CommunicationKernel.EngineHost.App > $GITHUB_WORKSPACE/host.log 2>&1 &
+          setsid nohup ./CommunicationKernel.EngineHostingServiceApp > $GITHUB_WORKSPACE/host.log 2>&1 &
           echo $! > $GITHUB_WORKSPACE/host.pid
 
           # 轮询而非固定 sleep：CI 机器负载波动大，固定等待要么不够要么浪费
