@@ -9,12 +9,31 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#111111" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="renderer" content="webkit" />
     <title>通讯调试工具 — CommunicationKernel</title>
+    @* 样式之前先打 is-phone：华为/荣耀常忽略 viewport，按 980px 桌面排版，光靠 CSS 媒体查询不够。 *@
+    <script>
+        (function () {
+            var ua = navigator.userAgent || "";
+            var minSide = Math.min(screen.width || 9999, screen.height || 9999);
+            var touch = (navigator.maxTouchPoints || 0) > 0;
+            var mobile = /Android|iPhone|iPod|Mobile|Huawei|Harmony|HMSCore|MicroMessenger/i.test(ua)
+                || (touch && minSide <= 920);
+            if (!mobile) return;
+            document.documentElement.classList.add("is-phone");
+            var meta = document.querySelector('meta[name="viewport"]');
+            if (!meta) return;
+            var w = minSide > 0 && minSide < 900 ? minSide : "device-width";
+            meta.setAttribute("content",
+                "width=" + w + ", initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover");
+        })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="CommunicationKernel.UI.WebMaster.styles.css" />

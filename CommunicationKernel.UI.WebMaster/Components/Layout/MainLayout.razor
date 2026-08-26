@@ -22,6 +22,7 @@
         <span class="app-name">CommunicationKernel</span>
         <span class="title-status">@PageTitle</span>
         <div class="titlebar-right">
+            <span class="host-live @(Session.Online ? "on" : null)">@(Session.Online ? "实时" : "离线")</span>
             <span class="status-dot @(Session.Online ? "online" : "offline")"></span>
             <span class="status-text">
                 @(Session.Online ? "Host 已连接" : "Host 离线")
@@ -54,6 +55,14 @@
             @Body
         </main>
     </div>
+
+    <nav class="tabbar" aria-label="主导航">
+        <NavLink class="tab-item" href="/" Match="NavLinkMatch.All"><span class="tab-ico">▣</span>MES</NavLink>
+        <NavLink class="tab-item" href="/variables"><span class="tab-ico">▤</span>变量</NavLink>
+        <NavLink class="tab-item" href="/devices"><span class="tab-ico">◉</span>设备</NavLink>
+        <NavLink class="tab-item" href="/log"><span class="tab-ico">≡</span>日志</NavLink>
+        <NavLink class="tab-item" href="/settings"><span class="tab-ico">⚙</span>设置</NavLink>
+    </nav>
 
     <footer class="statusbar">
         <span>@(Session.Online ? "就绪 · " + Session.RouteCount + " 条路由" : (Session.LastError.Length > 0 ? Session.LastError : "未连接"))</span>
