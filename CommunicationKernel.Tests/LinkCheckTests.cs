@@ -94,7 +94,7 @@ public class LinkCheckTests {
         Assert.IsTrue((await engine.RegisterRouteAsync(NewCommand(), CancellationToken.None)).Success);
         await Task.Delay(400);
 
-        Assert.IsTrue(transport.Client.ExchangeCalls > 0,
+        Assert.IsGreaterThan(0, transport.Client.ExchangeCalls,
             "闲置路由没有发协议心跳，从站空闲超时后会把 TCP 拆掉");
         Assert.AreEqual(0, offlineEvents, "心跳应答了，不该被标成离线");
     }

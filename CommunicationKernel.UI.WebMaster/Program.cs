@@ -252,20 +252,6 @@ static void LogListenAddresses(WebApplication app, int listenPort, int grpcPort)
         logger.LogInformation("同网段设备访问：http://{Address}:{Port}", ip, port);
 }
 
-/// <summary>从绑定地址里取出端口；取不到返回 null。</summary>
-static int? TryGetListenPort(IEnumerable<string> addresses)
-{
-    foreach (string address in addresses)
-    {
-        if (Uri.TryCreate(address.Replace("://0.0.0.0", "://127.0.0.1", StringComparison.OrdinalIgnoreCase)
-                                 .Replace("://[::]", "://127.0.0.1", StringComparison.OrdinalIgnoreCase),
-                          UriKind.Absolute, out Uri? uri)
-            && uri.Port > 0)
-            return uri.Port;
-    }
-    return null;
-}
-
 /// <summary>独立 Hosting.App.exe 已经占着引擎时的提示。</summary>
 static void ReportHostingAlreadyRunning()
 {
