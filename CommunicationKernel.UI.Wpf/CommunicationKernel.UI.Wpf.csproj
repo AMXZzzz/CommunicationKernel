@@ -33,8 +33,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 出厂默认配置，跟 exe 一起走。操作员保存的地址仍在 %APPDATA%。 -->
-    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- 出厂默认配置，跟 exe 一起走。操作员保存的地址在 exe 旁 config/。
+         用 Update 而不是 Include：SDK 已默认把 appsettings.json 收成 Content，
+         再 Include 一次会 NETSDK1022（重复 Content 项）。 -->
+    <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
