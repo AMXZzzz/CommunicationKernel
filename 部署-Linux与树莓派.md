@@ -14,7 +14,7 @@
   - [怎么选](#怎么选)
 - [形态 A：把内核当 SDK 嵌进上位机](#形态-a把内核当-sdk-嵌进上位机)
   - [发布](#发布)
-- [形态 B：独立宿主 Hosting.App](#形态-b独立宿主-enginehostingserviceapp)
+- [形态 B：独立宿主 Hosting.App](#形态-b独立宿主-hostingapp)
   - [产物结构](#产物结构)
 - [实战走查：树莓派当现场网关，远端电脑当上位机](#实战走查树莓派当现场网关远端电脑当上位机)
   - [第 1 步：发布、传输、安装到树莓派](#第-1-步发布传输安装到树莓派)
@@ -44,9 +44,9 @@
 | | 形态 A：SDK 嵌入 | 形态 B：独立宿主 |
 |---|---|---|
 | 上位机在哪 | 与 PLC 通讯的同一台机器 | 另一台机器 |
-| 进程数 | 1（上位机自己直连 PLC） | 2（上位机 + Hosting.App） |
-| 通讯方式 | 进程内直接调用 | gRPC over HTTP/2 |
-| 插件目录 | 不需要 | 需要 |
+| 进程数 | 1（WebMaster 或自有程序直连） | 2（上位机 + Hosting.App） |
+| 通讯方式 | 进程内 Runtime，或 WebMaster 回环 gRPC | gRPC over HTTP/2 |
+| 插件目录 | 嵌入 SDK 时不需要；WebMaster 需要 | 需要 |
 | 协议解析发生在 | 上位机进程内 | **Hosting.App 所在机器** |
 | 典型场景 | 树莓派上跑控制程序直连 PLC | 现场网关 + 远端上位机 |
 
@@ -54,8 +54,8 @@
 
 用一句话判断：**跑界面的那台机器，是不是就是接 PLC 那台？**
 
-- **是** → 形态 A，往下读 [形态 A](#形态-a把内核当-sdk-嵌进上位机)。
-  树莓派上跑一个控制程序直连 PLC，不需要 Hosting.App，也不需要 gRPC。
+- **是** → 形态 A。Windows 本机监控用 `UI.WebMaster`（已内嵌宿主）。
+  树莓派上自有控制程序直连 PLC 则引用 `Core.EngineRuntime`，不需要 gRPC。
 - **不是** → 形态 B，直接看 [实战走查](#实战走查树莓派当现场网关远端电脑当上位机)。
   最典型的就是「树莓派在车间接 PLC，人在办公室用电脑看」。
 
@@ -66,9 +66,10 @@
 
 ## 形态 A：把内核当 SDK 嵌进上位机
 
-树莓派直连 PLC 时不需要 Hosting.App，也不需要 gRPC——多一个进程和一趟本机
-网络往返，只会增加故障面。直接引用 `CommunicationKernel.Core.EngineRuntime`，
-用 `StaticRouteAssemblyService` 在编译期交出工厂即可。
+有界面的本机监控走 `UI.WebMaster`（同进程 Hosting.App，不必再开 exe）。
+
+下面是**无界面程序**直连 PLC 的写法：不经过 gRPC，编译期交出工厂。
+树莓派控制程序属于这一类。
 
 ```xml
 <ItemGroup>
