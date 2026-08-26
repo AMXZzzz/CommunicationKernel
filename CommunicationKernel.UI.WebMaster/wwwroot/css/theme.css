@@ -147,7 +147,6 @@ button:disabled { cursor: not-allowed; }
     border-radius: 1px;
 }
 .nav-backdrop { display: none; }
-.tabbar { display: none; }
 
 /* 页面外壳：不再自己留内边距。
    工具栏要做成通栏条带（上下有分隔线、左右贴边），
@@ -687,6 +686,13 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 
 .host-live { display: none; }
 
+.tabbar {
+    display: none;
+    background: #1a1a1a;
+    border-top: 1px solid #333;
+    flex-shrink: 0;
+    z-index: 40;
+}
 .tab-item {
     flex: 1;
     display: flex;
@@ -694,65 +700,159 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
     align-items: center;
     justify-content: center;
     gap: 3px;
-    color: #666;
+    color: #888;
     font-size: 10px;
     text-decoration: none;
     min-height: 56px;
+    -webkit-tap-highlight-color: transparent;
 }
-.tab-item.active { color: var(--accent); }
+.tab-item:link, .tab-item:visited { color: #888; text-decoration: none; }
+.tab-item.active, .tab-item.active:link, .tab-item.active:visited { color: var(--accent); }
 .tab-ico { font-size: 18px; line-height: 1; }
 
 /* ============================================================================
-   桌面缩窄：侧栏收成抽屉。真机走 html.is-phone（底栏），不走这一段的汉堡菜单。
+   ≤720px 就是手机壳：底栏五键，不要汉堡。不依赖 is-phone 类。
+   html.is-phone 再覆盖一遍，给忽略 viewport、按 980px 排的华为浏览器。
    ============================================================================ */
 
 @media (max-width: 720px) {
-    html:not(.is-phone) { --toolbar-h: 52px; }
-    html:not(.is-phone) .nav-toggle { display: flex; width: 44px; height: 44px; }
-    html:not(.is-phone) .app-name, html:not(.is-phone) .status-addr { display: none; }
-    html:not(.is-phone) .sidebar {
-        position: absolute;
-        z-index: 30;
-        top: 0; bottom: 0; left: 0;
-        width: min(260px, 84vw);
-        transform: translateX(-105%);
-        transition: transform 0.2s ease;
-        box-shadow: var(--shadow);
+    html { --toolbar-h: 48px; }
+    body { -webkit-tap-highlight-color: transparent; overflow: hidden; }
+
+    .app-shell {
+        height: 100dvh;
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
     }
-    html:not(.is-phone) .sidebar.open { transform: none; }
-    html:not(.is-phone) .nav-backdrop {
+    .titlebar {
+        height: calc(48px + env(safe-area-inset-top));
+        padding: env(safe-area-inset-top) 12px 0;
+        gap: 8px;
+    }
+    .title-status {
+        display: inline;
+        font-size: 15px;
+        font-weight: 650;
+        color: var(--text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .nav-toggle, .app-mark, .app-name, .status-dot, .status-text, .status-addr,
+    .sidebar, .nav-backdrop, .statusbar, .page-title {
+        display: none !important;
+    }
+    .host-live {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 4px;
+        background: #2a2a2a;
+        color: var(--text-muted);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+    }
+    .host-live.on {
+        background: var(--success-bg);
+        color: var(--success-ink);
+    }
+    .host-live.on::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--success-ink);
+    }
+    .tabbar {
+        display: flex !important;
+        min-height: 56px;
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .toolbar { overflow-x: auto; scrollbar-width: none; padding: 0 12px; gap: 6px; }
+    .toolbar::-webkit-scrollbar { display: none; }
+    .toolbar .btn, .toolbar .btn-filter, .toolbar .file-btn { min-height: 36px; flex-shrink: 0; }
+    .page-body { padding: 12px; }
+    .summary-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .device-grid { grid-template-columns: 1fr; }
+    .health-strip { flex-wrap: wrap; gap: 8px; }
+    .health-strip .btn { margin-left: 0; }
+    .alarm-row { grid-template-columns: 1fr; gap: 2px; }
+
+    input, select, textarea { font-size: 16px; padding: 10px 12px; }
+    .btn { min-height: 40px; padding: 8px 14px; }
+    .card-ft { gap: 8px; }
+    .card-ft > .btn, .card-ft > .btn-sm { height: 40px; flex: 1; }
+    .form-actions { flex-wrap: wrap; }
+    .form-actions .btn { flex: 1; min-width: 120px; }
+    .settings-card { max-width: none; padding: 16px; }
+
+    .add-form-overlay { align-items: flex-end; justify-content: center; padding: 0; background: rgba(0,0,0,.55); }
+    .add-form, .add-form.wide {
+        width: 100%;
+        max-height: 88dvh;
+        border-radius: 16px 16px 0 0;
+        padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+    }
+    .add-form::before {
+        content: "";
         display: block;
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.45);
-        z-index: 20;
+        width: 36px;
+        height: 4px;
+        background: #444;
+        border-radius: 2px;
+        margin: 8px auto 12px;
     }
+    .add-form-overlay.center { align-items: flex-end; padding: 0; }
+
+    .log-row { flex-wrap: wrap; gap: 4px 8px; }
+    .log-time, .log-cat { width: auto; }
+
+    .data-table thead { display: none; }
+    .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
+    .data-table tbody tr {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 10px;
+        padding: 12px;
+    }
+    .data-table tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px solid #2a2a2a;
+    }
+    .data-table tbody td:last-child { border-bottom: 0; }
+    .data-table tbody td[data-label]::before {
+        content: attr(data-label);
+        color: var(--text-dim);
+        font-size: 11px;
+        flex-shrink: 0;
+    }
+    .data-table tbody td[data-label=""] { justify-content: flex-end; }
+    .write-cell { width: auto; flex-wrap: wrap; }
+    .write-input { width: 100%; flex: 1; min-width: 80px; }
+
+    .var-layout { flex-direction: column; }
+    .device-panel {
+        width: 100%;
+        max-height: none;
+        overflow-x: auto;
+        overflow-y: hidden;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        padding: 10px 12px;
+    }
+    .dev-item { flex-shrink: 0; min-width: 108px; border-radius: 8px; border: 1px solid #333; }
 }
 
-/* ============================================================================
-   手机：UA / screen 打的 html.is-phone。不靠 max-width——华为会按 980px 桌面排。
-   壳子对齐手机稿：顶栏标题 + 实时、底栏五键、表单底部抽屉、列表变卡片。
-   ============================================================================ */
-
-html.is-phone {
-    --toolbar-h: 48px;
-    -webkit-text-size-adjust: 100%;
-}
-html.is-phone, html.is-phone body {
-    overflow: hidden;
-    -webkit-tap-highlight-color: transparent;
-}
-html.is-phone .app-shell {
-    height: 100dvh;
-    height: 100%;
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-}
-html.is-phone .titlebar {
-    height: calc(48px + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 12px 0;
-    gap: 8px;
-}
+html.is-phone .tabbar { display: flex !important; min-height: 56px; padding-bottom: env(safe-area-inset-bottom); }
 html.is-phone .nav-toggle,
 html.is-phone .app-mark,
 html.is-phone .app-name,
@@ -762,20 +862,9 @@ html.is-phone .status-addr,
 html.is-phone .sidebar,
 html.is-phone .nav-backdrop,
 html.is-phone .statusbar,
-html.is-phone .page-title {
-    display: none !important;
-}
-html.is-phone .title-status {
-    display: inline;
-    font-size: 15px;
-    font-weight: 650;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+html.is-phone .page-title { display: none !important; }
 html.is-phone .host-live {
-    display: inline-flex;
+    display: inline-flex !important;
     align-items: center;
     gap: 4px;
     background: #2a2a2a;
@@ -784,157 +873,24 @@ html.is-phone .host-live {
     border-radius: 10px;
     font-size: 10px;
 }
-html.is-phone .host-live.on {
-    background: var(--success-bg);
-    color: var(--success-ink);
+html.is-phone .host-live.on { background: var(--success-bg); color: var(--success-ink); }
+html.is-phone .titlebar {
+    height: calc(48px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0;
 }
-html.is-phone .host-live.on::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--success-ink);
-}
-
-html.is-phone .tabbar {
-    display: flex;
-    height: auto;
-    min-height: 56px;
-    background: #1a1a1a;
-    border-top: 1px solid #333;
-    flex-shrink: 0;
-    padding-bottom: env(safe-area-inset-bottom);
-    z-index: 40;
-}
-
-html.is-phone .toolbar {
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding: 0 12px;
-    gap: 6px;
-}
-html.is-phone .toolbar::-webkit-scrollbar { display: none; }
-html.is-phone .toolbar .btn,
-html.is-phone .toolbar .btn-filter,
-html.is-phone .toolbar .file-btn {
-    min-height: 36px;
-    flex-shrink: 0;
-}
-html.is-phone .toolbar-right { margin-left: 8px; }
-html.is-phone .search-input { width: 110px; min-width: 90px; }
-
-html.is-phone .page-body { padding: 12px; }
-html.is-phone .banner-strip { margin: 12px 12px 0; }
-html.is-phone .summary-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
-html.is-phone .summary-value { font-size: 20px; }
+html.is-phone .title-status { font-size: 15px; font-weight: 650; color: var(--text); }
 html.is-phone .device-grid { grid-template-columns: 1fr; }
-html.is-phone .health-strip { flex-wrap: wrap; gap: 8px; }
-html.is-phone .health-strip .btn { margin-left: 0; }
-html.is-phone .alarm-row { grid-template-columns: 1fr; gap: 2px; }
-
-html.is-phone input,
-html.is-phone select,
-html.is-phone textarea { font-size: 16px; padding: 10px 12px; }
-html.is-phone .btn { min-height: 40px; padding: 8px 14px; touch-action: manipulation; }
-html.is-phone .card-ft { gap: 8px; }
-html.is-phone .card-ft > .btn,
-html.is-phone .card-ft > .btn-sm { height: 40px; flex: 1; }
-html.is-phone .form-actions { flex-wrap: wrap; }
-html.is-phone .form-actions .btn { flex: 1; min-width: 120px; }
-html.is-phone .settings-card { max-width: none; padding: 16px; margin: 0 0 10px; }
-
-html.is-phone .add-form-overlay {
-    align-items: flex-end;
-    justify-content: center;
-    padding: 0;
-    background: rgba(0, 0, 0, 0.55);
-}
-html.is-phone .add-form,
-html.is-phone .add-form.wide {
+html.is-phone .summary-bar { grid-template-columns: 1fr 1fr; }
+html.is-phone .page-body { padding: 12px; }
+html.is-phone input, html.is-phone select, html.is-phone textarea { font-size: 16px; }
+html.is-phone .btn { min-height: 40px; }
+html.is-phone .add-form-overlay { align-items: flex-end; padding: 0; }
+html.is-phone .add-form, html.is-phone .add-form.wide {
     width: 100%;
     max-height: 88dvh;
     border-radius: 16px 16px 0 0;
-    padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
-    border: 1px solid #333;
-}
-html.is-phone .add-form::before {
-    content: "";
-    display: block;
-    width: 36px;
-    height: 4px;
-    background: #444;
-    border-radius: 2px;
-    margin: 8px auto 12px;
-}
-html.is-phone .add-form-overlay.center {
-    align-items: flex-end;
-    padding: 0;
-}
-
-html.is-phone .log-row { flex-wrap: wrap; gap: 4px 8px; }
-html.is-phone .log-time { width: auto; }
-html.is-phone .log-cat { width: auto; max-width: 40%; }
-
-html.is-phone .data-table thead { display: none; }
-html.is-phone .data-table,
-html.is-phone .data-table tbody,
-html.is-phone .data-table tr,
-html.is-phone .data-table td {
-    display: block;
-    width: 100%;
-}
-html.is-phone .data-table tbody tr {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 10px;
-    padding: 12px;
-}
-html.is-phone .data-table tbody td {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 0;
-    border-bottom: 1px solid #2a2a2a;
-}
-html.is-phone .data-table tbody td:last-child { border-bottom: 0; }
-html.is-phone .data-table tbody td[data-label]::before {
-    content: attr(data-label);
-    color: var(--text-dim);
-    font-size: 11px;
-    flex-shrink: 0;
-}
-html.is-phone .data-table tbody td[data-label=""] { justify-content: flex-end; }
-html.is-phone .write-cell { width: auto; flex-wrap: wrap; }
-html.is-phone .write-input { width: 100%; flex: 1; min-width: 80px; }
-
-html.is-phone .var-layout { flex-direction: column; }
-html.is-phone .device-panel {
-    width: 100%;
-    max-height: none;
-    overflow-x: auto;
-    overflow-y: hidden;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-    padding: 10px 12px;
-}
-html.is-phone .dev-item {
-    flex-shrink: 0;
-    min-width: 108px;
-    border-radius: 8px;
-    border: 1px solid #333;
-}
-html.is-phone .empty-state { padding: 48px 16px; }
-html.is-phone button, html.is-phone a, html.is-phone .nav-item, html.is-phone .dev-item, html.is-phone .tab-item {
-    touch-action: manipulation;
 }
 
 @media (max-width: 420px) {
-    html.is-phone .summary-bar { grid-template-columns: 1fr; }
+    .summary-bar { grid-template-columns: 1fr; }
 }
-
-
