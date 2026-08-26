@@ -11,24 +11,21 @@
     <!-- TreatWarningsAsErrors 由 Directory.Build.props 继承 -->
     <AssemblyName>CommunicationKernel.UI.WebMaster</AssemblyName>
     <RootNamespace>CommunicationKernel.UI.WebMaster</RootNamespace>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>wwwroot\app.ico</ApplicationIcon>
 
     <!--
       WinExe：直接运行 exe 时不分配控制台窗口。
-
-      这是给操作员用的：双击图标只弹浏览器，不该再冒出一个黑框
-      ——那个框看着像出了错，而且被误关就等于把服务停了。
+      进程改在右下角托盘驻留——关浏览器不等于退出，退出走托盘菜单。
 
       代价与补偿：
         没有控制台，启动失败会变成"什么都不发生"。因此 Program.cs 里
         用 try/catch 兜住整个启动流程，失败时写日志文件并弹一个消息框。
         没有那段兜底就不该开 WinExe——静默失败比黑框糟糕得多。
 
-      跨平台：OutputType 只影响 Windows PE 头的子系统标志，
-      Linux 下产物是 ELF，本设置是空操作，不影响树莓派部署。
-
-      注意：从已有终端里 `dotnet run` 时，日志仍会打到那个终端——
-      进程继承了父终端的控制台，与本设置无关。
-      要无控制台启动，用 run-web.cmd 或直接双击发布出来的 exe。
+      托盘依赖 WinForms，因此本项目是 Windows 专用（net8.0-windows）。
+      现场 Linux / 树莓派跑的是 EngineHost.App，Web 上位机留在办公室电脑上。
     -->
     <OutputType>WinExe</OutputType>
   </PropertyGroup>

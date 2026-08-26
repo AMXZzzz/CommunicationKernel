@@ -9,15 +9,18 @@
 //   因此整个启动流程被 try/catch 兜住，失败时写日志文件 + 弹消息框。
 //   改动本文件时不要把那段兜底删掉，否则端口被占之类的问题会完全静默。
 //
+// 托盘驻留:
+//   进程在右下角托盘。关闭浏览器不会退出；退出、打开界面、看日志都走托盘菜单。
+//   再双击一次 exe 会通知已在跑的实例打开界面，而不是再起一份去抢端口。
+//
 // 浏览器由谁打开:
-//   由本文件的 OpenBrowser 负责，受配置项 Web:LaunchBrowser 控制（默认开）。
+//   由 LanAccess.OpenBrowser 负责，受配置项 Web:LaunchBrowser 控制（默认开）。
 //   launchSettings.json 里的 launchBrowser 已相应改为 false——
 //   两边都开会在 `dotnet run` 时弹出两个标签页。
 //   launchSettings.json 是严格 JSON，**不能写注释**（写了会让整个 profile
 //   静默失效，dotnet run 直接忽略其中的所有设置），所以这条说明只能放在这里。
 // -----------------------------------------------------------------------------
 
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using CommunicationKernel.UI.WebMaster.Components;
 using CommunicationKernel.UI.WebMaster.Services;
@@ -25,13 +28,40 @@ using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 
+Mutex? instanceLock = null;
+EventWaitHandle? showEvent = null;
+
 try
 {
+
+// ============================================================================
+// 单实例：已经在托盘里跑时，再双击只是把界面唤出来
+// ============================================================================
+try
+{
+    instanceLock = new Mutex(initiallyOwned: true, TrayHost.MutexName, out bool createdNew);
+    if (!createdNew)
+    {
+        NotifyRunningInstance();
+        return;
+    }
+}
+catch (AbandonedMutexException)
+{
+    // 上一份崩溃后互斥量被遗弃，本进程已经接手，继续启动
+}
+catch
+{
+    // 没命名互斥量权限：不因此放弃启动
+}
+
+showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, TrayHost.ShowEventName);
+EventWaitHandle showSignal = showEvent;
 
 // EngineHost.App 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
 // 而且 Visual Studio / 上次跑宿主时可能把 ASPNETCORE_URLS 留在环境里。
 string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
-if (!string.IsNullOrWhiteSpace(inheritedUrls) && ContainsPort(inheritedUrls, WebSettingsStore.HostPort))
+if (!string.IsNullOrWhiteSpace(inheritedUrls) && LanAccess.ContainsPort(inheritedUrls, WebSettingsStore.HostPort))
     Environment.SetEnvironmentVariable("ASPNETCORE_URLS", null);
 
 // 读取 appsettings / 环境变量，准备 DI 与配置
@@ -81,6 +111,10 @@ builder.Services.AddSingleton<IWebVariableService, WebVariableService>();
 // 变量轮询：Host 离线时跳过
 builder.Services.AddHostedService<VariablePoller>();
 
+// 托盘：关浏览器不等于退出
+builder.Services.AddSingleton(showSignal);
+builder.Services.AddHostedService<TrayHost>();
+
 // ============================================================================
 // 构建应用
 // ============================================================================
@@ -112,10 +146,10 @@ app.Lifetime.ApplicationStarted.Register(() =>
 {
     LogListenAddresses(app);
     if (builder.Configuration.GetValue("Web:LaunchBrowser", defaultValue: true))
-        OpenBrowser(app);
+        LanAccess.OpenBrowser(app.Services.GetService<IServer>());
 });
 
-// 阻塞监听，直到进程收到停止信号
+// 阻塞监听，直到进程收到停止信号（托盘「退出」或系统关机）
 app.Run();
 
 }
@@ -128,6 +162,11 @@ catch (Exception ex)
 
     // 非 0 退出码便于脚本与看门狗识别启动失败
     Environment.ExitCode = 1;
+}
+finally
+{
+    showEvent?.Dispose();
+    instanceLock?.Dispose();
 }
 
 // ============================================================================
@@ -177,51 +216,31 @@ static int? TryGetListenPort(IEnumerable<string> addresses)
     return null;
 }
 
-/// <summary>
-/// 用系统默认浏览器打开本应用的地址。
-/// </summary>
-/// <remarks>
-/// <para>
-/// 优先取 http 地址：Blazor Server 的开发证书在很多机器上没被信任，
-/// 默认开 https 会先撞上一个"连接不专用"警告页，操作员多半会直接关掉。
-/// </para>
-/// <para>
-/// 全程吞异常。打不开浏览器只是少了个便利——服务本身已经起来了，
-/// 用户手动输地址一样能用；为此让进程崩掉毫无道理。
-/// </para>
-/// </remarks>
-static void OpenBrowser(WebApplication app)
+/// <summary>已有实例在跑：唤出它的界面，本进程直接退出。</summary>
+static void NotifyRunningInstance()
 {
     try
     {
-        // 取实际绑定的地址集合，避免与配置里的端口不一致
-        ICollection<string>? addresses = app.Services
-            .GetService<IServer>()?
-            .Features.Get<IServerAddressesFeature>()?
-            .Addresses;
-
-        if (addresses is null || addresses.Count == 0)
-            return;
-
-        // http 优先，没有再回落到第一个（通常是 https）
-        string url = addresses.FirstOrDefault(
-            a => a.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
-            ?? addresses.First();
-
-        // 绑定在 0.0.0.0 / [::] 上时那不是可访问地址，换成回环
-        url = url.Replace("://0.0.0.0", "://localhost", StringComparison.OrdinalIgnoreCase)
-                 .Replace("://[::]", "://localhost", StringComparison.OrdinalIgnoreCase);
-
-        // 5000 是 EngineHost.App。万一仍绑到了那里，绝不把浏览器带到 gRPC 口上
-        if (ContainsPort(url, WebSettingsStore.HostPort))
-            url = "http://localhost:" + LanAccess.DefaultPort;
-
-        // UseShellExecute 是关键：不设它 .NET 会把 URL 当可执行文件去启动而失败
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        using EventWaitHandle show = EventWaitHandle.OpenExisting(TrayHost.ShowEventName);
+        show.Set();
+        return;
     }
     catch
     {
-        // 无桌面会话（服务模式、树莓派无头运行）时必然失败，属正常情况
+        // 事件还没建好或没有权限：退回到弹框
+    }
+
+    try
+    {
+        _ = MessageBoxW(
+            IntPtr.Zero,
+            "CommunicationKernel Web 上位机已经在运行。\n请看右下角托盘图标，右键可打开界面或退出。",
+            "CommunicationKernel Web",
+            0x00000040 | 0x00040000);
+    }
+    catch
+    {
+        // 无桌面会话
     }
 }
 
@@ -276,17 +295,16 @@ static void ReportStartupFailure(Exception ex)
     {
         if (OperatingSystem.IsWindows())
         {
-            // 直接 P/Invoke user32，避免为一个消息框把 WinForms 拖进 Web 工程
+            // 直接 P/Invoke user32，避免启动失败路径再依赖 WinForms 消息循环
             // 0x00000010 = MB_ICONERROR，0x00040000 = MB_TOPMOST（保证不被浏览器盖住）
             _ = MessageBoxW(
                 IntPtr.Zero,
-                message + (logPath.Length > 0 ? "\n" + logPath : string.Empty),
+                message + (logPath.Length == 0 ? string.Empty : "\n" + logPath),
                 "CommunicationKernel 启动失败",
                 0x00000010 | 0x00040000);
         }
         else
         {
-            // 非 Windows（树莓派等）多为无人值守，标准错误进 journald 即可
             Console.Error.WriteLine(message);
             Console.Error.WriteLine(ex);
         }
@@ -297,26 +315,6 @@ static void ReportStartupFailure(Exception ex)
     }
 }
 
-/// <summary>Win32 消息框，仅用于启动失败提示。</summary>
+/// <summary>Win32 消息框，仅用于启动失败 / 重复启动提示。</summary>
 [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
-
-/// <summary>
-/// 判断 URL 列表里是否含指定端口，避免把 :5000 误匹配成 :50000。
-/// </summary>
-static bool ContainsPort(string urls, int port)
-{
-    string token = ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
-    int start = 0;
-    while (start < urls.Length)
-    {
-        int i = urls.IndexOf(token, start, StringComparison.Ordinal);
-        if (i < 0)
-            return false;
-        int after = i + token.Length;
-        if (after >= urls.Length || !char.IsDigit(urls[after]))
-            return true;
-        start = after;
-    }
-    return false;
-}
