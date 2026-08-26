@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: PluginLoadContext.cs
-// 层级: Plugin.Loader / Loader
+// 层级: Plugin.Context / Loader
 // 作用: 为每个插件创建独立 AssemblyLoadContext，实现依赖隔离与可回收加载。
 // 说明:
 // 1) 每个插件使用独立上下文，避免不同插件间依赖版本冲突。
@@ -13,12 +13,12 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.Loader;
 
-namespace CommunicationKernel.Plugin.Loader;
+namespace CommunicationKernel.Plugin.Context;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: PluginLoadContext.cs
-/// 层级: Plugin.Loader / Loader
+/// 层级: Plugin.Context / Loader
 /// 作用: 为每个插件创建独立 AssemblyLoadContext，实现依赖隔离与可回收加载。
 /// 说明:
 /// 1) 每个插件使用独立上下文，避免不同插件间依赖版本冲突。

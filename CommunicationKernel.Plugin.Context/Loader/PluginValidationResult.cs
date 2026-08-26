@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: PluginValidationResult.cs
-// 层级: Plugin.Loader / Loader
+// 层级: Plugin.Context / Loader
 // 作用: 表示单个插件程序集在“发现/校验”阶段的结果。
 // 说明:
 // - IsValid=true 表示可参与加载。
@@ -9,14 +9,14 @@
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Core.Abstractions.Errors;
-using CommunicationKernel.Plugin.Loader.Abstractions;
+using CommunicationKernel.Plugin.Context.Abstractions;
 
-namespace CommunicationKernel.Plugin.Loader;
+namespace CommunicationKernel.Plugin.Context;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: PluginValidationResult.cs
-/// 层级: Plugin.Loader / Loader
+/// 层级: Plugin.Context / Loader
 /// 作用: 表示单个插件程序集在“发现/校验”阶段的结果。
 /// 说明:
 /// - IsValid=true 表示可参与加载。

@@ -12,7 +12,7 @@
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Plugin.Loader\CommunicationKernel.Plugin.Loader.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugin.Context\CommunicationKernel.Plugin.Context.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Core.EngineRouter\CommunicationKernel.Core.EngineRouter.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Core.EngineRuntime\CommunicationKernel.Core.EngineRuntime.csproj" />
     <!-- Modbus 三个变体（TCP / RTU / ASCII）与其协议语义已合并为单一程序集 -->

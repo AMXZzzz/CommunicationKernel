@@ -126,7 +126,7 @@ jobs:
             'CommunicationKernel.Core.Abstractions.dll',
             'CommunicationKernel.Communication.Protocol.dll',
             'CommunicationKernel.Communication.Transport.dll',
-            'CommunicationKernel.Plugin.Loader.dll'
+            'CommunicationKernel.Plugin.Context.dll'
           )
           $leaked = $forbidden | Where-Object { $_ -in $dlls }
           if ($leaked) {
@@ -261,7 +261,7 @@ jobs:
             CommunicationKernel.Core.Abstractions \
             CommunicationKernel.Communication.Protocol \
             CommunicationKernel.Communication.Transport \
-            CommunicationKernel.Plugin.Loader
+            CommunicationKernel.Plugin.Context
           do
             if [ ! -f "$root/$dll.dll" ]; then
               echo "::error::宿主根目录缺少共享契约 $dll.dll"

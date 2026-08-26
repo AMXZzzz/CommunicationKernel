@@ -116,7 +116,7 @@
                   Exclude="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Core.Abstractions.dll;
                            %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Protocol.dll;
                            %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Transport.dll;
-                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Plugin.Loader.dll" />
+                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Plugin.Context.dll" />
       <_PluginDepsJson Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)%(_PluginAssembly.Filename).deps.json" />
       <_PluginRuntimeAsset Include="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)runtimes\**\*.*" />
     </ItemGroup>

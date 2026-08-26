@@ -33,7 +33,7 @@
     <ProjectReference Include="..\CommunicationKernel.Core.Abstractions\CommunicationKernel.Core.Abstractions.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Protocol\CommunicationKernel.Communication.Protocol.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Communication.Transport\CommunicationKernel.Communication.Transport.csproj" />
-    <ProjectReference Include="..\CommunicationKernel.Plugin.Loader\CommunicationKernel.Plugin.Loader.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.Plugin.Context\CommunicationKernel.Plugin.Context.csproj" />
     <ProjectReference Include="..\CommunicationKernel.Core.EngineRouter\CommunicationKernel.Core.EngineRouter.csproj" />
   </ItemGroup>
 

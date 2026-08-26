@@ -1,18 +1,18 @@
 // -----------------------------------------------------------------------------
 // 文件: PluginKind.cs
-// 层级: Plugin.Loader / Abstractions
+// 层级: Plugin.Context / Abstractions
 // 作用: 声明插件能力分类。
 // 说明:
 // - 分类用于路由到不同加载与组装流程。
 // - Transport 与 Protocol 解耦，支持“同协议+多介质”的组合扩展。
 // -----------------------------------------------------------------------------
 
-namespace CommunicationKernel.Plugin.Loader.Abstractions;
+namespace CommunicationKernel.Plugin.Context.Abstractions;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: PluginKind.cs
-/// 层级: Plugin.Loader / Abstractions
+/// 层级: Plugin.Context / Abstractions
 /// 作用: 声明插件能力分类。
 /// 说明:
 /// - 分类用于路由到不同加载与组装流程。

@@ -7,7 +7,7 @@
 //   双次加载已移除：它把每个 DLL 加载两遍，且校验结论与运行实例来自两次不同加载。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Plugin.Loader;
+using CommunicationKernel.Plugin.Context;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CommunicationKernel.Tests;

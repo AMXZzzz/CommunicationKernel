@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // 文件: IPluginManifest.cs
-// 层级: Plugin.Loader / Abstractions
+// 层级: Plugin.Context / Abstractions
 // 作用: 定义插件清单（Manifest）最小契约。
 // 说明:
 // 1) 每个可被运行时识别的插件程序集，都应提供至少一个该接口实现类型。
@@ -8,12 +8,12 @@
 // 3) 该接口只描述“身份与能力声明”，不承载具体通讯执行逻辑。
 // -----------------------------------------------------------------------------
 
-namespace CommunicationKernel.Plugin.Loader.Abstractions;
+namespace CommunicationKernel.Plugin.Context.Abstractions;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: IPluginManifest.cs
-/// 层级: Plugin.Loader / Abstractions
+/// 层级: Plugin.Context / Abstractions
 /// 作用: 定义插件清单（Manifest）最小契约。
 /// 说明:
 /// 1) 每个可被运行时识别的插件程序集，都应提供至少一个该接口实现类型。

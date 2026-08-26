@@ -137,7 +137,7 @@ publish/linux-arm64/
 ├── CommunicationKernel.Core.Abstractions.dll        ┐
 ├── CommunicationKernel.Communication.Protocol.dll   │ 四个共享契约
 ├── CommunicationKernel.Communication.Transport.dll  │ 必须在这一层
-├── CommunicationKernel.Plugin.Loader.dll           ┘
+├── CommunicationKernel.Plugin.Context.dll           ┘
 └── plugins/
     ├── CommunicationKernel.Plugins.Protocol.Modbus.dll        # TCP / RTU / ASCII 三个变体同处一个程序集
     ├── CommunicationKernel.Plugins.Protocol.Panasonic.dll     # MEWTOCOL，TCP 与串口共用 ProtocolId
@@ -207,7 +207,7 @@ ls CommunicationKernel.EngineHostingServiceApp/bin/Release/net8.0/linux-arm64/pu
 ```
 
 应当看到 5 个插件 DLL（Modbus / Panasonic / Siemens.S7 / Tcp / SerialPort）。同时确认**四个共享契约在主目录、不在 `plugins/` 下**——
-`Core.Abstractions`、`Communication.Protocol`、`Communication.Transport`、`Plugin.Loader`。
+`Core.Abstractions`、`Communication.Protocol`、`Communication.Transport`、`Plugin.Context`。
 原因见[产物结构](#产物结构)。
 
 > 目录里的 `.pdb` 和 `createdump` 不用删。加起来不到 300 KB，

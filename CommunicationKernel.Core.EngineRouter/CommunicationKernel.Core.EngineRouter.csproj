@@ -9,7 +9,7 @@
       Communication.Transport  ITransportClient（分派目标之一）
       Communication.Protocol   IProtocolCodec（分派目标之一）
 
-    这里刻意不引用 Plugin.Loader：路由层接收的是已经实例化好的传输与协议对象，
+    这里刻意不引用 Plugin.Context：路由层接收的是已经实例化好的传输与协议对象，
     "从哪个 DLL 加载出来的"属于上层（Core.EngineRuntime）的组装职责。
     引用它会让路由层在纸面上背负插件加载的知识，而代码里一行都用不到。
   -->

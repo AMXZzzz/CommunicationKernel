@@ -10,7 +10,7 @@ using CommunicationKernel.Communication.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
 using CommunicationKernel.Core.EngineRuntime.Models;
 using CommunicationKernel.Core.EngineRouter.Abstractions;
-using CommunicationKernel.Plugin.Loader;
+using CommunicationKernel.Plugin.Context;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 

@@ -8,7 +8,7 @@
 // 3) 两者共享 TPKT/COTP/S7Comm 基础帧工具，差异仅在 TSAP 连接参数。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Plugin.Loader.Abstractions;
+using CommunicationKernel.Plugin.Context.Abstractions;
 
 namespace CommunicationKernel.Plugins.Protocol.Siemens.S7;
 

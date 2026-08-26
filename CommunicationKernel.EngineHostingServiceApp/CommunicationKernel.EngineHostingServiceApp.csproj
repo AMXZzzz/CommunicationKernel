@@ -111,7 +111,7 @@
                   Exclude="%(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Core.Abstractions.dll;
                            %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Protocol.dll;
                            %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Communication.Transport.dll;
-                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Plugin.Loader.dll" />
+                           %(_PluginAssembly.RootDir)%(_PluginAssembly.Directory)CommunicationKernel.Plugin.Context.dll" />
 
       <!-- deps.json：AssemblyDependencyResolver 据此选择 RID 专属实现，
            缺失则只能加载到会抛 PlatformNotSupportedException 的外观程序集 -->
