@@ -8,7 +8,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>当前网卡上手机打得通的 IPv4 地址。</summary>
 internal static class LanAccess

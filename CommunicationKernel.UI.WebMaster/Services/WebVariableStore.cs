@@ -7,7 +7,7 @@
 using CommunicationKernel.Host.Sdk;
 using System.Text.Json;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>一条本地变量定义。当前值不落盘。</summary>
 public sealed class WebVariable

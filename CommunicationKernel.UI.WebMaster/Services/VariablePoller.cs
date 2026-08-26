@@ -6,7 +6,7 @@
 
 using CommunicationKernel.Host.Sdk;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>后台变量轮询。单例 HostedService。</summary>
 /// <remarks>

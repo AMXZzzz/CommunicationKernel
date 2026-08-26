@@ -4,7 +4,7 @@
     {
       "name": "web-ui",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "CommunicationKernel.UI.Web/CommunicationKernel.UI.Web.csproj", "--urls", "http://localhost:64000"],
+      "runtimeArgs": ["run", "--project", "CommunicationKernel.UI.WebMaster/CommunicationKernel.UI.WebMaster.csproj", "--urls", "http://localhost:64000"],
       "port": 64000
     }
   ]

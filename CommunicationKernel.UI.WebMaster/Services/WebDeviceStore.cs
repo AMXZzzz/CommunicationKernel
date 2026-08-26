@@ -8,7 +8,7 @@ using System.Text.Json;
 
 using CommunicationKernel.Host.Sdk;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>一台设备重新注册路由所需的全部参数（不含运行期在线状态）。</summary>
 public sealed class WebDeviceRecord

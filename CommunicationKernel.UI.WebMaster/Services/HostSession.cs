@@ -8,7 +8,7 @@
 using System.Collections.Concurrent;
 using CommunicationKernel.Host.Sdk;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>Web UI 对 Host.App 的会话门面。单例 + IHostedService。</summary>
 public sealed class HostSession : IHostedService, IAsyncDisposable

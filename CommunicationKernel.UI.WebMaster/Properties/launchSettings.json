@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "CommunicationKernel.UI.Web": {
+    "CommunicationKernel.UI.WebMaster": {
       "commandName": "Project",
       "launchBrowser": false,
       "environmentVariables": {

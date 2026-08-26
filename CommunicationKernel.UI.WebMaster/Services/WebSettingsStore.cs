@@ -7,7 +7,7 @@
 using CommunicationKernel.Host.Sdk;
 using System.Text.Json;
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>持久化 Web 自己的 Host 地址。</summary>
 /// <remarks>

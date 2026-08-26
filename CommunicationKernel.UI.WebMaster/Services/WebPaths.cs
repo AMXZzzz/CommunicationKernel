@@ -4,7 +4,7 @@
 // 作用: Web 上位机运行时配置，全部在本 exe 旁边的 config 目录，不与 WPF 共用。
 // -----------------------------------------------------------------------------
 
-namespace CommunicationKernel.UI.Web.Services;
+namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>Web UI 本地文件路径。跟 exe 走，换机器拷贝整个目录即可。</summary>
 internal static class WebPaths

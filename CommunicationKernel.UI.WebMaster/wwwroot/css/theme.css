@@ -39,7 +39,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body { height: 100%; }
+html, body { height: 100%; height: 100dvh; }
 
 body {
     font-family: var(--font);
@@ -55,6 +55,7 @@ button:disabled { cursor: not-allowed; }
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
@@ -564,31 +565,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     .device-panel { width: 100%; max-height: 160px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--border); }
 }
 
-@media (max-width: 720px) {
-    .nav-toggle { display: flex; }
-    .sidebar {
-        position: absolute;
-        z-index: 30;
-        top: 0;
-        bottom: 0;
-        left: 0;
-        transform: translateX(-105%);
-        transition: transform 0.2s ease;
-        box-shadow: var(--shadow);
-    }
-    .sidebar.open { transform: none; }
-    .nav-backdrop {
-        display: block;
-        position: absolute;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.45);
-        z-index: 20;
-    }
-    .page-content { padding: 14px; }
-    .title-status, .status-addr { display: none; }
-    .add-form-overlay { justify-content: center; padding: 24px 12px; }
-}
-
 /* ============================================================================
    MES 整线健康（由真实路由在线率推导，没有假启停）
    ============================================================================ */
@@ -660,11 +636,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
 
-@media (max-width: 720px) {
-    .alarm-row { grid-template-columns: 1fr; gap: 2px; }
-    .health-strip { flex-wrap: wrap; }
-}
-
 /* ============================================================================
    工具栏之下、主体之上的通栏横幅
    ============================================================================ */
@@ -687,25 +658,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 /* 空状态里的动作按钮需要与文字拉开距离 */
 .empty-state .btn { margin-top: 4px; }
 
-@media (max-width: 720px) {
-    /* 工具栏是固定 48px 的条带，不能靠换行来容纳按钮——换行会把条带撑高，
-       底部分隔线随之下移，和下方内容错开。改为横向滚动：
-       条带高度稳定，放不下的按钮划一下就能拿到。 */
-    .toolbar { overflow-x: auto; scrollbar-width: none; }
-    .toolbar::-webkit-scrollbar { display: none; }
-    .toolbar-right { margin-left: 8px; }
-
-    .page-body { padding: 12px; }
-    .banner-strip { margin: 12px 12px 0; }
-    .summary-bar { grid-template-columns: 1fr 1fr; }
-    .device-grid { grid-template-columns: 1fr; }
-}
-
-/* 卡片底部三按钮：连接/断开 与 编辑 平分主空间，删除固定窄宽。
-   删除是低频且不可逆的动作，不该和常用动作抢同等面积 */
 .card-ft > .btn.card-del { flex: 0 0 auto; padding: 0 12px; }
 
-/* 表单里的行为说明：保存不等于连接，这一点必须在按钮上方讲清楚 */
 .form-note {
     margin-top: 14px;
     padding: 8px 10px;
@@ -716,10 +670,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .form-note b { color: var(--accent-ink); }
 
-/* 只读输入（编辑态的路由 ID）要看得出不可改 */
 input[readonly] { background: #171717; color: var(--text-muted); cursor: not-allowed; }
 
-/* 表单内的一行说明（与 .form-note 的区别：不加底框，用于次要提示） */
 .hint-line {
     margin-top: 12px;
     font-size: 11px;
@@ -728,8 +680,156 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 }
 .hint-line b { color: var(--accent-ink); font-family: var(--font-mono); }
 
-/* 表格行末的按钮组 */
 .row-btns { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 
-/* 标签里的补充说明（次要信息，不抢标签本身） */
 .label-note { color: var(--text-dim); font-weight: 400; }
+
+/* ============================================================================
+   手机 / 窄屏：CSS 媒体查询自动识别，js 再打 html.is-phone 兜一层
+   ============================================================================ */
+
+@media (max-width: 720px), (pointer: coarse) and (max-width: 900px) {
+    html { --toolbar-h: 52px; }
+    body { -webkit-tap-highlight-color: transparent; }
+    button, a, .nav-item, .dev-item { touch-action: manipulation; }
+
+    .app-shell {
+        height: 100dvh;
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+
+    .titlebar {
+        height: 48px;
+        padding-top: env(safe-area-inset-top);
+        height: calc(48px + env(safe-area-inset-top));
+        padding-left: 10px;
+        padding-right: 12px;
+    }
+    .nav-toggle {
+        display: flex;
+        width: 44px;
+        height: 44px;
+        touch-action: manipulation;
+    }
+    .title-status { display: inline; font-size: 14px; color: var(--text); font-weight: 650; }
+    .status-addr, .app-name { display: none; }
+    .status-text { font-size: 12px; }
+
+    .sidebar {
+        position: absolute;
+        z-index: 30;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: min(260px, 84vw);
+        transform: translateX(-105%);
+        transition: transform 0.2s ease;
+        box-shadow: var(--shadow);
+        padding-top: calc(10px + env(safe-area-inset-top));
+    }
+    .sidebar.open { transform: none; }
+    .nav-item { padding: 14px 18px; font-size: 15px; }
+    .nav-backdrop {
+        display: block;
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 20;
+    }
+
+    .statusbar {
+        height: auto;
+        min-height: 26px;
+        padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .toolbar {
+        overflow-x: auto;
+        scrollbar-width: none;
+        padding: 0 12px;
+    }
+    .toolbar::-webkit-scrollbar { display: none; }
+    .toolbar .btn, .toolbar .btn-filter, .toolbar .file-btn {
+        min-height: 36px;
+        touch-action: manipulation;
+    }
+    .toolbar-right { margin-left: 8px; }
+    .search-input { width: 120px; min-width: 100px; }
+
+    .page-body { padding: 12px; }
+    .banner-strip { margin: 12px 12px 0; }
+    .summary-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .summary-value { font-size: 20px; }
+    .device-grid { grid-template-columns: 1fr; }
+    .health-strip { flex-wrap: wrap; gap: 8px; }
+    .health-strip .btn { margin-left: 0; }
+    .alarm-row { grid-template-columns: 1fr; gap: 2px; }
+
+    input, select, textarea { font-size: 16px; padding: 10px 12px; }
+    .btn { min-height: 40px; padding: 8px 14px; touch-action: manipulation; }
+    .card-ft > .btn, .card-ft > .btn-sm { height: 40px; }
+    .form-actions { flex-wrap: wrap; }
+    .form-actions .btn { flex: 1; min-width: 120px; }
+    .settings-card { max-width: none; padding: 16px; }
+
+    .add-form-overlay {
+        align-items: flex-end;
+        justify-content: center;
+        padding: 0;
+    }
+    .add-form, .add-form.wide {
+        width: 100%;
+        max-height: 92dvh;
+        border-radius: 14px 14px 0 0;
+        padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    }
+    .add-form-overlay.center {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .log-row { flex-wrap: wrap; gap: 4px 8px; }
+    .log-time { width: auto; }
+    .log-cat { width: auto; max-width: 40%; }
+
+    /* 变量表：一行变一张卡，避免横滑 */
+    .data-table thead { display: none; }
+    .data-table, .data-table tbody, .data-table tr, .data-table td {
+        display: block;
+        width: 100%;
+    }
+    .data-table tbody tr {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 10px;
+        padding: 8px 10px;
+    }
+    .data-table tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px solid #222;
+    }
+    .data-table tbody td:last-child { border-bottom: 0; }
+    .data-table tbody td[data-label]::before {
+        content: attr(data-label);
+        color: var(--text-dim);
+        font-size: 11px;
+        flex-shrink: 0;
+    }
+    .data-table tbody td[data-label=""] { justify-content: flex-end; }
+    .write-cell { width: auto; flex-wrap: wrap; }
+    .write-input { width: 100%; flex: 1; min-width: 80px; }
+}
+
+/* 更窄：摘要卡单列 */
+@media (max-width: 420px) {
+    .summary-bar { grid-template-columns: 1fr; }
+}
+

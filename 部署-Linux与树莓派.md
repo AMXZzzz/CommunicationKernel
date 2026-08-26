@@ -163,7 +163,7 @@ publish/linux-arm64/
 ```
    车间（树莓派）                          办公室 / 中控室（Windows PC）
 ┌───────────────────────────┐          ┌──────────────────────────────┐
-│ Host.App                  │          │ UI.Wpf  或  UI.Web           │
+│ Host.App                  │          │ UI.Wpf  或  UI.WebMaster           │
 │  ├─ plugins/ 协议与传输   │◄────────►│  └─ Host.Sdk (HostClient)    │
 │  └─ Kestrel :5000 (h2c)   │  gRPC    │                              │
 └──────────┬────────────────┘  HTTP/2  └──────────────────────────────┘
