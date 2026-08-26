@@ -82,6 +82,23 @@ public class LinkCheckTests {
         Assert.AreEqual(0, offlineEvents);
     }
 
+    /// <summary>闲置路由必须发协议心跳，不能只 Poll 套接字。</summary>
+    [TestMethod]
+    public async Task LinkCheck_IdleRoute_SendsProtocolProbe() {
+        var transport = new KillableTransportFactory();
+        await using var engine = NewEngine(transport, linkCheckIntervalMs: 80);
+
+        int offlineEvents = 0;
+        engine.RouteStatusChanged += s => { if (!s.Online) Interlocked.Increment(ref offlineEvents); };
+
+        Assert.IsTrue((await engine.RegisterRouteAsync(NewCommand(), CancellationToken.None)).Success);
+        await Task.Delay(400);
+
+        Assert.IsTrue(transport.Client.ExchangeCalls > 0,
+            "闲置路由没有发协议心跳，从站空闲超时后会把 TCP 拆掉");
+        Assert.AreEqual(0, offlineEvents, "心跳应答了，不该被标成离线");
+    }
+
     /// <summary>间隔 &lt;= 0 时巡检关闭：状态完全由读写驱动。</summary>
     [TestMethod]
     public async Task LinkCheck_Disabled_WhenIntervalNotPositive() {
@@ -134,6 +151,8 @@ public class LinkCheckTests {
 
         internal void Kill() => _dead = true;
 
+        internal int ExchangeCalls;
+
         public string TransportId => "fake-killable";
         public TransportKind Kind => TransportKind.Tcp;
         public bool IsConnectionAlive => !_dead;
@@ -148,6 +167,12 @@ public class LinkCheckTests {
 
         public Task<OperationResult<byte[]>> SendAndReceiveAsync(
             byte[] request, TryGetFrameLength probe, CancellationToken ct)
-            => Task.FromResult(OperationResult<byte[]>.Fail("未使用", KernelErrorCode.TransportIoError));
+        {
+            Interlocked.Increment(ref ExchangeCalls);
+            if (_dead)
+                return Task.FromResult(OperationResult<byte[]>.Fail("已断开", KernelErrorCode.TransportIoError));
+            // 空应答会让协议层报解析失败；探活把协议失败视为「对端还在答」
+            return Task.FromResult(OperationResult<byte[]>.Ok(Array.Empty<byte>()));
+        }
     }
 }

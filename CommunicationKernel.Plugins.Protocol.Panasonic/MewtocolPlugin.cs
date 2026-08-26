@@ -250,6 +250,12 @@ internal sealed class MewtocolProtocolDriver : IProtocolDriver
         return MewtocolFrame.ParseWriteResponse(response.Value);
     }
 
+    /// <inheritdoc />
+    public Task<OperationResult> ProbeAsync(
+        ITransportClient client, CancellationToken cancellationToken)
+        // DT0 一个字：无副作用短读，与内部 BuildPing 同源。
+        => ProtocolProbe.ReadAsync(this, client, "DT0", 2, cancellationToken);
+
     /// <summary>
     /// 帧完整性判定：MEWTOCOL 响应以 CR（0x0D）收尾。
     /// </summary>

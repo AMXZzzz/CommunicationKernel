@@ -99,6 +99,12 @@ public sealed class ModbusProtocolDriver : IProtocolDriver {
         return ModbusPdu.ParseWriteResponse(pdu.Value, plan.Value.Request);
     }
 
+    /// <inheritdoc />
+    public Task<OperationResult> ProbeAsync(
+        ITransportClient client, CancellationToken cancellationToken)
+        // 40001：保持寄存器 0，几乎每台从站都认。读失败若是协议异常，仍算链路活着。
+        => ProtocolProbe.ReadAsync(this, client, "40001", 2, cancellationToken);
+
     // -------------------------------------------------------------------------
     // 内部
     // -------------------------------------------------------------------------

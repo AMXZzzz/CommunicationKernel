@@ -75,4 +75,17 @@ public interface IProtocolDriver {
 
     /// <summary>执行一次完整写操作（含发送、响应校验）。</summary>
     Task<OperationResult> WriteAsync(ITransportClient client, string address, byte[] payload, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 链路探活：发一帧无副作用的短读，确认对端还在应答。
+    /// </summary>
+    /// <remarks>
+    /// 默认实现不发包、直接成功，供测试替身使用。
+    /// 真实插件必须覆盖——没有心跳时，闲置 TCP 会被 keepalive / 从站超时拆掉，
+    /// 界面只降不升，要等操作员再点一次「连接」。
+    /// 对端回了完整帧（含协议异常、非法地址）即视为活着；
+    /// 只有超时 / 传输错误才算断链。
+    /// </remarks>
+    Task<OperationResult> ProbeAsync(ITransportClient client, CancellationToken cancellationToken)
+        => Task.FromResult(OperationResult.Ok);
 }
