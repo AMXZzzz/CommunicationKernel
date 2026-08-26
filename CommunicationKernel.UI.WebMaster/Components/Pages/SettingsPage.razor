@@ -1,7 +1,7 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Pages/SettingsPage.razor
    层级: UI 层 — 系统设置
-   作用: 保存并切换 Host.App 地址；立即重建 gRPC 通道，不必重启进程。
+   作用: 保存并切换 EngineHost.App 地址；立即重建 gRPC 通道，不必重启进程。
          「测试连接」用临时客户端探测输入框地址，不碰当前会话。
    ----------------------------------------------------------------------------- *@
 
@@ -23,7 +23,7 @@
 
     <div class="page-body">
     <div class="settings-card">
-        <h3>Host.App 连接</h3>
+        <h3>EngineHost.App 连接</h3>
         <p class="setting-hint">仅本端保存，与 WPF 无关：@Settings.FilePath</p>
 
         <label>gRPC 地址</label>
@@ -63,7 +63,7 @@
                 <input readonly value="@url" style="margin-bottom:8px" />
             }
         }
-        <p class="setting-hint">5000 是 Host.App 的 gRPC 口，不能填。Host 地址在上面单独配。</p>
+        <p class="setting-hint">5000 是 EngineHost.App 的 gRPC 口，不能填。Host 地址在上面单独配。</p>
     </div>
 
     <div class="settings-card">
@@ -192,7 +192,7 @@
         }
         if (port == WebSettingsStore.HostPort)
         {
-            _portStatus = "5000 是 Host.App 的端口，Web 不能占用";
+            _portStatus = "5000 是 EngineHost.App 的端口，Web 不能占用";
             _portStatusClass = "status-error";
             return;
         }

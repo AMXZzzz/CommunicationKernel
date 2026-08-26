@@ -18,7 +18,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CommunicationKernel.Host.Sdk
+namespace CommunicationKernel.EngineHost.Sdk
 {
     /// <summary>
     /// 按键合并并发调用、并限制最小重试间隔的闸门。线程安全。

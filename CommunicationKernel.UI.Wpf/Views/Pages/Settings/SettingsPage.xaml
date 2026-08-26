@@ -1,7 +1,7 @@
 <!--
   文件: SettingsPage.xaml
   层级: UI 层 — WPF Views
-  作用: 系统设置页：本地/远端模式与 Host.App 地址配置。
+  作用: 系统设置页：本地/远端模式与 EngineHost.App 地址配置。
 -->
 <Page x:Class="CommunicationKernel.UI.Wpf.Views.Pages.Settings.SettingsPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -34,7 +34,7 @@
 
                     <!-- 本地模式：默认选中（IsRemoteMode 初始值 false），选中时 pnlRemote 折叠 -->
                     <RadioButton x:Name="rdoLocal"
-                                 Content="本地模式（本机插件直连 PLC；可与 Host.App 同时运行）"
+                                 Content="本地模式（本机插件直连 PLC；可与 EngineHost.App 同时运行）"
                                  GroupName="mode"
                                  IsChecked="True"
                                  Checked="RdoLocal_Checked"
@@ -53,7 +53,7 @@
                                 Margin="20,16,0,0"
                                 Visibility="{Binding IsRemoteMode, Converter={StaticResource BoolToVis}}">
 
-                        <TextBlock Text="Host.App 地址"
+                        <TextBlock Text="EngineHost.App 地址"
                                    FontSize="12"
                                    Foreground="{StaticResource SF.Brush.Text.Secondary}"
                                    Margin="0,0,0,6"/>
@@ -97,9 +97,9 @@
                                            Foreground="{StaticResource SF.Brush.Text.Secondary}"
                                            TextWrapping="Wrap">
                                     <Run FontWeight="SemiBold">远端模式</Run>
-                                    <Run>：Host.App 运行在靠近 PLC 的机器上，本客户端通过 gRPC 远程操作。</Run>
+                                    <Run>：EngineHost.App 运行在靠近 PLC 的机器上，本客户端通过 gRPC 远程操作。</Run>
                                 </TextBlock>
-                                <TextBlock Text="适用于跨平台场景（Web / Mac / Android）—— 业务升级只需更新 Host.App 进程。"
+                                <TextBlock Text="适用于跨平台场景（Web / Mac / Android）—— 业务升级只需更新 EngineHost.App 进程。"
                                            FontSize="11"
                                            Foreground="{StaticResource SF.Brush.Text.Secondary}"
                                            TextWrapping="Wrap"

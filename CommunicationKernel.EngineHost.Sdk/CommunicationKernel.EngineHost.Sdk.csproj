@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- ========================================================================
-       文件: CommunicationKernel.Host.Sdk.csproj
-       层级: Host.Sdk — 连 Host.App 的 gRPC 客户端
-       作用: 所有 UI（WPF / Blazor / 第三方）共用的 Host.App 访问库。
+       文件: CommunicationKernel.EngineHost.Sdk.csproj
+       层级: EngineHost.Sdk — 连 EngineHost.App 的 gRPC 客户端
+       作用: 所有 UI（WPF / Blazor / 第三方）共用的 EngineHost.App 访问库。
 
        为什么独立成库：
          此前 WPF 与 Web 各持一份客户端封装。Web 那份长期落后——
@@ -16,8 +16,8 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <AssemblyName>CommunicationKernel.Host.Sdk</AssemblyName>
-    <RootNamespace>CommunicationKernel.Host.Sdk</RootNamespace>
+    <AssemblyName>CommunicationKernel.EngineHost.Sdk</AssemblyName>
+    <RootNamespace>CommunicationKernel.EngineHost.Sdk</RootNamespace>
     <IsPackable>true</IsPackable>
 
     <!-- 打包库必须生成 XML 文档：消费者只能通过 IntelliSense 了解这些 API，
@@ -25,8 +25,8 @@
          必须写在工程内而非 Directory.Build.targets——后者导入得太晚，
          SDK 那时已经决定不生成文档了。 -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageId>CommunicationKernel.Host.Sdk</PackageId>
-    <Description>CommunicationKernel Host.App 的 gRPC 客户端。供上位机（WPF / Blazor / 控制台）远程注册路由与读写 PLC，内置断线重连与调用截止时间。</Description>
+    <PackageId>CommunicationKernel.EngineHost.Sdk</PackageId>
+    <Description>CommunicationKernel EngineHost.App 的 gRPC 客户端。供上位机（WPF / Blazor / 控制台）远程注册路由与读写 PLC，内置断线重连与调用截止时间。</Description>
   </PropertyGroup>
 
   <ItemGroup>

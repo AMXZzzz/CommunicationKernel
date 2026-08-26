@@ -46,7 +46,7 @@ public partial class MainWindow : Window {
     /// </summary>
     private readonly IServiceProvider _services;
 
-    /// <summary>Host.App 会话状态源，顶栏指示灯的唯一数据来源。</summary>
+    /// <summary>EngineHost.App 会话状态源，顶栏指示灯的唯一数据来源。</summary>
     private readonly HostSessionService _session;
 
     // ============================================================================
@@ -173,13 +173,13 @@ public partial class MainWindow : Window {
             if (connected) {
                 // 在线：绿色指示灯
                 statusIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0));
-                txtStatus.Text = "Host.App 在线";
-                txtCurrentDevice.Text = string.IsNullOrEmpty(info) ? "Host.App 在线" : info;
+                txtStatus.Text = "EngineHost.App 在线";
+                txtCurrentDevice.Text = string.IsNullOrEmpty(info) ? "EngineHost.App 在线" : info;
             } else {
                 // 离线：灰色指示灯
                 statusIndicator.Fill = (Brush)FindResource("SF.Brush.Text.Secondary");
                 txtStatus.Text = "未连接";
-                txtCurrentDevice.Text = "Host.App 离线";
+                txtCurrentDevice.Text = "EngineHost.App 离线";
             }
         });
     }

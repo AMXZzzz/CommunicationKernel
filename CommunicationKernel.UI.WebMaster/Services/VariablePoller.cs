@@ -4,7 +4,7 @@
 // 作用: 按 ScanRateMs 轮询已勾选的变量；Host 离线或路由离线时跳过，避免错误刷屏。
 // -----------------------------------------------------------------------------
 
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.EngineHost.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 

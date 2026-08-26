@@ -3,13 +3,13 @@
 // -----------------------------------------------------------------------------
 // 文件: Core/Interfaces/ISerialPortProvider.cs
 // 层级: UI 层 — WPF 核心接口
-// 作用: 提供 Host.App 所在机器上的串口清单，供设备编辑面板渲染下拉框。
+// 作用: 提供 EngineHost.App 所在机器上的串口清单，供设备编辑面板渲染下拉框。
 // -----------------------------------------------------------------------------
 
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.EngineHost.Sdk;
 
 namespace CommunicationKernel.UI.Wpf.Core.Interfaces
 {
@@ -17,7 +17,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
     /// 串口清单提供者。
     /// </summary>
     /// <remarks>
-    /// <b>清单来自 Host.App 所在的机器，不是本机。</b>
+    /// <b>清单来自 EngineHost.App 所在的机器，不是本机。</b>
     /// 宿主部署在树莓派、上位机在办公室 PC 时，本机的 COM1/COM2
     /// 与 PLC 毫无关系——选中后注册必然失败，而错误信息会指向
     /// "打不开 COM1"，把人往完全错误的方向引。

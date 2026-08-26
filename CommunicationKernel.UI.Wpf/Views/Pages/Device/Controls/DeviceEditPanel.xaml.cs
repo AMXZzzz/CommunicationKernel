@@ -51,7 +51,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// 串口清单提供者（由 DevicePage 赋值），可为 null。
         /// </summary>
         /// <remarks>
-        /// 清单来自 <b>Host.App 所在的机器</b>。宿主跑在树莓派时，
+        /// 清单来自 <b>EngineHost.App 所在的机器</b>。宿主跑在树莓派时，
         /// 操作员要选的是树莓派上的 /dev/ttyUSB0，而不是本机的 COM1。
         /// 为 null、宿主不可达或现场无串口时，下拉框留空但仍可手工输入。
         /// </remarks>

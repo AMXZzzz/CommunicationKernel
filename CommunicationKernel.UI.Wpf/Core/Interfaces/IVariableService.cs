@@ -10,7 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.EngineHost.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Models;
 
 namespace CommunicationKernel.UI.Wpf.Core.Interfaces

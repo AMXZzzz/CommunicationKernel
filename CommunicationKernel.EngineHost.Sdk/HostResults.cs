@@ -2,11 +2,11 @@
 
 // -----------------------------------------------------------------------------
 // 文件: HostResults.cs
-// 层级: 客户端层 — Host.Sdk 对外结果契约
-// 作用: 定义 Host.Sdk 全部方法的返回形态。
+// 层级: 客户端层 — EngineHost.Sdk 对外结果契约
+// 作用: 定义 EngineHost.Sdk 全部方法的返回形态。
 //
 // 为什么单独成文件、且一律用具名 record：
-//   Host.Sdk 是要发 NuGet 的对外契约。此前 RegisterRouteAsync / RemoveRouteAsync /
+//   EngineHost.Sdk 是要发 NuGet 的对外契约。此前 RegisterRouteAsync / RemoveRouteAsync /
 //   HealthAsync 返回匿名 ValueTuple，带来三个具体问题：
 //     1) 调用方只能靠<b>位置</b>记忆字段含义，(bool, string, string, string)
 //        里哪个是 ErrorCode、哪个是 RouteId 全凭记忆；
@@ -22,14 +22,14 @@
 
 using System;
 
-namespace CommunicationKernel.Host.Sdk
+namespace CommunicationKernel.EngineHost.Sdk
 {
     // ========================================================================
     // 统一失败形态
     // ========================================================================
 
     /// <summary>
-    /// Host.Sdk 所有可失败操作的公共结果形状。
+    /// EngineHost.Sdk 所有可失败操作的公共结果形状。
     /// </summary>
     /// <remarks>
     /// <para>

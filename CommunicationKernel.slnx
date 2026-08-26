@@ -16,7 +16,7 @@
   <Project Path="CommunicationKernel.Engine.Runtime/CommunicationKernel.Engine.Runtime.csproj" />
 
   <!-- 现场宿主进程（形态 B）：托管 Engine.Runtime + gRPC -->
-  <Project Path="CommunicationKernel.Host.App/CommunicationKernel.Host.App.csproj" />
+  <Project Path="CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost.App.csproj" />
 
   <!-- 协议插件 -->
   <Project Path="CommunicationKernel.Plugins.Protocol.Modbus/CommunicationKernel.Plugins.Protocol.Modbus.csproj" />
@@ -27,8 +27,8 @@
   <Project Path="CommunicationKernel.Plugins.Transport.Tcp/CommunicationKernel.Plugins.Transport.Tcp.csproj" />
   <Project Path="CommunicationKernel.Plugins.Transport.SerialPort/CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
 
-  <!-- 连 Host.App 的客户端 SDK（形态 B 的 UI 引用） -->
-  <Project Path="CommunicationKernel.Host.Sdk/CommunicationKernel.Host.Sdk.csproj" />
+  <!-- 连 EngineHost.App 的客户端 SDK（形态 B 的 UI 引用） -->
+  <Project Path="CommunicationKernel.EngineHost.Sdk/CommunicationKernel.EngineHost.Sdk.csproj" />
 
   <!-- 测试 -->
   <Project Path="CommunicationKernel.Tests/CommunicationKernel.Tests.csproj" />

@@ -18,7 +18,7 @@
 
 using System;
 
-namespace CommunicationKernel.Host.Sdk
+namespace CommunicationKernel.EngineHost.Sdk
 {
     /// <summary>注册路由失败的性质。</summary>
     public enum RegisterFailureKind

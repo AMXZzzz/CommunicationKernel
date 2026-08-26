@@ -4,7 +4,7 @@
 // 文件: App.xaml.cs
 // 层级: UI 层 — WPF 应用程序启动入口（组合根 Composition Root）
 // 作用: 构建 IHost + DI 容器，注册所有服务、ViewModel、Page；
-//       从 settings.json / 本项目 appsettings.json 读取 Host.App 地址；
+//       从 settings.json / 本项目 appsettings.json 读取 EngineHost.App 地址；
 //       启动主机后预加载设备列表并显示主窗口。
 // 启动顺序:
 //   Application_Startup
@@ -68,9 +68,9 @@ public partial class App : Application {
         //
         // 必须写全 Microsoft.Extensions.Hosting.Host，不能只写 Host：
         // 本文件位于 CommunicationKernel.UI.Wpf 命名空间，编译器解析 Host
-        // 时会先逐级向外找，于是命中 Host.Sdk / Host.App 引入的
-        // CommunicationKernel.Host 命名空间，根本轮不到 using 里的那个类。
-        // 工程改名成 Host.* 之后 WPF 就是因此编译不过的。
+        // 时会先逐级向外找。以前工程叫 Host.Sdk / Host.App 时会命中
+        // CommunicationKernel.Host，根本轮不到 using 里那个类。
+        // 现已改名为 EngineHost.*，冲突没了，但仍写全名，避免以后再踩。
         _host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
             .UseContentRoot(AppContext.BaseDirectory)
             .ConfigureServices(ConfigureServices)
@@ -92,7 +92,7 @@ public partial class App : Application {
         // 4. 启动变量轮询：对 IsPollingEnabled=true 的变量按 ScanRateMs 周期 ReadAsync
         _host.Services.GetRequiredService<VariablePollingService>().Start();
 
-        // 5. 启动 Host.App 健康轮询。
+        // 5. 启动 EngineHost.App 健康轮询。
         //    刻意早于窗口创建：窗口构造时就能拿到已知状态，
         //    且轮询不再依附窗口生命周期（这正是它从 MainWindow 里搬出来的原因）。
         _host.Services.GetRequiredService<HostSessionService>().Start();
@@ -103,7 +103,7 @@ public partial class App : Application {
       } catch (Exception ex) {
         // Application_Startup 是 async void：首个 await 之后抛出的异常
         // 会被 post 回同步上下文成为未处理异常，直接闪退且不留任何提示。
-        // 启动失败必须让用户看到原因（最常见的是 Host.App 地址不可达）。
+        // 启动失败必须让用户看到原因（最常见的是 EngineHost.App 地址不可达）。
         MessageBox.Show(
             "应用启动失败：\n\n" + ex.Message,
             "启动错误", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -198,7 +198,7 @@ public partial class App : Application {
         services.AddSingleton<IVariableService>(sp =>
             new LocalVariableStore(sp.GetRequiredService<HostClient>()));
 
-        // 协议清单一律来自 Host.App 已加载的插件，UI 不内置协议名
+        // 协议清单一律来自 EngineHost.App 已加载的插件，UI 不内置协议名
         services.AddSingleton<IProtocolResolver>(sp =>
             new GrpcProtocolResolver(sp.GetRequiredService<HostClient>()));
 
@@ -206,7 +206,7 @@ public partial class App : Application {
         services.AddSingleton<ISerialPortProvider>(sp =>
             new GrpcSerialPortProvider(sp.GetRequiredService<HostClient>()));
 
-        // Host.App 会话状态（在线与否、版本、路由数）。
+        // EngineHost.App 会话状态（在线与否、版本、路由数）。
         // 健康轮询曾经写在 MainWindow.xaml.cs 里，属于把连接生命周期放进了视图层；
         // 现独立成服务，与 Web 端的 HostSession 职责一致。
         services.AddSingleton<HostSessionService>(sp =>

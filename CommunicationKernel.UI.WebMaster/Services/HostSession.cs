@@ -6,11 +6,11 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.EngineHost.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 
-/// <summary>Web UI 对 Host.App 的会话门面。单例 + IHostedService。</summary>
+/// <summary>Web UI 对 EngineHost.App 的会话门面。单例 + IHostedService。</summary>
 public sealed class HostSession : IHostedService, IAsyncDisposable
 {
     /// <summary>日志工厂，用于为切换地址后新建的 <see cref="HostClient"/> 造记录器。</summary>
@@ -106,10 +106,10 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
         get { lock (_clientGate) return _client; }
     }
 
-    /// <summary>当前 Host.App 地址，形如 <c>http://192.168.1.10:5000</c>。</summary>
+    /// <summary>当前 EngineHost.App 地址，形如 <c>http://192.168.1.10:5000</c>。</summary>
     public string Address { get; private set; }
 
-    /// <summary>Host.App 是否可达。由健康循环维护。</summary>
+    /// <summary>EngineHost.App 是否可达。由健康循环维护。</summary>
     public bool Online { get; private set; }
 
     /// <summary>宿主版本号；离线时为 "--"。</summary>
@@ -308,7 +308,7 @@ public sealed class HostSession : IHostedService, IAsyncDisposable
         Online = ok;
         HostVersion = ok ? version : "--";
         RouteCount = count;
-        LastError = ok ? string.Empty : "Host.App 无响应";
+        LastError = ok ? string.Empty : "EngineHost.App 无响应";
 
         if (ok && !wasOnline)
             // 刚恢复：按本地配置补注册所有设备

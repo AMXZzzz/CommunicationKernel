@@ -25,7 +25,7 @@
     <!-- 串口插件：验证 ListPorts 在无串口的机器（如 CI 运行器）上也不抛异常 -->
     <ProjectReference Include="..\CommunicationKernel.Plugins.Transport.SerialPort\CommunicationKernel.Plugins.Transport.SerialPort.csproj" />
     <!-- 客户端库：重注册闸门的合并与节流是纯时序逻辑，与界面无关，可直接测 -->
-    <ProjectReference Include="..\CommunicationKernel.Host.Sdk\CommunicationKernel.Host.Sdk.csproj" />
+    <ProjectReference Include="..\CommunicationKernel.EngineHost.Sdk\CommunicationKernel.EngineHost.Sdk.csproj" />
   </ItemGroup>
 
 </Project>

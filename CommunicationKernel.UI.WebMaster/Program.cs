@@ -28,7 +28,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 try
 {
 
-// Host.App 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
+// EngineHost.App 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
 // 而且 Visual Studio / 上次跑宿主时可能把 ASPNETCORE_URLS 留在环境里。
 string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
 if (!string.IsNullOrWhiteSpace(inheritedUrls) && ContainsPort(inheritedUrls, WebSettingsStore.HostPort))
@@ -212,7 +212,7 @@ static void OpenBrowser(WebApplication app)
         url = url.Replace("://0.0.0.0", "://localhost", StringComparison.OrdinalIgnoreCase)
                  .Replace("://[::]", "://localhost", StringComparison.OrdinalIgnoreCase);
 
-        // 5000 是 Host.App。万一仍绑到了那里，绝不把浏览器带到 gRPC 口上
+        // 5000 是 EngineHost.App。万一仍绑到了那里，绝不把浏览器带到 gRPC 口上
         if (ContainsPort(url, WebSettingsStore.HostPort))
             url = "http://localhost:" + LanAccess.DefaultPort;
 
@@ -244,8 +244,8 @@ static void ReportStartupFailure(Exception ex)
         || ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase))
     {
         extra =
-            "端口 5000 是 Host.App 的，Web 上位机应使用 64000。\n" +
-            "请确认 Host.App 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
+            "端口 5000 是 EngineHost.App 的，Web 上位机应使用 64000。\n" +
+            "请确认 EngineHost.App 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
     }
 
     string message =
@@ -253,7 +253,7 @@ static void ReportStartupFailure(Exception ex)
         extra +
         ex.Message + "\n\n" +
         "常见原因：\n" +
-        "· 端口被占用——上一次没退干净，或误绑了 Host.App 的 5000 端口\n" +
+        "· 端口被占用——上一次没退干净，或误绑了 EngineHost.App 的 5000 端口\n" +
         "· appsettings.json 语法错误\n\n" +
         "详细信息见日志文件。";
 
