@@ -1,0 +1,179 @@
+    CommunicationKernel.EngineHost.Sdk.ByteOrder.ABCD : CommunicationKernel.EngineHost.Sdk.ByteOrder
+    CommunicationKernel.EngineHost.Sdk.ByteOrder.BADC : CommunicationKernel.EngineHost.Sdk.ByteOrder
+    CommunicationKernel.EngineHost.Sdk.ByteOrder.CDAB : CommunicationKernel.EngineHost.Sdk.ByteOrder
+    CommunicationKernel.EngineHost.Sdk.ByteOrder.DCBA : CommunicationKernel.EngineHost.Sdk.ByteOrder
+    CommunicationKernel.EngineHost.Sdk.ByteOrder.value__ : System.Int32
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto..ctor(System.Boolean Ok, System.String HostVersion, System.Int32 RouteCount)
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.HealthResultDto
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.Deconstruct(System.Boolean& Ok, System.String& HostVersion, System.Int32& RouteCount) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.Equals(CommunicationKernel.EngineHost.Sdk.HealthResultDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.HostVersion { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.Offline() -> CommunicationKernel.EngineHost.Sdk.HealthResultDto
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.Ok { get; set; } -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.RouteCount { get; set; } -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.HealthResultDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.HostClient..ctor(System.String serverAddress, Microsoft.Extensions.Logging.ILogger<CommunicationKernel.EngineHost.Sdk.HostClient> logger)
+    CommunicationKernel.EngineHost.Sdk.HostClient.DisposeAsync() -> System.Threading.Tasks.ValueTask
+    CommunicationKernel.EngineHost.Sdk.HostClient.HealthAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.HealthResultDto>
+    CommunicationKernel.EngineHost.Sdk.HostClient.QueryProtocolsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto>>
+    CommunicationKernel.EngineHost.Sdk.HostClient.QueryRoutesAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.EngineHost.Sdk.RouteDto>>
+    CommunicationKernel.EngineHost.Sdk.HostClient.QuerySerialPortsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.EngineHost.Sdk.SerialPortDto>>
+    CommunicationKernel.EngineHost.Sdk.HostClient.ReadAsync(System.String routeId, System.String dataAddress, System.Int32 length, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.ReadResultDto>
+    CommunicationKernel.EngineHost.Sdk.HostClient.RegisterRouteAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Int32 port, System.String station, System.String serialPort, System.Int32 baudRate, System.Int32 minIoIntervalMs, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto>
+    CommunicationKernel.EngineHost.Sdk.HostClient.RemoveRouteAsync(System.String routeId, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto>
+    CommunicationKernel.EngineHost.Sdk.HostClient.WatchRouteStatusAsync(System.String routeId, System.Func<CommunicationKernel.EngineHost.Sdk.RouteStatusDto, System.Threading.Tasks.Task> onStatus, System.Func<System.Threading.Tasks.Task> onDisconnected, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task
+    CommunicationKernel.EngineHost.Sdk.HostClient.WriteAsync(System.String routeId, System.String dataAddress, System.Byte[] data, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.WriteResultDto>
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult..ctor(CommunicationKernel.EngineHost.Sdk.HostOperationResult original)
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage)
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.HostOperationResult
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.EqualityContract { get; } -> System.Type
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.Equals(CommunicationKernel.EngineHost.Sdk.HostOperationResult other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.ErrorCode { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.ErrorMessage { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.Fail(System.String code, System.String message) -> CommunicationKernel.EngineHost.Sdk.HostOperationResult
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.Ok() -> CommunicationKernel.EngineHost.Sdk.HostOperationResult
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.PrintMembers(System.Text.StringBuilder builder) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.Success { get; set; } -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.HostOperationResult.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.IHostClient.HealthAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.HealthResultDto>
+    CommunicationKernel.EngineHost.Sdk.IHostClient.QueryProtocolsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto>>
+    CommunicationKernel.EngineHost.Sdk.IHostClient.QueryRoutesAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.EngineHost.Sdk.RouteDto>>
+    CommunicationKernel.EngineHost.Sdk.IHostClient.QuerySerialPortsAsync(System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<CommunicationKernel.EngineHost.Sdk.SerialPortDto>>
+    CommunicationKernel.EngineHost.Sdk.IHostClient.ReadAsync(System.String routeId, System.String address, System.Int32 length, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.ReadResultDto>
+    CommunicationKernel.EngineHost.Sdk.IHostClient.RegisterRouteAsync(System.String routeId, System.String protocolId, System.String transportKind, System.String address, System.Int32 port, System.String station, System.String serialPort, System.Int32 baudRate, System.Int32 minIoIntervalMs, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto>
+    CommunicationKernel.EngineHost.Sdk.IHostClient.RemoveRouteAsync(System.String routeId, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto>
+    CommunicationKernel.EngineHost.Sdk.IHostClient.WatchRouteStatusAsync(System.String routeId, System.Func<CommunicationKernel.EngineHost.Sdk.RouteStatusDto, System.Threading.Tasks.Task> onStatus, System.Func<System.Threading.Tasks.Task> onDisconnected, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task
+    CommunicationKernel.EngineHost.Sdk.IHostClient.WriteAsync(System.String routeId, System.String address, System.Byte[] data, System.Threading.CancellationToken ct) -> System.Threading.Tasks.Task<CommunicationKernel.EngineHost.Sdk.WriteResultDto>
+    CommunicationKernel.EngineHost.Sdk.JsonFileStore.Load(System.String path, System.String& error) -> System.Collections.Generic.List<T>
+    CommunicationKernel.EngineHost.Sdk.JsonFileStore.Save(System.String path, System.Collections.Generic.IEnumerable<T> items, System.String& error) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.JsonFileStore.SaveObject(System.String path, T value, System.String& error) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto..ctor(System.String ProtocolId, System.String DisplayName, System.Collections.Generic.IReadOnlyList<System.String> SupportedTransports, System.Boolean RequiresStation, System.String StationHint)
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.Deconstruct(System.String& ProtocolId, System.String& DisplayName, System.Collections.Generic.IReadOnlyList`1[[System.String, System.Private.CoreLib, Version=8.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]& SupportedTransports, System.Boolean& RequiresStation, System.String& StationHint) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.DefaultTransport { get; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.DisplayName { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.Equals(CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.ProtocolId { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.RequiresStation { get; set; } -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.StationHint { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.SupportedTransports { get; set; } -> System.Collections.Generic.IReadOnlyList<System.String>
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.Supports(System.String transportKind) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage, System.Byte[] Data)
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.ReadResultDto
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.Data { get; set; } -> System.Byte[]
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage, System.Byte[]& Data) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.EqualityContract { get; } -> System.Type
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.Equals(CommunicationKernel.EngineHost.Sdk.HostOperationResult other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.Equals(CommunicationKernel.EngineHost.Sdk.ReadResultDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.PrintMembers(System.Text.StringBuilder builder) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ReadResultDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.RegisterFailure.Classify(System.String errorCode) -> CommunicationKernel.EngineHost.Sdk.RegisterFailureKind
+    CommunicationKernel.EngineHost.Sdk.RegisterFailure.ShouldKeepConfiguration(System.String errorCode) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RegisterFailureKind.BadConfiguration : CommunicationKernel.EngineHost.Sdk.RegisterFailureKind
+    CommunicationKernel.EngineHost.Sdk.RegisterFailureKind.None : CommunicationKernel.EngineHost.Sdk.RegisterFailureKind
+    CommunicationKernel.EngineHost.Sdk.RegisterFailureKind.Unreachable : CommunicationKernel.EngineHost.Sdk.RegisterFailureKind
+    CommunicationKernel.EngineHost.Sdk.RegisterFailureKind.value__ : System.Int32
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage, System.String RouteId)
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage, System.String& RouteId) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.EqualityContract { get; } -> System.Type
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.Equals(CommunicationKernel.EngineHost.Sdk.HostOperationResult other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.Equals(CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.PrintMembers(System.Text.StringBuilder builder) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.RouteId { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage)
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.EqualityContract { get; } -> System.Type
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.Equals(CommunicationKernel.EngineHost.Sdk.HostOperationResult other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.Equals(CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.PrintMembers(System.Text.StringBuilder builder) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteDto..ctor(System.String RouteId, System.String ProtocolId, System.String TransportKind, System.String Address, System.Int32 Port, System.String Station, System.String SerialPort, System.Int32 BaudRate)
+    CommunicationKernel.EngineHost.Sdk.RouteDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.RouteDto
+    CommunicationKernel.EngineHost.Sdk.RouteDto.Address { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteDto.BaudRate { get; set; } -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.RouteDto.Deconstruct(System.String& RouteId, System.String& ProtocolId, System.String& TransportKind, System.String& Address, System.Int32& Port, System.String& Station, System.String& SerialPort, System.Int32& BaudRate) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.RouteDto.Equals(CommunicationKernel.EngineHost.Sdk.RouteDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RouteDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RouteDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.RouteDto.Port { get; set; } -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.RouteDto.ProtocolId { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteDto.RouteId { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteDto.SerialPort { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteDto.Station { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteDto.TransportKind { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteReconcileGate..ctor(System.TimeSpan minInterval, System.Func<System.DateTime> clock)
+    CommunicationKernel.EngineHost.Sdk.RouteReconcileGate.RunAsync(System.String routeId, System.Func<System.Threading.Tasks.Task<System.Boolean>> operation) -> System.Threading.Tasks.Task<System.Boolean>
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto..ctor(System.String RouteId, System.Boolean Online, System.String ErrorCode, System.String ErrorMessage, System.DateTime Timestamp)
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.RouteStatusDto
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.Deconstruct(System.String& RouteId, System.Boolean& Online, System.String& ErrorCode, System.String& ErrorMessage, System.DateTime& Timestamp) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.Equals(CommunicationKernel.EngineHost.Sdk.RouteStatusDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.ErrorCode { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.ErrorMessage { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.Online { get; set; } -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.RouteId { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.Timestamp { get; set; } -> System.DateTime
+    CommunicationKernel.EngineHost.Sdk.RouteStatusDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto..ctor(System.String PortName, System.String Description)
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.SerialPortDto
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.Deconstruct(System.String& PortName, System.String& Description) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.Description { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.Display { get; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.Equals(CommunicationKernel.EngineHost.Sdk.SerialPortDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.PortName { get; set; } -> System.String
+    CommunicationKernel.EngineHost.Sdk.SerialPortDto.ToString() -> System.String
+    CommunicationKernel.EngineHost.Sdk.ValueCodec.Decode(System.Byte[] data, System.String dataType, CommunicationKernel.EngineHost.Sdk.ByteOrder order) -> System.String
+    CommunicationKernel.EngineHost.Sdk.ValueCodec.DefaultLength(System.String dataType) -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.ValueCodec.IsVariableLength(System.String dataType) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ValueCodec.ParseOrder(System.String value) -> CommunicationKernel.EngineHost.Sdk.ByteOrder
+    CommunicationKernel.EngineHost.Sdk.ValueCodec.TryEncode(System.String text, System.String dataType, System.Int32 length, System.Byte[]& data, System.String& error, CommunicationKernel.EngineHost.Sdk.ByteOrder order) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.ValueCodec.TryEncodeValue(System.Object value, System.String dataType, System.Int32 length, System.Byte[]& data, System.String& error, CommunicationKernel.EngineHost.Sdk.ByteOrder order) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage)
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.<Clone>$() -> CommunicationKernel.EngineHost.Sdk.WriteResultDto
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.Deconstruct(System.Boolean& Success, System.String& ErrorCode, System.String& ErrorMessage) -> System.Void
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.EqualityContract { get; } -> System.Type
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.Equals(CommunicationKernel.EngineHost.Sdk.HostOperationResult other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.Equals(CommunicationKernel.EngineHost.Sdk.WriteResultDto other) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.GetHashCode() -> System.Int32
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.PrintMembers(System.Text.StringBuilder builder) -> System.Boolean
+    CommunicationKernel.EngineHost.Sdk.WriteResultDto.ToString() -> System.String
+class CommunicationKernel.EngineHost.Sdk.HostOperationResult
+class sealed CommunicationKernel.EngineHost.Sdk.HealthResultDto
+class sealed CommunicationKernel.EngineHost.Sdk.HostClient
+class sealed CommunicationKernel.EngineHost.Sdk.ProtocolDescriptorDto
+class sealed CommunicationKernel.EngineHost.Sdk.ReadResultDto
+class sealed CommunicationKernel.EngineHost.Sdk.RegisterRouteResultDto
+class sealed CommunicationKernel.EngineHost.Sdk.RemoveRouteResultDto
+class sealed CommunicationKernel.EngineHost.Sdk.RouteDto
+class sealed CommunicationKernel.EngineHost.Sdk.RouteReconcileGate
+class sealed CommunicationKernel.EngineHost.Sdk.RouteStatusDto
+class sealed CommunicationKernel.EngineHost.Sdk.SerialPortDto
+class sealed CommunicationKernel.EngineHost.Sdk.WriteResultDto
+class static CommunicationKernel.EngineHost.Sdk.JsonFileStore
+class static CommunicationKernel.EngineHost.Sdk.RegisterFailure
+class static CommunicationKernel.EngineHost.Sdk.ValueCodec
+enum CommunicationKernel.EngineHost.Sdk.ByteOrder
+enum CommunicationKernel.EngineHost.Sdk.RegisterFailureKind
+interface CommunicationKernel.EngineHost.Sdk.IHostClient

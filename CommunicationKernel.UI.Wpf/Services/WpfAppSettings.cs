@@ -3,7 +3,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/WpfAppSettings.cs
 // 层级: UI 层 — WPF
-// 作用: 解析 Host.App 地址。exe 旁 config 已保存的优先，否则用自己的 appsettings.json。
+// 作用: 解析 EngineHost.App 地址。exe 旁 config 已保存的优先，否则用自己的 appsettings.json。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -34,7 +34,7 @@ internal static class WpfAppSettings
         if (!string.IsNullOrWhiteSpace(saved))
             return saved.Trim();
 
-        string? fromConfig = config?["Host.App:Address"];
+        string? fromConfig = config?["EngineHost.App:Address"];
         if (!string.IsNullOrWhiteSpace(fromConfig))
             return fromConfig.Trim();
 

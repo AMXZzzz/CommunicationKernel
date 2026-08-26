@@ -2,7 +2,7 @@
 
 // -----------------------------------------------------------------------------
 // 文件: JsonFileStore.cs
-// 层级: 客户端层 — Host.Sdk 本地持久化辅助
+// 层级: 客户端层 — EngineHost.Sdk 本地持久化辅助
 // 作用: 把一份列表原子地读写到 JSON 文件，供各 UI 的本地配置库共用。
 //
 // 为什么收敛到这里:
@@ -27,7 +27,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
 
-namespace CommunicationKernel.Host.Sdk
+namespace CommunicationKernel.EngineHost.Sdk
 {
     /// <summary>
     /// 原子地把一份列表读写到 JSON 文件。所有方法都不抛异常。

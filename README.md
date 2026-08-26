@@ -16,8 +16,8 @@
 
 ## 两种形态
 
-- **形态 A（嵌入）**：你的程序直接引用 `Engine.Runtime`，本进程连 PLC。不用 `Host.App`，也不用 `Host.Sdk`。
-- **形态 B（独立宿主）**：现场跑 `Host.App`；上位机引用 `Host.Sdk`，通过 gRPC 远程读写。
+- **形态 A（嵌入）**：你的程序直接引用 `Engine.Runtime`，本进程连 PLC。不用 `EngineHost.App`，也不用 `EngineHost.Sdk`。
+- **形态 B（独立宿主）**：现场跑 `EngineHost.App`；上位机引用 `EngineHost.Sdk`，通过 gRPC 远程读写。
   多台上位机同时访问同一批 PLC **只能用形态 B**——形态 A 里每个进程各自持有串口/socket。
 
 跨机部署（树莓派当网关、办公室当上位机）走形态 B，步骤见 [部署文档](部署-Linux与树莓派.md)。
@@ -29,7 +29,7 @@
 
 ```
 L7  UI.Wpf / UI.WebMaster          只持有 route_id 与 SDK DTO
-L6  Host.Sdk / Host.App      唯一入口；Host.Sdk 零工程引用，UI 无法绕过它触达内部
+L6  EngineHost.Sdk / EngineHost.App      唯一入口；EngineHost.Sdk 零工程引用，UI 无法绕过它触达内部
 L5  Engine.Runtime           路由生命周期、轮询、链路巡检、单次重连
 L4  Engine.Router            路由表 + 同键读合并；读写互斥在 RouteEntry 独占门
 L3  Plugin.Loader            ALC 隔离加载，只认 Core.Abstractions
@@ -49,8 +49,8 @@ L0  Core.Abstractions        契约根，零工程引用
 | `Plugin.Loader` | 插件发现、校验、隔离加载 |
 | `Engine.Router` | 路由表、读合并、`RouteEntry` 独占 I/O 门控 |
 | `Engine.Runtime` | 通讯内核库（形态 A 直接用） |
-| `Host.App` | 现场进程：托管 Runtime + gRPC（形态 B） |
-| `Host.Sdk` | 连 Host.App 的客户端库；含两个 UI 共用的 `ValueCodec` 与 `JsonFileStore` |
+| `EngineHost.App` | 现场进程：托管 Runtime + gRPC（形态 B） |
+| `EngineHost.Sdk` | 连 EngineHost.App 的客户端库；含两个 UI 共用的 `ValueCodec` 与 `JsonFileStore` |
 | `Plugins.Protocol.*` | Modbus / Panasonic MEWTOCOL / Siemens S7 |
 | `Plugins.Transport.*` | Tcp / SerialPort（`TransportKind` 枚举另有 Wifi/Bluetooth，尚无插件） |
 | `UI.Wpf` / `UI.WebMaster` | 上位机界面，职责对称（见下） |
@@ -86,7 +86,7 @@ Panasonic **没有** `panasonic-mewtocol-tcp` 这个 ID——TCP 与串口共用
 |---|---|
 | 引擎 / 传输 | `SerialPortInfo` |
 | gRPC 线上契约 | `SerialPortDescriptor` |
-| Host.Sdk / UI | `SerialPortDto` |
+| EngineHost.Sdk / UI | `SerialPortDto` |
 
 ## 两个 UI 的职责划分
 
@@ -99,7 +99,7 @@ Panasonic **没有** `panasonic-mewtocol-tcp` 这个 ID——TCP 与串口共用
 | 变量读写 | `IVariableService` | `IWebVariableService` |
 | 本地持久化 | `devices.json` / `variables.json` | `web-devices.json` / `web-variables.json` |
 | Host 地址 | 本 exe 旁 `config/settings.json`（WPF / Web 各一份） | 同左，互不影响 |
-| 落盘实现 | 设备/变量走 `Host.Sdk.JsonFileStore`（原子替换） | 三个 Store 均走 `JsonFileStore` |
+| 落盘实现 | 设备/变量走 `EngineHost.Sdk.JsonFileStore`（原子替换） | 三个 Store 均走 `JsonFileStore` |
 
 两端**添加设备都先写本地配置**，PLC 未上电也能录。真正建链是 `RegisterRoute`（内部会 `ConnectAsync`，失败则整条路由不入表）：
 
@@ -113,7 +113,7 @@ WPF 变量编解码目前固定 `ABCD`，尚无按设备配置的界面。
 
 ## Web 上位机（UI.WebMaster）
 
-Blazor Server 操作员客户端。只持有 `route_id` 与 Host.Sdk DTO，不解析协议：
+Blazor Server 操作员客户端。只持有 `route_id` 与 EngineHost.Sdk DTO，不解析协议：
 
 | 页 | 路由 | 数据来源 |
 |---|---|---|
@@ -133,10 +133,10 @@ dotnet run --project CommunicationKernel.UI.WebMaster
 默认听 `http://0.0.0.0:64000`：本机浏览器打开 `http://localhost:64000`，
 同一 WiFi 的手机打开 `http://<电脑IP>:64000`（启动日志会打印这条地址）。
 端口可在系统设置页改，写入本 exe 旁 `config/web-listen.json`，
-重启 Web 后生效；不能改成 `5000`（那是 Host.App）。
-Host.App 仍绑本机 `:5000`，不用改。双击 exe 同样生效，不必加 `--urls`。
+重启 Web 后生效；不能改成 `5000`（那是 EngineHost.App）。
+EngineHost.App 仍绑本机 `:5000`，不用改。双击 exe 同样生效，不必加 `--urls`。
 
-默认连 `http://localhost:5000`（`appsettings.json` 的 `Host.App:Address`，
+默认连 `http://localhost:5000`（`appsettings.json` 的 `EngineHost.App:Address`，
 可被本 exe 旁 `config/settings.json` 覆盖）。
 
 ## WPF 上位机（UI.Wpf）
@@ -147,15 +147,15 @@ Host.App 仍绑本机 `:5000`，不用改。双击 exe 同样生效，不必加 
 dotnet run --project CommunicationKernel.UI.Wpf
 ```
 
-同样默认连 `http://localhost:5000`，出厂值在本项目 `appsettings.json` 的 `Host.App:Address`。
+同样默认连 `http://localhost:5000`，出厂值在本项目 `appsettings.json` 的 `EngineHost.App:Address`。
 系统设置里保存的地址写入本 exe 旁 `config/settings.json`，与 Web 互不影响，优先于 appsettings。
 
 ## 运行宿主（形态 B）
 
-必须先起 Host.App，上位机才有东西可连：
+必须先起 EngineHost.App，上位机才有东西可连：
 
 ```bash
-dotnet run --project CommunicationKernel.Host.App
+dotnet run --project CommunicationKernel.EngineHost.App
 ```
 
 默认绑 `http://localhost:5000`、明文 HTTP/2。浏览器打开该地址会失败，**这是正常的**
@@ -179,7 +179,7 @@ dotnet test CommunicationKernel.Tests -c Release
 `TreatWarningsAsErrors=true`，带警告即构建失败。WPF 只能在 Windows 上构建；
 Linux CI 跑的是不含 WPF 的子集，见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。
 
-改动 `Host.Sdk` 或 `Engine.Runtime` 的公共 API 会让 `PublicApiSurfaceTests` 失败并列出增删的成员。
+改动 `EngineHost.Sdk` 或 `Engine.Runtime` 的公共 API 会让 `PublicApiSurfaceTests` 失败并列出增删的成员。
 确认是有意变更后更新基线，并把 diff 一并提交：
 
 ```bash

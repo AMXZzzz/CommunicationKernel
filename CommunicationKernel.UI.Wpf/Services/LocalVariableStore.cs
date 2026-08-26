@@ -14,7 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.EngineHost.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Models;
@@ -195,7 +195,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>
         /// 向 PLC 写入指定变量的值。
         /// 根据变量的 DataType 将 value 序列化为字节数组（大端序），
-        /// 然后通过 gRPC WriteAsync 发送到 Host.App。
+        /// 然后通过 gRPC WriteAsync 发送到 EngineHost.App。
         /// </summary>
         /// <param name="id">目标变量的 Id。</param>
         /// <param name="value">要写入的值，类型应与变量 DataType 匹配。</param>

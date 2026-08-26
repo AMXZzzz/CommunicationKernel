@@ -15,7 +15,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.EngineHost.Sdk;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Logging;
 using CommunicationKernel.UI.Wpf.Core.Models;

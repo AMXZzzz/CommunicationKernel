@@ -19,7 +19,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using CommunicationKernel.Host.Sdk;
+using CommunicationKernel.EngineHost.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 

@@ -197,7 +197,7 @@
                                           IsEditable="True"
                                           FontFamily="Consolas"
                                           SelectionChanged="OnSerialPortSelected"
-                                          ToolTip="下拉项来自 Host.App 所在机器（Windows 形如 COM3，树莓派形如 /dev/ttyUSB0）；也可直接输入"/>
+                                          ToolTip="下拉项来自 EngineHost.App 所在机器（Windows 形如 COM3，树莓派形如 /dev/ttyUSB0）；也可直接输入"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Margin="0,0,0,4">

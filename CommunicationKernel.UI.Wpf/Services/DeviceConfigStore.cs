@@ -6,7 +6,7 @@
 // 作用: 把设备配置持久化到磁盘，作为上位机侧的唯一事实来源，供路由对账恢复。
 //
 // 为什么需要它：
-//   Host.App 的路由是纯内存对象，进程重启即全部丢失。此前上位机没有任何
+//   EngineHost.App 的路由是纯内存对象，进程重启即全部丢失。此前上位机没有任何
 //   本地留存，于是宿主一重启：
 //     · Load() 发现服务端没有这些路由，把本地设备列表整个清空；
 //     · 已配置的变量继续对着不存在的路由轮询，永远收到 RouteNotFound；
@@ -177,7 +177,7 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         /// <summary>从磁盘载入；文件缺失或损坏时以空配置起步，不抛异常。</summary>
         /// <remarks>
-        /// 落盘细节在 Host.Sdk 的 <see cref="JsonFileStore"/> 里，与 Web 端共用同一份实现。
+        /// 落盘细节在 EngineHost.Sdk 的 <see cref="JsonFileStore"/> 里，与 Web 端共用同一份实现。
         /// 收敛的直接起因：Web 端此前是非原子写，掉电会丢掉整份设备配置，
         /// 而 WPF 这边一直是对的——同样的代码写两遍，只有一遍带防护。
         /// </remarks>

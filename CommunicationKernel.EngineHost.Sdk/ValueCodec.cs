@@ -3,7 +3,7 @@
 // 层级: 客户端层 — 所有 UI 共用
 // 作用: 变量字节 ↔ 显示文本。UI 不做协议解析，只按操作员选定的数据类型与字节序换算。
 //
-// 为什么放在 Host.Sdk 而不是各 UI 各写一份：
+// 为什么放在 EngineHost.Sdk 而不是各 UI 各写一份：
 //   字节序换算是纯粹的数值逻辑，与界面框架无关，但错了就是「写下去的数不对」。
 //   Web 端曾单独实现过一份，用 BitConverter 直接编解码（x86 即小端），
 //   写 8 进 PLC 变成 2048；WPF 那份是手写大端、恰好正确。
@@ -14,7 +14,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace CommunicationKernel.Host.Sdk;
+namespace CommunicationKernel.EngineHost.Sdk;
 
 /// <summary>
 /// 多字节数值在寄存器里的排列方式。
