@@ -16,10 +16,10 @@
 
 ## 两种形态
 
-- **形态 A（嵌入）**：本进程引用 `Core.EngineRuntime` 直连 PLC。`UI.WebMaster` 已是这种形态，不必再开 `Hosting.App`。
-- **形态 B（独立宿主）**：现场跑 `Hosting.App`；上位机引用 `Hosting.Sdk`，通过 gRPC 远程读写。
-  多台上位机同时访问同一批 PLC **只能用形态 B**——形态 A 里每个进程各自持有串口/socket。
-  本机同时只能有一份 `Core.EngineRuntime`：WebMaster 与 Hosting.App 互斥，开着一个就不要开另一个。
+- **形态 A（嵌入）**：`UI.WebMaster` 把 `Hosting.App` 带进同一进程（Blazor :64000 + gRPC :5000）。UI 仍走 `Hosting.Sdk` 连 `127.0.0.1:5000`，以后要拆开只改地址。不必再开独立的 `Hosting.App.exe`。
+- **形态 B（独立宿主）**：现场只跑 `Hosting.App`；上位机（WPF / 拆开后的 Web）引用 `Hosting.Sdk`，通过 gRPC 远程读写。
+  多台上位机同时访问同一批 PLC **只能用形态 B**——形态 A 里引擎在 WebMaster 进程内。
+  本机同时只能有一份宿主：开着 WebMaster 就不要再开 `Hosting.App.exe`。
 
 跨机部署（树莓派当网关、办公室当上位机）走形态 B，步骤见 [部署文档](部署-Linux与树莓派.md)。
 
@@ -122,11 +122,11 @@ Blazor Server 操作员客户端。只持有 `route_id` 与 Hosting.Sdk DTO，�
 | 设备管理 | `/devices` | `IWebDeviceService`：`QueryProtocols` / `QuerySerialPorts` / `Connect` / `Disconnect` |
 | 变量配置 | `/variables` | 本地 `web-variables.json` + `IWebVariableService` 的 `Read` / `Write` |
 | 通讯日志 | `/log` | 进程内 `AppLogStore` |
-| 系统设置 | `/settings` | Web 监听端口；引擎已内嵌本进程 |
+| 系统设置 | `/settings` | Web 监听端口；本进程已带 Hosting.App |
 
 进程内单例 `EngineSession`：5 秒健康检查、全站一条状态流、按 `web-devices.json` 对账。
-**形态 A**：WebMaster 本进程持有 `EngineRuntime` 和 `plugins/`，不必再启动 `Hosting.App`。
-WPF 远端 / 树莓派场景仍用独立的 `Hosting.App`。
+**形态 A**：WebMaster 本进程带上 `Hosting.App`（Blazor :64000 + gRPC :5000），UI 经 `Hosting.Sdk` 连回环。不必再开独立 exe。
+WPF 可直接连本机 `http://localhost:5000`。树莓派无界面仍用独立的 `Hosting.App`。
 Windows 下双击 exe 驻留在右下角托盘：关浏览器不会退出。托盘右键可打开界面、查看日志、退出。
 再双击一次 exe 会唤出已在跑的实例，而不是再起一份。Visual Studio 按 Windows 应用启动，不再配控制台黑框。已有终端里 `dotnet run` 时日志仍打到该终端（那是你自己开的窗口）。
 
@@ -137,8 +137,8 @@ dotnet run --project CommunicationKernel.UI.WebMaster
 默认听 `http://0.0.0.0:64000`：本机浏览器打开 `http://localhost:64000`，
 同一 WiFi 的手机打开 `http://<电脑IP>:64000`（启动日志会打印这条地址）。
 端口可在系统设置页改，写入本 exe 旁 `config/web-listen.json`，
-重启 Web 后生效；不要改成 `5000`（留给独立宿主 Hosting.App / WPF）。
-双击 exe 同样生效，不必加 `--urls`，也不必先起 Hosting.App。
+重启 Web 后生效；不要改成 `5000`（本进程 gRPC / WPF 用这个口）。
+双击 exe 同样生效，不必加 `--urls`，也不必先起 Hosting.App.exe。
 
 ## WPF 上位机（UI.Wpf）
 
@@ -153,7 +153,8 @@ dotnet run --project CommunicationKernel.UI.Wpf
 
 ## 运行宿主（形态 B）
 
-必须先起 Hosting.App，上位机才有东西可连：
+本机已经开着 WebMaster 时**不要**再开 Hosting.App.exe（同一份引擎、同一 :5000）。
+树莓派 / 无界面现场才单独起：
 
 ```bash
 dotnet run --project CommunicationKernel.Hosting.App

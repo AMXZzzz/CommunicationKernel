@@ -3,7 +3,7 @@
 // 层级: UI 层 — Web 服务
 // 作用: 设备的连接/断开/注销与宿主侧清单查询，是 Blazor 页面唯一的设备操作入口。
 // 调用链:
-//   DevicesPage.razor → IWebDeviceService → IHostingClient → 本进程 EngineRuntime
+//   DevicesPage.razor → IWebDeviceService → IHostingClient → 本进程 Hosting.App
 //
 // 为什么要有这个类:
 //   Web 端此前没有任何设备服务抽象，DevicesPage.razor 直接持有 Session.Client

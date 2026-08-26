@@ -6,11 +6,12 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using CommunicationKernel.Hosting.App;
 using CommunicationKernel.Hosting.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
 
-/// <summary>Web UI 对内嵌 EngineRuntime 的会话门面。单例 + IHostedService。</summary>
+/// <summary>Web UI 对内嵌 Hosting.App 的会话门面。经 HostingClient 连本进程 gRPC。</summary>
 public sealed class EngineSession : IHostedService, IAsyncDisposable
 {
     /// <summary>框架日志器，记录会话循环自身的异常。</summary>
@@ -32,7 +33,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// </remarks>
     private readonly ConcurrentDictionary<string, RouteStatusDto> _status = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>当前通讯客户端。内嵌引擎时整进程一份，不会替换。</summary>
+    /// <summary>当前通讯客户端。连本进程 Hosting.App 的 gRPC。</summary>
     private readonly IHostingClient _client;
 
     /// <summary>保护 <see cref="_routes"/> 引用替换的锁。</summary>
@@ -65,19 +66,20 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
         IHostingClient client,
         ILogger<EngineSession> logger,
         WebDeviceStore devices,
-        AppLogStore log)
+        AppLogStore log,
+        IConfiguration config)
     {
         _client = client;
         _logger = logger;
         _devices = devices;
         _log = log;
-        Address = "in-process";
+        Address = "http://127.0.0.1:" + config.GetValue("Hosting:GrpcPort", HostingComposition.DefaultGrpcPort);
     }
 
     /// <summary>当前通讯客户端。每次经本属性取用。</summary>
     public IHostingClient Client => _client;
 
-    /// <summary>固定为进程内引擎，不再指向远端 gRPC 地址。</summary>
+    /// <summary>本进程 Hosting.App 的回环地址。</summary>
     public string Address { get; }
 
     /// <summary>内嵌引擎是否就绪。由健康循环维护。</summary>
@@ -151,7 +153,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
         _ = Task.Run(() => HealthLoopAsync(ct), ct);
         _ = Task.Run(() => WatchLoopAsync(ct), ct);
 
-        _log.Info("Host", "会话已启动，本进程内嵌 EngineRuntime");
+        _log.Info("Host", "会话已启动，Hosting.App 内嵌于本进程 " + Address);
         return Task.CompletedTask;
     }
 
@@ -199,15 +201,15 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
         }
     }
 
-    /// <summary>内嵌引擎不切换远端地址；保留方法以免设置页旧调用编译不过。</summary>
+    /// <summary>本进程宿主不切换远端地址；拆开部署时改 HostingClient 目标即可。</summary>
     public Task SwitchAddressAsync(string address, CancellationToken ct = default)
     {
         _ = address;
-        _log.Info("Host", "本进程已内嵌引擎，忽略地址切换");
+        _log.Info("Host", "宿主已内嵌本进程，忽略地址切换");
         return ProbeAsync(ct);
     }
 
-    /// <summary>探测即本进程引擎健康检查，不再另开 gRPC 通道。</summary>
+    /// <summary>探测本进程 Hosting.App。</summary>
     public Task<HealthResultDto> ProbeAddressAsync(
         string address,
         CancellationToken ct = default)
@@ -240,7 +242,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
         Online = ok;
         HostVersion = ok ? version : "--";
         RouteCount = count;
-        LastError = ok ? string.Empty : "内嵌引擎无响应";
+        LastError = ok ? string.Empty : "本进程宿主无响应";
 
         if (ok && !wasOnline)
             // 刚恢复：按本地配置补注册所有设备
