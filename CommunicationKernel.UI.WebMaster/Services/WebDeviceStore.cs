@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/WebDeviceStore.cs
 // 层级: UI 层 — Blazor Server
-// 作用: 持久化设备注册参数。EngineHost.App 路由是内存态，重启即丢，必须由上位机留底。
+// 作用: 持久化设备注册参数。EngineHostingServiceApp 路由是内存态，重启即丢，必须由上位机留底。
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
@@ -75,7 +75,7 @@ public sealed class WebDeviceRecord
 
 /// <summary>设备配置磁盘镜像。线程安全。</summary>
 /// <remarks>
-/// 单例。EngineHost.App 的路由表是内存态，宿主重启即清空，
+/// 单例。EngineHostingServiceApp 的路由表是内存态，宿主重启即清空，
 /// 因此"有哪些设备、参数是什么"必须由上位机留底，
 /// 宿主恢复后再由 <see cref="HostSession"/> 按本表对账重新注册。
 /// </remarks>

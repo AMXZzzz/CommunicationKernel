@@ -14,7 +14,7 @@
   - [怎么选](#怎么选)
 - [形态 A：把内核当 SDK 嵌进上位机](#形态-a把内核当-sdk-嵌进上位机)
   - [发布](#发布)
-- [形态 B：独立宿主 EngineHost.App](#形态-b独立宿主-enginehostapp)
+- [形态 B：独立宿主 EngineHostingServiceApp](#形态-b独立宿主-enginehostingserviceapp)
   - [产物结构](#产物结构)
 - [实战走查：树莓派当现场网关，远端电脑当上位机](#实战走查树莓派当现场网关远端电脑当上位机)
   - [第 1 步：发布、传输、安装到树莓派](#第-1-步发布传输安装到树莓派)
@@ -44,10 +44,10 @@
 | | 形态 A：SDK 嵌入 | 形态 B：独立宿主 |
 |---|---|---|
 | 上位机在哪 | 与 PLC 通讯的同一台机器 | 另一台机器 |
-| 进程数 | 1（上位机自己直连 PLC） | 2（上位机 + EngineHost.App） |
+| 进程数 | 1（上位机自己直连 PLC） | 2（上位机 + EngineHostingServiceApp） |
 | 通讯方式 | 进程内直接调用 | gRPC over HTTP/2 |
 | 插件目录 | 不需要 | 需要 |
-| 协议解析发生在 | 上位机进程内 | **EngineHost.App 所在机器** |
+| 协议解析发生在 | 上位机进程内 | **EngineHostingServiceApp 所在机器** |
 | 典型场景 | 树莓派上跑控制程序直连 PLC | 现场网关 + 远端上位机 |
 
 ### 怎么选
@@ -55,7 +55,7 @@
 用一句话判断：**跑界面的那台机器，是不是就是接 PLC 那台？**
 
 - **是** → 形态 A，往下读 [形态 A](#形态-a把内核当-sdk-嵌进上位机)。
-  树莓派上跑一个控制程序直连 PLC，不需要 EngineHost.App，也不需要 gRPC。
+  树莓派上跑一个控制程序直连 PLC，不需要 EngineHostingServiceApp，也不需要 gRPC。
 - **不是** → 形态 B，直接看 [实战走查](#实战走查树莓派当现场网关远端电脑当上位机)。
   最典型的就是「树莓派在车间接 PLC，人在办公室用电脑看」。
 
@@ -66,7 +66,7 @@
 
 ## 形态 A：把内核当 SDK 嵌进上位机
 
-树莓派直连 PLC 时不需要 EngineHost.App，也不需要 gRPC——多一个进程和一趟本机
+树莓派直连 PLC 时不需要 EngineHostingServiceApp，也不需要 gRPC——多一个进程和一趟本机
 网络往返，只会增加故障面。直接引用 `CommunicationKernel.Engine.Runtime`，
 用 `StaticRouteAssemblyService` 在编译期交出工厂即可。
 
@@ -118,10 +118,10 @@ dotnet publish YourApp.csproj -c Release -r linux-arm64 --self-contained true -o
 
 ---
 
-## 形态 B：独立宿主 EngineHost.App
+## 形态 B：独立宿主 EngineHostingServiceApp
 
 ```bash
-dotnet publish CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost.App.csproj \
+dotnet publish CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj \
   -c Release -r linux-arm64 --self-contained true -o ./publish/linux-arm64
 ```
 
@@ -132,7 +132,7 @@ dotnet publish CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost
 
 ```
 publish/linux-arm64/
-├── CommunicationKernel.EngineHost.App          # 可执行 apphost
+├── CommunicationKernel.EngineHostingServiceApp          # 可执行 apphost
 ├── appsettings.json
 ├── CommunicationKernel.Core.Abstractions.dll        ┐
 ├── CommunicationKernel.Communication.Protocol.dll   │ 四个共享契约
@@ -163,7 +163,7 @@ publish/linux-arm64/
 ```
    车间（树莓派）                          办公室 / 中控室（Windows PC）
 ┌───────────────────────────┐          ┌──────────────────────────────┐
-│ EngineHost.App                  │          │ UI.Wpf  或  UI.WebMaster           │
+│ EngineHostingServiceApp   │          │ UI.Wpf  或  UI.WebMaster           │
 │  ├─ plugins/ 协议与传输   │◄────────►│  └─ EngineHost.Sdk (HostClient)    │
 │  └─ Kestrel :5000 (h2c)   │  gRPC    │                              │
 └──────────┬────────────────┘  HTTP/2  └──────────────────────────────┘
@@ -188,22 +188,22 @@ PC 侧只有 `EngineHost.Sdk`，收发的是 `route_id` 和字节，不认识任
 
 #### 1.1 发布（在开发机上，不是在树莓派上编译）
 
-VS 里：右键 `CommunicationKernel.EngineHost.App` → 发布 → 选「树莓派-linux-arm64」→ 发布。
+VS 里：右键 `CommunicationKernel.EngineHostingServiceApp` → 发布 → 选「树莓派-linux-arm64」→ 发布。
 32 位系统改选「树莓派-linux-arm」（`Properties/PublishProfiles/` 里两份都有）。
 
 命令行等价写法：
 
 ```bash
-dotnet publish CommunicationKernel.EngineHost.App/CommunicationKernel.EngineHost.App.csproj -c Release -r linux-arm64 --self-contained true
+dotnet publish CommunicationKernel.EngineHostingServiceApp/CommunicationKernel.EngineHostingServiceApp.csproj -c Release -r linux-arm64 --self-contained true
 ```
 
-产物在 `CommunicationKernel.EngineHost.App\bin\Release\net8.0\linux-arm64\publish\`,
+产物在 `CommunicationKernel.EngineHostingServiceApp\bin\Release\net8.0\linux-arm64\publish\`,
 约 107 MB（自包含运行时占绝大部分）。
 
 **传之前先确认插件在**，这一步漏了的表现是「协议列表是空的」：
 
 ```bash
-ls CommunicationKernel.EngineHost.App/bin/Release/net8.0/linux-arm64/publish/plugins/
+ls CommunicationKernel.EngineHostingServiceApp/bin/Release/net8.0/linux-arm64/publish/plugins/
 ```
 
 应当看到 5 个插件 DLL（Modbus / Panasonic / Siemens.S7 / Tcp / SerialPort）。同时确认**四个共享契约在主目录、不在 `plugins/` 下**——
@@ -218,7 +218,7 @@ ls CommunicationKernel.EngineHost.App/bin/Release/net8.0/linux-arm64/publish/plu
 **方式一：PowerShell 里直接 scp**（Windows 10/11 自带 OpenSSH 客户端，无需装任何东西）
 
 ```powershell
-scp -r "CommunicationKernel.EngineHost.App\bin\Release\net8.0\linux-arm64\publish\*" pi@192.168.1.50:/tmp/ck-new
+scp -r "CommunicationKernel.EngineHostingServiceApp\bin\Release\net8.0\linux-arm64\publish\*" pi@192.168.1.50:/tmp/ck-new
 ```
 
 传之前先在树莓派上建好中转目录：
@@ -238,7 +238,7 @@ mkdir -p /tmp/ck-new
 sudo mkdir -p /opt/communication-kernel
 sudo cp -r /tmp/ck-new/* /opt/communication-kernel/
 sudo chown -R pi:pi /opt/communication-kernel
-sudo chmod +x /opt/communication-kernel/CommunicationKernel.EngineHost.App
+sudo chmod +x /opt/communication-kernel/CommunicationKernel.EngineHostingServiceApp
 rm -rf /tmp/ck-new
 ```
 
@@ -257,7 +257,7 @@ sudo usermod -aG dialout pi
 装成服务之前先前台跑一次，有问题时错误直接打在屏幕上：
 
 ```bash
-cd /opt/communication-kernel && ./CommunicationKernel.EngineHost.App
+cd /opt/communication-kernel && ./CommunicationKernel.EngineHostingServiceApp
 ```
 
 看到 `Now listening on:` 和 `已加载 N 个协议` 就说明装对了，`Ctrl+C` 停掉，继续第 2 步。
@@ -297,7 +297,7 @@ ping <树莓派IP>
 
 ### 第 4 步：装成 systemd 服务
 
-现场设备会断电重启，手动 `./CommunicationKernel.EngineHost.App` 起的进程活不过一次停电。
+现场设备会断电重启，手动 `./CommunicationKernel.EngineHostingServiceApp` 起的进程活不过一次停电。
 服务单元见下面「systemd 服务」一节，装完：
 
 ```bash
@@ -320,7 +320,7 @@ Web 与 WPF 各有一份自己的配置，互不影响。保存后写在**该 ex
 （例如 `config/settings.json`）。也可以不改界面，直接改该项目的 `appsettings.json`：
 
 ```json
-"EngineHost.App": { "Address": "http://192.168.1.50:5000" }
+"EngineHostingServiceApp": { "Address": "http://192.168.1.50:5000" }
 ```
 
 ### 第 6 步：配设备时注意「串口是谁的串口」
@@ -368,7 +368,7 @@ Web 与 WPF 各有一份自己的配置，互不影响。保存后写在**该 ex
 
 > **别把上位机装到树莓派上再远程桌面过去。** 那等于让树莓派同时跑
 > 桌面环境、浏览器和通讯宿主，CPU 与内存都吃紧，通讯时序首先受影响。
-> 树莓派只跑 EngineHost.App，界面留在 PC 上——这正是形态 B 的意义。
+> 树莓派只跑 EngineHostingServiceApp，界面留在 PC 上——这正是形态 B 的意义。
 
 
 ## 串口权限
@@ -442,7 +442,7 @@ TLS ALPN 可供协议协商——Kestrel 在明文上同时配 `Http1AndHttp2` �
 也可以不改文件，用环境变量覆盖：
 
 ```bash
-Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:5000 ./CommunicationKernel.EngineHost.App
+Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:5000 ./CommunicationKernel.EngineHostingServiceApp
 ```
 
 > **gRPC 端点没有任何认证与授权。** 能建立连接就能注册路由、读写 PLC 寄存器。
@@ -459,7 +459,7 @@ Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:5000 ./CommunicationKernel.EngineHo
 
 ```ini
 [Unit]
-Description=CommunicationKernel EngineHost.App
+Description=CommunicationKernel EngineHostingServiceApp
 # network-online 而非 network：仅 network 只保证网络栈起来了，
 # 不保证拿到地址，绑定固定 IP 时会启动失败
 After=network-online.target
@@ -470,7 +470,7 @@ Wants=network-online.target
 # 不会发送就绪通知，用 notify 会让 systemd 一直等到超时判定启动失败
 Type=simple
 WorkingDirectory=/opt/communication-kernel
-ExecStart=/opt/communication-kernel/CommunicationKernel.EngineHost.App
+ExecStart=/opt/communication-kernel/CommunicationKernel.EngineHostingServiceApp
 Restart=always
 RestartSec=5
 
@@ -522,7 +522,7 @@ sudo mv /opt/communication-kernel /opt/communication-kernel.bak
 sudo mkdir -p /opt/communication-kernel
 sudo cp -r /tmp/ck-new/* /opt/communication-kernel/
 sudo chown -R pi:pi /opt/communication-kernel
-sudo chmod +x /opt/communication-kernel/CommunicationKernel.EngineHost.App
+sudo chmod +x /opt/communication-kernel/CommunicationKernel.EngineHostingServiceApp
 sudo systemctl start communication-kernel
 ```
 
@@ -556,7 +556,7 @@ sudo rm -rf /opt/communication-kernel.bak
 
 **不在树莓派上。** 设备清单、变量表、字节序这些都存在**上位机**本地
 （该 exe 旁边的 `config/` 目录），
-树莓派上的 EngineHost.App 只持有内存态的路由表。
+树莓派上的 EngineHostingServiceApp 只持有内存态的路由表。
 
 因此：
 
@@ -582,7 +582,7 @@ sudo rm -rf /opt/communication-kernel
 启动日志里必然有这一行，先看它：
 
 ```
-info: EngineHost.App.Startup[0]
+info: EngineHostingServiceApp.Startup[0]
       已加载 6 个协议：modbus-ascii, modbus-rtu, modbus-tcp, panasonic-mewtocol, siemens-s7-1200, siemens-s7-200smart
 ```
 

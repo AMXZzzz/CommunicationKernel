@@ -6,7 +6,7 @@
 // 作用: 封装所有 gRPC 调用，为 ViewModel 提供强类型异步方法。
 //       所有网络 I/O 均在此类完成，ViewModel 无需感知 Protobuf 细节。
 // 调用链:
-//   UI（WPF / Blazor / 其他）→ HostClient → gRPC Channel → EngineHost.App
+//   UI（WPF / Blazor / 其他）→ HostClient → gRPC Channel → EngineHostingServiceApp
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.EngineHost.Grpc.V1;   // 由 Grpc.Tools 从 .proto 生成
@@ -319,7 +319,7 @@ public sealed class HostClient : IHostClient {
     // ============================================================================
 
     /// <summary>
-    /// 向 EngineHost.App 注销路由，停止对应的 PLC 连接。
+    /// 向 EngineHostingServiceApp 注销路由，停止对应的 PLC 连接。
     /// 结果以 <see cref="RemoveRouteResultDto"/> 返回；
     /// 服务端尚未实现时（Unimplemented）视为成功，由调用方在本地删除。
     /// </summary>
@@ -346,7 +346,7 @@ public sealed class HostClient : IHostClient {
             // 界面与实际状态从此不一致，且该 RouteId 再也无法重新注册。
             _logger.LogError("RemoveRoute 未被服务端实现: {RouteId}", routeId);
             return new RemoveRouteResultDto(false, "UNIMPLEMENTED",
-                "服务端不支持删除路由，请升级 EngineHost.App 后重试");
+                "服务端不支持删除路由，请升级 EngineHostingServiceApp 后重试");
         }
         catch (RpcException ex) {
             // 传输层失败：返回 RPC_ERROR，由 UI 决定是否重试
@@ -360,7 +360,7 @@ public sealed class HostClient : IHostClient {
     // ============================================================================
 
     /// <summary>
-    /// 查询 EngineHost.App 已加载的协议插件描述符列表。
+    /// 查询 EngineHostingServiceApp 已加载的协议插件描述符列表。
     /// 服务端未实现（Unimplemented）或不可达时返回空列表，
     /// 调用方应回退到本地兜底列表以保证离线状态下界面仍可操作。
     /// </summary>

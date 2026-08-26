@@ -3,7 +3,7 @@
   <!-- ========================================================================
        文件: CommunicationKernel.UI.Wpf.csproj
        层级: UI 层 — WPF 桌面客户端
-       作用: 通过 gRPC 连接 EngineHost.App，提供桌面端监控与配置界面。
+       作用: 通过 gRPC 连接 EngineHostingServiceApp，提供桌面端监控与配置界面。
        依赖: Grpc.Net.Client + Google.Protobuf + Grpc.Tools（生成客户端 stub）
        ======================================================================== -->
 

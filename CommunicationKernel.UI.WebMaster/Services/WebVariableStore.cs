@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/WebVariableStore.cs
 // 层级: UI 层 — Blazor Server
-// 作用: 持久化变量定义。变量是上位机配置，不属于 EngineHost.App。
+// 作用: 持久化变量定义。变量是上位机配置，不属于 EngineHostingServiceApp。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.EngineHost.Sdk;

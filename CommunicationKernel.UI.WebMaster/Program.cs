@@ -66,7 +66,7 @@ catch
 showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, TrayHost.ShowEventName);
 EventWaitHandle showSignal = showEvent;
 
-// EngineHost.App 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
+// EngineHostingServiceApp 固定听 :5000。ASP.NET Core 在没写监听地址时也默认 :5000，
 // 而且 Visual Studio / 上次跑宿主时可能把 ASPNETCORE_URLS 留在环境里。
 string? inheritedUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
 if (!string.IsNullOrWhiteSpace(inheritedUrls) && LanAccess.ContainsPort(inheritedUrls, WebSettingsStore.HostPort))
@@ -156,7 +156,7 @@ WebApplication app = builder.Build();
 
 {
     ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Engine.Startup");
-    // 立刻构造引擎：本机已有 EngineHost.App / 另一份 WebMaster 时，现在就失败并弹框
+    // 立刻构造引擎：本机已有 EngineHostingServiceApp / 另一份 WebMaster 时，现在就失败并弹框
     _ = app.Services.GetRequiredService<EngineRuntime>();
     IRouteAssemblyService assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
     var protocols = assemblyService.GetAvailableProtocols();
@@ -315,8 +315,8 @@ static void ReportStartupFailure(Exception ex)
         || ex.Message.Contains("Address already in use", StringComparison.OrdinalIgnoreCase))
     {
         extra =
-            "端口 5000 是 EngineHost.App 的，Web 上位机应使用 64000。\n" +
-            "请确认 EngineHost.App 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
+            "端口 5000 是 EngineHostingServiceApp 的，Web 上位机应使用 64000。\n" +
+            "请确认 EngineHostingServiceApp 已单独在跑，然后重新启动本程序（不要用 --urls 指向 5000）。\n\n";
     }
 
     string message =
@@ -324,7 +324,7 @@ static void ReportStartupFailure(Exception ex)
         extra +
         ex.Message + "\n\n" +
         "常见原因：\n" +
-        "· 端口被占用——上一次没退干净，或误绑了 EngineHost.App 的 5000 端口\n" +
+        "· 端口被占用——上一次没退干净，或误绑了 EngineHostingServiceApp 的 5000 端口\n" +
         "· appsettings.json 语法错误\n\n" +
         "详细信息见日志文件。";
 
@@ -371,13 +371,20 @@ static void ReportStartupFailure(Exception ex)
 [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
+/// <summary>本进程自己的控制台窗口句柄（Windows Terminal / conhost）。</summary>
+[DllImport("kernel32.dll")]
+static extern IntPtr GetConsoleWindow();
+
 /// <summary>拆掉本进程的控制台窗口。</summary>
 [DllImport("kernel32.dll")]
 static extern bool FreeConsole();
 
+[DllImport("user32.dll")]
+static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
 /// <summary>
-/// 从 VS / <c>dotnet run</c> 启动时宿主会挂一个控制台。
-/// 托盘程序不需要它：拆掉之后只留托盘图标和浏览器。
+/// 隐藏本进程挂着的控制台。WinExe 双击本来没有；
+/// 若仍被 VS / 旧 Web SDK 塞了一个黑框，先藏再拆。
 /// </summary>
 static void HideAttachedConsole()
 {
@@ -385,6 +392,9 @@ static void HideAttachedConsole()
         return;
     try
     {
+        IntPtr hwnd = GetConsoleWindow();
+        if (hwnd != IntPtr.Zero)
+            ShowWindow(hwnd, 0);
         FreeConsole();
     }
     catch

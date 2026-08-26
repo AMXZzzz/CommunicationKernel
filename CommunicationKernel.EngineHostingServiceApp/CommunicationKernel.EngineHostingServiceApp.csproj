@@ -1,5 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <AssemblyName>CommunicationKernel.EngineHostingServiceApp</AssemblyName>
+    <RootNamespace>CommunicationKernel.EngineHostingServiceApp</RootNamespace>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- 只依赖引擎；路由层与抽象层由引擎传递引用。
          本项目现在是"引擎 + gRPC 端点"的薄壳，业务逻辑全在 Engine 内。 -->

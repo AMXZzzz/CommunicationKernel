@@ -15,8 +15,8 @@ using Microsoft.Extensions.Logging;
 
 // -----------------------------------------------------------------------------
 // 文件: HostGrpcService.cs
-// 层级: EngineHost.App / Services / Grpc
-// 作用: EngineHost.App gRPC 对外服务实现（协议无关请求模型）。
+// 层级: EngineHostingServiceApp / Services / Grpc
+// 作用: EngineHostingServiceApp gRPC 对外服务实现（协议无关请求模型）。
 // 说明:
 // 1) RegisterRoute 负责路由注册入口；底层组装由 EngineRuntime 完成。
 // 2) Read/Write 仅使用 route_id，避免 UI 端依赖协议细节字段。
@@ -24,13 +24,13 @@ using Microsoft.Extensions.Logging;
 //    导致内存无限增长；状态采用最终一致模型，丢失旧快照不影响正确性。
 // -----------------------------------------------------------------------------
 
-namespace CommunicationKernel.EngineHost.App.Services;
+namespace CommunicationKernel.EngineHostingServiceApp.Services;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: HostGrpcService.cs
-/// 层级: EngineHost.App / Services / Grpc
-/// 作用: EngineHost.App gRPC 对外服务实现（协议无关请求模型）。
+/// 层级: EngineHostingServiceApp / Services / Grpc
+/// 作用: EngineHostingServiceApp gRPC 对外服务实现（协议无关请求模型）。
 /// 说明:
 /// 1) RegisterRoute 负责路由注册入口；底层组装由 EngineRuntime 完成。
 /// 2) Read/Write 仅使用 route_id，避免 UI 端依赖协议细节字段。

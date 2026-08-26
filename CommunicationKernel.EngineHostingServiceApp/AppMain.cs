@@ -8,7 +8,7 @@ using CommunicationKernel.Engine.Router;
 using CommunicationKernel.Engine.Router.Abstractions;
 using CommunicationKernel.Engine.Runtime;
 using CommunicationKernel.Engine.Runtime.Models;
-using CommunicationKernel.EngineHost.App.Services;
+using CommunicationKernel.EngineHostingServiceApp.Services;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 
 // -----------------------------------------------------------------------------
 // 文件: AppMain.cs
-// 层级: EngineHost.App / Entry
+// 层级: EngineHostingServiceApp / Entry
 // 作用: 组合根 —— 装配依赖、映射 gRPC 端点、启动宿主。
 // 说明:
 // 1) Host 作为多 UI 统一中枢入口，仅暴露服务，不承载 UI 逻辑。
@@ -48,7 +48,7 @@ using Microsoft.Extensions.Logging;
 Mutex? instanceLock = null;
 try
 {
-    instanceLock = new Mutex(initiallyOwned: true, @"Local\CommunicationKernel.EngineHost.App", out bool createdNew);
+    instanceLock = new Mutex(initiallyOwned: true, @"Local\CommunicationKernel.EngineHostingServiceApp", out bool createdNew);
     if (!createdNew)
     {
         ReportDuplicateInstance();
@@ -137,7 +137,7 @@ _ = app.Services.GetRequiredService<EngineRuntime>();
 app.MapGrpcService<HostGrpcService>();
 
 // 辅助根路由：浏览器直连时给出引导，避免空白 404
-app.MapGet("/", () => "CommunicationKernel.EngineHost.App is running. Use a gRPC client to call endpoints./ [引导文]: CommunicationKernel.EngineHost.App 服务端初始化Done ");
+app.MapGet("/", () => "CommunicationKernel.EngineHostingServiceApp is running. Use a gRPC client to call endpoints./ [引导文]: CommunicationKernel.EngineHostingServiceApp 服务端初始化Done ");
 
 // ============================================================================
 // 监听地址的暴露面告警
@@ -153,8 +153,8 @@ app.MapGet("/", () => "CommunicationKernel.EngineHost.App is running. Use a gRPC
 // 只有服务器实际绑定完成后拿到的地址才是真正生效的那一份。
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    // 独立分类名，journalctl 可按 EngineHost.App.Endpoint 过滤
-    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("EngineHost.App.Endpoint");
+    // 独立分类名，journalctl 可按 EngineHostingServiceApp.Endpoint 过滤
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("EngineHostingServiceApp.Endpoint");
 
     // 实际绑定地址（含 --urls / ASPNETCORE_URLS 覆盖后的结果）
     var addresses = app.Services.GetRequiredService<IServer>()
@@ -200,8 +200,8 @@ app.Lifetime.ApplicationStarted.Register(() =>
 // 于是无人值守部署会出现「服务好好跑着、直到有人操作才发现一个协议都没有」。
 // 在这里提前解析，把协议清单写进启动日志——树莓派上只有 journalctl 可看。
 {
-    // 启动诊断分类名，journalctl 可按 EngineHost.App.Startup 过滤
-    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("EngineHost.App.Startup");
+    // 启动诊断分类名，journalctl 可按 EngineHostingServiceApp.Startup 过滤
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("EngineHostingServiceApp.Startup");
 
     // 触发单例构造，从而扫描 plugins 目录
     var assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
@@ -246,7 +246,7 @@ catch (Exception ex) when (IsAddressInUse(ex))
     // 把真正有用的「端口被占了」盖成一句莫名其妙的「Cannot access a disposed object」。
     ReportStartupFailure(
         "监听地址已被占用，宿主无法启动。\n\n" +
-        "多半是已经有一个 EngineHost.App 在跑了（任务管理器里看 CommunicationKernel.EngineHost.App）。\n" +
+        "多半是已经有一个 EngineHostingServiceApp 在跑了（任务管理器里看 CommunicationKernel.EngineHostingServiceApp）。\n" +
         "关掉网页不会停宿主；要停掉请关这个黑窗口，或结束该进程。\n\n" +
         "原始错误：" + ex.Message);
     Environment.Exit(1);
@@ -275,9 +275,9 @@ catch (Exception ex)
 static void ReportDuplicateInstance()
 {
     const string message =
-        "CommunicationKernel.EngineHost.App 已经在运行，不必再开一份。\n\n" +
+        "CommunicationKernel.EngineHostingServiceApp 已经在运行，不必再开一份。\n\n" +
         "本机只能有一份 Engine.Runtime。WebMaster 也内嵌引擎，两者不能同时开。\n" +
-        "真要重启：任务管理器结束 CommunicationKernel.EngineHost.App，再双击本程序。";
+        "真要重启：任务管理器结束 CommunicationKernel.EngineHostingServiceApp，再双击本程序。";
     Console.Error.WriteLine();
     Console.Error.WriteLine("[启动失败] " + message);
     ShowStartupDialog(message);

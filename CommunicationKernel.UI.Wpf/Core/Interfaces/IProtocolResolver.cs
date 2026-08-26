@@ -6,7 +6,7 @@
 // 作用: 协议描述符提供者，供设备编辑面板渲染协议下拉框与连接参数表单。
 // 说明:
 //   返回完整描述符而非裸名称。下拉框展示 DisplayName，注册路由必须回传 ProtocolId——
-//   两者不可混用，否则 EngineHost.App 匹配不到协议工厂。
+//   两者不可混用，否则 EngineHostingServiceApp 匹配不到协议工厂。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -19,7 +19,7 @@ namespace CommunicationKernel.UI.Wpf.Core.Interfaces
 {
     /// <summary>
     /// 协议描述符解析器接口。
-    /// 提供当前 EngineHost.App 已加载的协议清单，用于设备配置界面。
+    /// 提供当前 EngineHostingServiceApp 已加载的协议清单，用于设备配置界面。
     /// </summary>
     public interface IProtocolResolver
     {
