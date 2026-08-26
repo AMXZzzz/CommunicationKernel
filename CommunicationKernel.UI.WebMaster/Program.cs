@@ -12,6 +12,7 @@
 // 托盘驻留:
 //   进程在右下角托盘。关闭浏览器不会退出；退出、打开界面、看日志都走托盘菜单。
 //   再双击一次 exe 会通知已在跑的实例打开界面，而不是再起一份去抢端口。
+//   从 VS / dotnet run 启动时会继承一个黑框，启动后立刻拆掉（HideAttachedConsole）。
 //
 // 浏览器由谁打开:
 //   由 LanAccess.OpenBrowser 负责，受配置项 Web:LaunchBrowser 控制（默认开）。
@@ -31,6 +32,9 @@ using CommunicationKernel.UI.WebMaster.Services;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+
+// 托盘程序不需要控制台。WinExe 双击本来没有；VS / dotnet run 会塞一个黑框过来。
+HideAttachedConsole();
 
 Mutex? instanceLock = null;
 EventWaitHandle? showEvent = null;
@@ -366,3 +370,25 @@ static void ReportStartupFailure(Exception ex)
 /// <summary>Win32 消息框，仅用于启动失败 / 重复启动提示。</summary>
 [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
 static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+
+/// <summary>拆掉本进程的控制台窗口。</summary>
+[DllImport("kernel32.dll")]
+static extern bool FreeConsole();
+
+/// <summary>
+/// 从 VS / <c>dotnet run</c> 启动时宿主会挂一个控制台。
+/// 托盘程序不需要它：拆掉之后只留托盘图标和浏览器。
+/// </summary>
+static void HideAttachedConsole()
+{
+    if (!OperatingSystem.IsWindows())
+        return;
+    try
+    {
+        FreeConsole();
+    }
+    catch
+    {
+        // 没有控制台时失败是正常的
+    }
+}
