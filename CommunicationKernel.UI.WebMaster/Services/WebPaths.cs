@@ -20,9 +20,6 @@ internal static class WebPaths
         }
     }
 
-    /// <summary>本端保存的 Host 地址，字段 HostAddress。</summary>
-    public static string SettingsFile => Path.Combine(Root, "settings.json");
-
     /// <summary>本端保存的 Web 监听端口。</summary>
     public static string ListenFile => Path.Combine(Root, "web-listen.json");
 
