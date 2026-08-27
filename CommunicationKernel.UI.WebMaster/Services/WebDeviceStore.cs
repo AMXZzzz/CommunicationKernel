@@ -180,6 +180,7 @@ public sealed class WebDeviceStore
         }
     }
 
+    /// <summary>从磁盘载入。文件缺失或损坏时以空表起步，不阻断启动。</summary>
     private void Load()
     {
         // 读写都走 Hosting.Sdk 的 JsonFileStore：与 WPF 端共用同一套原子落盘实现

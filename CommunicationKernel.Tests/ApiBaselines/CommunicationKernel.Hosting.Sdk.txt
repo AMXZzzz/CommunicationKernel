@@ -1,3 +1,25 @@
+    CommunicationKernel.Hosting.Sdk.AddressCandidate..ctor(System.String Id, System.String Name, System.String Address)
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.<Clone>$() -> CommunicationKernel.Hosting.Sdk.AddressCandidate
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.Address { get; set; } -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.Deconstruct(System.String& Id, System.String& Name, System.String& Address) -> System.Void
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.Equals(CommunicationKernel.Hosting.Sdk.AddressCandidate other) -> System.Boolean
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.GetHashCode() -> System.Int32
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.Id { get; set; } -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.Name { get; set; } -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressCandidate.ToString() -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressRewrite..ctor(System.String Id, System.String Name, System.String OldAddress, System.String NewAddress)
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.<Clone>$() -> CommunicationKernel.Hosting.Sdk.AddressRewrite
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.Deconstruct(System.String& Id, System.String& Name, System.String& OldAddress, System.String& NewAddress) -> System.Void
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.Equals(CommunicationKernel.Hosting.Sdk.AddressRewrite other) -> System.Boolean
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.Equals(System.Object obj) -> System.Boolean
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.GetHashCode() -> System.Int32
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.Id { get; set; } -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.Name { get; set; } -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.NewAddress { get; set; } -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.OldAddress { get; set; } -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressRewrite.ToString() -> System.String
+    CommunicationKernel.Hosting.Sdk.AddressRewriter.TryPreview(System.Collections.Generic.IEnumerable<CommunicationKernel.Hosting.Sdk.AddressCandidate> candidates, System.String find, System.String replaceWith, System.Boolean useRegex, System.Collections.Generic.IReadOnlyList`1[[CommunicationKernel.Hosting.Sdk.AddressRewrite, CommunicationKernel.Hosting.Sdk, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]& changes, System.String& error) -> System.Boolean
     CommunicationKernel.Hosting.Sdk.ByteOrder.ABCD : CommunicationKernel.Hosting.Sdk.ByteOrder
     CommunicationKernel.Hosting.Sdk.ByteOrder.BADC : CommunicationKernel.Hosting.Sdk.ByteOrder
     CommunicationKernel.Hosting.Sdk.ByteOrder.CDAB : CommunicationKernel.Hosting.Sdk.ByteOrder
@@ -160,6 +182,8 @@
     CommunicationKernel.Hosting.Sdk.WriteResultDto.PrintMembers(System.Text.StringBuilder builder) -> System.Boolean
     CommunicationKernel.Hosting.Sdk.WriteResultDto.ToString() -> System.String
 class CommunicationKernel.Hosting.Sdk.HostingOperationResult
+class sealed CommunicationKernel.Hosting.Sdk.AddressCandidate
+class sealed CommunicationKernel.Hosting.Sdk.AddressRewrite
 class sealed CommunicationKernel.Hosting.Sdk.HealthResultDto
 class sealed CommunicationKernel.Hosting.Sdk.HostingClient
 class sealed CommunicationKernel.Hosting.Sdk.ProtocolDescriptorDto
@@ -171,6 +195,7 @@ class sealed CommunicationKernel.Hosting.Sdk.RouteReconcileGate
 class sealed CommunicationKernel.Hosting.Sdk.RouteStatusDto
 class sealed CommunicationKernel.Hosting.Sdk.SerialPortDto
 class sealed CommunicationKernel.Hosting.Sdk.WriteResultDto
+class static CommunicationKernel.Hosting.Sdk.AddressRewriter
 class static CommunicationKernel.Hosting.Sdk.JsonFileStore
 class static CommunicationKernel.Hosting.Sdk.RegisterFailure
 class static CommunicationKernel.Hosting.Sdk.ValueCodec

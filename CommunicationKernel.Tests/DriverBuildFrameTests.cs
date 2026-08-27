@@ -372,9 +372,13 @@ public sealed class MewtocolTcpDriverFrameTests {
         // Assert
         // ============================================================================
         Assert.IsTrue(r.Success);
-        // MEWTOCOL 帧以 '%' 开头，以 CR 结尾
+        string ascii = System.Text.Encoding.ASCII.GetString(r.Value);
         Assert.AreEqual((byte)'%', r.Value[0]);
-        Assert.AreEqual(0x0D, r.Value[r.Value.Length - 1]); // CR
+        Assert.AreEqual(0x0D, r.Value[r.Value.Length - 1]);
+        // 官方：RDD + 起始5位 + 结束5位。length=2 → 1 字 → DT100–DT100
+        Assert.Contains("RDD0010000100", ascii, StringComparison.Ordinal);
+        Assert.IsFalse(ascii.Contains("D00100D", StringComparison.Ordinal),
+            $"区号不得在起止地址之间重复: {ascii}");
     }
 
     // 位地址 (IsBit=true) 必须走触点读命令
@@ -423,7 +427,9 @@ public sealed class MewtocolTcpDriverFrameTests {
         Assert.IsTrue(r.Success);
         Assert.AreEqual((byte)'%', r.Value[0]);
         string ascii = System.Text.Encoding.ASCII.GetString(r.Value);
-        Assert.Contains("WD", ascii, StringComparison.Ordinal);
+        Assert.Contains("WDD0010000100", ascii, StringComparison.Ordinal);
+        Assert.IsFalse(ascii.Contains("D00100D", StringComparison.Ordinal),
+            $"区号不得在起止地址之间重复: {ascii}");
     }
 
     // 空 payload 必须拒绝

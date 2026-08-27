@@ -12,9 +12,11 @@ namespace CommunicationKernel.UI.WebMaster.Services;
 /// <summary>读写 exe 旁 <c>config/web-listen.json</c>。</summary>
 public sealed class WebSettingsStore
 {
+    /// <summary>保护写入的互斥锁，避免两条线路同时保存导致交错写。</summary>
     private readonly object _lock = new();
     private readonly AppLogStore _log;
 
+    /// <param name="log">应用日志，用于上报保存失败。</param>
     public WebSettingsStore(AppLogStore log) => _log = log;
 
     /// <summary>web-listen.json 完整路径，供设置页展示。</summary>
