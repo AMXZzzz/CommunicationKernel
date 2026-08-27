@@ -249,13 +249,19 @@ internal static class MewtocolFrame
         };
     }
 
-    /// <summary>格式化数据范围（RD/WD 使用）：code + start(5) + code + end(5)。</summary>
+    /// <summary>
+    /// 格式化数据范围（RD/WD 使用）：区号一次 + 起始 5 位 + 结束 5 位。
+    /// </summary>
+    /// <remarks>
+    /// 官方帧是 <c>RDD0040000401</c>（DT400–DT401），不是 <c>RDD00400D00401</c>。
+    /// 区号插两次会让结束地址含字母，从站回 <c>!41</c> 格式错误。
+    /// </remarks>
     private static string FormatDataRange(MewtocolAddressInfo addr, int wordCount)
     {
         char code  = addr.Area == MewtocolArea.WR ? 'W' : 'D';
         int  start = addr.Index;
         int  end   = start + wordCount - 1;
-        return $"{code}{start:D5}{code}{end:D5}";
+        return $"{code}{start:D5}{end:D5}";
     }
 
     /// <summary>低字节/高字节互换（MEWTOCOL 字节序转换）。</summary>
@@ -268,19 +274,21 @@ internal static class MewtocolFrame
             ? string.Empty
             : Encoding.ASCII.GetString(bytes).Trim('\0');
 
-    /// <summary>映射 MEWTOCOL 错误码为可读描述。</summary>
+    /// <summary>映射 MEWTOCOL-COM 错误码（手册 !NN）。</summary>
     private static string MapErrorCode(string code) => code.ToUpperInvariant() switch
     {
-        "20" => "PLC is in program mode",
-        "21" => "PLC RUN mode prevents write",
-        "22" => "PLC is protected",
-        "23" => "Address out of range",
-        "24" => "Data format error",
-        "25" => "Checksum (BCC) error",
-        "26" => "Header (%) error",
-        "27" => "Station number error",
-        "28" => "Unsupported command",
-        "29" => "Data area overflow",
+        "26" => "Unit number setting error",
+        "40" => "BCC error",
+        "41" => "Format error",
+        "42" => "Command not supported",
+        "43" => "Multiframe process error",
+        "60" => "Parameter error",
+        "61" => "Data error (area, number, size or range)",
+        "62" => "Registration overflow",
+        "63" => "PLC mode error",
+        "64" => "External memory error",
+        "65" => "Protection error",
+        "66" => "Address error",
         _ => $"Unknown error code {code}"
     };
 }
