@@ -201,23 +201,6 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
         }
     }
 
-    /// <summary>本进程宿主不切换远端地址；拆开部署时改 HostingClient 目标即可。</summary>
-    public Task SwitchAddressAsync(string address, CancellationToken ct = default)
-    {
-        _ = address;
-        _log.Info("Host", "宿主已内嵌本进程，忽略地址切换");
-        return ProbeAsync(ct);
-    }
-
-    /// <summary>探测本进程 Hosting.App。</summary>
-    public Task<HealthResultDto> ProbeAddressAsync(
-        string address,
-        CancellationToken ct = default)
-    {
-        _ = address;
-        return _client.HealthAsync(ct);
-    }
-
     /// <summary>
     /// 探测宿主健康状态并据此更新会话状态。
     /// </summary>
