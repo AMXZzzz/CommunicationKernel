@@ -14,6 +14,8 @@
   UI → Hosting.Sdk / Hosting.App（gRPC）→ EngineRuntime → RouterOrchestrator
   → IProtocolDriver（插件 DLL）→ ITransportClient（Tcp / Serial 插件）。
   协议层来自 DLL 插件，外层一律禁知帧格式与地址语义。
+  UI.WebMaster 把 Hosting.App 带进同一进程，HostingClient 打 127.0.0.1:5000；
+  不要再给 Web 做「切换远端 Host 地址」——拆开时只改客户端目标。
 
 ## 结构纪律（2026-08-25 全量审查后确立）
 
@@ -44,4 +46,4 @@
 - `length` 的单位一律是**字节**。插件自行换算到本协议计数单位；奇数长度不得静默向下取整。
 - 站号只写在设备配置里，地址中不接受 `1:40001` 这类站号前缀。
 - protobuf 只有根目录 `Protos/V1/hosting.proto` 一份，禁止再复制。
-- `计划.md` 第十节清单是历史待办，不作为进度来源；进度以代码为准。
+- `计划.md` 是架构与纪律，不是待办清单。进度以代码为准。
