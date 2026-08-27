@@ -69,6 +69,40 @@ public sealed class WebVariable
     public string LastUpdated { get; set; } = string.Empty;
 }
 
+/// <summary>导入变量时的覆盖范围。</summary>
+public enum VariableImportMode
+{
+    /// <summary>
+    /// 追加到现有表尾，Id 冲突的自动换新 Id。
+    /// </summary>
+    /// <remarks>
+    /// 默认模式。导入多半是把另一条产线的变量表并进来，
+    /// 直接覆盖会静默清空现场好不容易配好的表，且无法撤销。
+    /// </remarks>
+    Append = 0,
+
+    /// <summary>
+    /// 先删掉<b>指定路由</b>下的全部变量，再导入文件中属于该路由的条目。
+    /// </summary>
+    /// <remarks>
+    /// 换 PLC 型号时用这个：同一台设备、同一批变量，只是地址体系全换了。
+    /// 文件里属于别的路由的条目会被跳过并如实计数。
+    /// </remarks>
+    ReplaceRoute = 1,
+
+    /// <summary>清空整张变量表后再导入。</summary>
+    /// <remarks>破坏性最强，调用方必须二次确认。</remarks>
+    ReplaceAll = 2,
+}
+
+/// <summary>一次导入的结果计数。</summary>
+/// <param name="Imported">实际写入的条数。</param>
+/// <param name="Removed">因覆盖而删除的原有条数。</param>
+/// <param name="SkippedOtherRoute">
+/// 因归属别的路由而被跳过的条数，仅 <see cref="VariableImportMode.ReplaceRoute"/> 下非 0。
+/// </param>
+public sealed record VariableImportResult(int Imported, int Removed, int SkippedOtherRoute);
+
 /// <summary>变量表磁盘镜像。线程安全。</summary>
 /// <remarks>
 /// 单例。写入方是 Blazor 渲染线程（增删改）与后台轮询线程（回填读值），
@@ -180,19 +214,6 @@ public sealed class WebVariableStore
         Changed?.Invoke();
     }
 
-    /// <summary>整表替换并落盘，用于「导入并覆盖」。</summary>
-    public void ReplaceAll(IEnumerable<WebVariable> items)
-    {
-        lock (_lock)
-        {
-            _items.Clear();
-            _items.AddRange(items);
-            Persist_NoLock();
-        }
-
-        Changed?.Invoke();
-    }
-
     /// <summary>只更新内存中的读值，不写盘。</summary>
     /// <param name="id">目标变量 Id；不存在时静默返回。</param>
     /// <param name="display">已解码的显示值，或失败时的错误码。</param>
@@ -246,12 +267,103 @@ public sealed class WebVariableStore
     /// 在锁内做会阻塞轮询线程回填读值，界面表现为导入期间数据卡住。
     /// </para>
     /// </remarks>
-    public int ImportJson(string json, bool replace)
+    /// <summary>
+    /// 批量改写地址并一次性落盘。
+    /// </summary>
+    /// <param name="idToNewAddress">变量 Id → 新地址。</param>
+    /// <returns>实际改动的条数。</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>一次锁、一次落盘。</b>逐条调 <see cref="Update"/> 也能达到同样结果，
+    /// 但那样会写盘 N 次、发 N 次 Changed 事件，
+    /// 几百条变量时界面会连续重绘到卡顿，且中途崩溃会留下改了一半的表。
+    /// </para>
+    /// <para>
+    /// 改地址会让旧读值失效——它对应的是<b>另一个</b>寄存器。
+    /// 因此一并把显示值清回 "--"，留着会让人以为那是新地址刚读回来的。
+    /// </para>
+    /// </remarks>
+    public int ApplyAddressChanges(IReadOnlyDictionary<string, string> idToNewAddress)
+    {
+        ArgumentNullException.ThrowIfNull(idToNewAddress);
+        if (idToNewAddress.Count == 0) return 0;
+
+        int changed = 0;
+
+        lock (_lock)
+        {
+            foreach (WebVariable v in _items)
+            {
+                if (!idToNewAddress.TryGetValue(v.Id, out string? newAddress)) continue;
+                if (string.Equals(v.Address, newAddress, StringComparison.Ordinal)) continue;
+
+                v.Address = newAddress;
+
+                // 旧读值属于旧地址，必须作废
+                v.DisplayValue = "--";
+                v.IsError = false;
+                changed++;
+            }
+
+            if (changed > 0) Persist_NoLock();
+        }
+
+        if (changed > 0) Changed?.Invoke();
+        return changed;
+    }
+
+    /// <summary>
+    /// 从 JSON 文本导入变量，覆盖范围由 <paramref name="mode"/> 决定。
+    /// </summary>
+    /// <param name="json">变量表 JSON，格式与 <see cref="ExportJson"/> 的输出一致。</param>
+    /// <param name="mode">覆盖范围，见 <see cref="VariableImportMode"/>。</param>
+    /// <param name="routeId">
+    /// <see cref="VariableImportMode.ReplaceRoute"/> 时必填，其余模式忽略。
+    /// </param>
+    /// <returns>导入、删除、跳过的条数。</returns>
+    /// <exception cref="ArgumentException">ReplaceRoute 模式下未提供 routeId。</exception>
+    /// <exception cref="JsonException">JSON 语法错误，由调用方转成界面提示。</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>删除与写入必须在同一把锁内完成。</b>分成"先调删除、再调导入"两步的话，
+    /// 中间那一瞬变量表是空的——轮询线程正好读到就会把界面刷成空列表，
+    /// 而且删完若导入失败，用户的变量就没了。
+    /// </para>
+    /// <para>
+    /// <b>Id 冲突处理。</b>追加模式下若导入文件与现有表存在相同 Id
+    /// （常见于"先导出、改几条、再导回来"），不处理会让两条不同的变量共用一个 Id，
+    /// 此后更新和删除都会命中错误的那条，且完全没有报错。
+    /// 因此冲突项一律重新分配 Id。
+    /// </para>
+    /// <para>
+    /// 反序列化刻意放在锁<b>外</b>：解析可能耗时（大文件），
+    /// 在锁内做会阻塞轮询线程回填读值，界面表现为导入期间数据卡住。
+    /// </para>
+    /// </remarks>
+    public VariableImportResult ImportJson(
+        string json, VariableImportMode mode, string? routeId = null)
     {
         List<WebVariable>? list = JsonSerializer.Deserialize<List<WebVariable>>(json, JsonOptions);
 
         // 文件内容是字面量 null：不是错误，只是没有内容
-        if (list is null) return 0;
+        if (list is null) return new VariableImportResult(0, 0, 0);
+
+        int skipped = 0;
+
+        // 「只覆盖本设备」时，文件里属于别的路由的条目一律不收——
+        // 收进来会让操作员以为只动了这台设备，实际却混进了别处的变量。
+        // 跳过多少条要如实报出来，否则他会以为文件有问题。
+        if (mode == VariableImportMode.ReplaceRoute)
+        {
+            if (string.IsNullOrWhiteSpace(routeId))
+                throw new ArgumentException("ReplaceRoute 模式必须指定 routeId。", nameof(routeId));
+
+            int before = list.Count;
+            list = list
+                .Where(v => string.Equals(v.RouteId, routeId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            skipped = before - list.Count;
+        }
 
         foreach (WebVariable v in list)
         {
@@ -265,21 +377,33 @@ public sealed class WebVariableStore
             v.IsError = false;
         }
 
+        int removed = 0;
+
         lock (_lock)
         {
-            if (replace)
+            switch (mode)
             {
-                _items.Clear();
-            }
-            else
-            {
-                // 追加模式：与现有表撞 Id 的一律换新 Id，保证标识唯一
-                HashSet<string> existing = new(_items.Select(x => x.Id), StringComparer.Ordinal);
-                foreach (WebVariable v in list)
-                {
-                    if (existing.Contains(v.Id))
-                        v.Id = Guid.NewGuid().ToString("N");
-                }
+                case VariableImportMode.ReplaceAll:
+                    removed = _items.Count;
+                    _items.Clear();
+                    break;
+
+                case VariableImportMode.ReplaceRoute:
+                    removed = _items.RemoveAll(
+                        v => string.Equals(v.RouteId, routeId, StringComparison.OrdinalIgnoreCase));
+                    break;
+
+                default:
+                    // 追加模式：与现有表撞 Id 的一律换新 Id，保证标识唯一。
+                    // 不这么做会让两条不同的变量共用一个 Id，
+                    // 此后更新和删除都会命中错的那条，且完全没有报错。
+                    HashSet<string> existing = new(_items.Select(x => x.Id), StringComparer.Ordinal);
+                    foreach (WebVariable v in list)
+                    {
+                        if (existing.Contains(v.Id))
+                            v.Id = Guid.NewGuid().ToString("N");
+                    }
+                    break;
             }
 
             _items.AddRange(list);
@@ -287,9 +411,10 @@ public sealed class WebVariableStore
         }
 
         Changed?.Invoke();
-        return list.Count;
+        return new VariableImportResult(list.Count, removed, skipped);
     }
 
+    /// <summary>从磁盘载入。文件缺失或损坏时以空表起步，不阻断启动。</summary>
     private void Load()
     {
         // 读写都走 Hosting.Sdk 的 JsonFileStore：与 WPF 端共用同一套原子落盘实现

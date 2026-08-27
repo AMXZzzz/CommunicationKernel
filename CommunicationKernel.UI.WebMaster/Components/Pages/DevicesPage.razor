@@ -46,7 +46,7 @@
         else
         {
             <div class="device-grid">
-                @foreach (DeviceRow row in Rows)
+                @foreach (DeviceView row in Rows)
                 {
                     bool online = Session.IsRouteOnline(row.RouteId);
                     <div class="mes-card @(online ? "is-on" : "is-off")">
@@ -84,7 +84,7 @@
                             else
                             {
                                 <button class="btn primary" type="button"
-                                        @onclick="() => ConnectAsync(row)"
+                                        @onclick="() => ConnectAsync(row.RouteId, row.Name)"
                                         disabled="@(_busy || !Session.Online)">连接</button>
                             }
                             <button class="btn ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
@@ -275,7 +275,7 @@
     /// <remarks>
     /// 删设备会连带注销宿主路由并丢掉全部连接参数，不可撤销，因此必须二次确认。
     /// </remarks>
-    private DeviceRow? _pendingRemove;
+    private DeviceView? _pendingRemove;
     /// <summary>
     /// 宿主当前加载的协议清单，表单下拉框的<b>唯一</b>来源。
     /// </summary>
@@ -377,7 +377,7 @@
     private bool NeedsStation => SelectedProtocol?.RequiresStation != false;
 
     /// <summary>设备卡片行，由宿主路由与本地配置合并而来。</summary>
-    private IReadOnlyList<DeviceRow> Rows => BuildRows();
+    private IReadOnlyList<DeviceView> Rows => BuildRows();
 
     /// <summary>当前在线的路由数，供工具栏显示「在线 / 总计」。</summary>
     /// <remarks>
@@ -447,20 +447,22 @@
     }
 
     /// <summary>连接单台设备：此时才向宿主注册路由并真正建链。</summary>
+    /// <param name="routeId">目标路由 Id。</param>
+    /// <param name="displayName">仅用于横幅文案的显示名。</param>
     /// <remarks>
     /// 本方法只做两件事：调服务、把结果翻译成横幅文案。
     /// 配置查找、注册调用、失败分类与日志都在 <see cref="IWebDeviceService"/> 里。
     /// </remarks>
-    private async Task ConnectAsync(DeviceRow row)
+    private async Task ConnectAsync(string routeId, string displayName)
     {
         _busy = true;
         try
         {
-            DeviceOperationResult result = await Devices.ConnectAsync(row.RouteId).ConfigureAwait(true);
+            DeviceOperationResult result = await Devices.ConnectAsync(routeId).ConfigureAwait(true);
 
             if (result.Success)
             {
-                _banner = row.Name + " 已连接";
+                _banner = displayName + " 已连接";
                 _bannerClass = "status-ok";
             }
             else
@@ -468,7 +470,7 @@
                 // 失败性质决定措辞与颜色：连不上要去检查现场，配置错要去改参数。
                 // 两种情况都保留本地配置，设备仍在列表里可重试。
                 bool unreachable = result.FailureKind == RegisterFailureKind.Unreachable;
-                _banner = row.Name + (unreachable
+                _banner = displayName + (unreachable
                     ? " 连接失败（目标不可达）：" + result.ErrorMessage + "。设备保留在列表中，可稍后重试。"
                     : " 连接失败：[" + result.ErrorCode + "] " + result.ErrorMessage + "。请点「编辑」检查配置。");
                 _bannerClass = unreachable ? "status-warn" : "status-error";
@@ -480,7 +482,7 @@
     }
 
     /// <summary>断开单台设备：从宿主注销路由，本地配置保留。</summary>
-    private async Task DisconnectAsync(DeviceRow row)
+    private async Task DisconnectAsync(DeviceView row)
     {
         _busy = true;
         try
@@ -505,57 +507,12 @@
     /// 合并宿主路由与本地配置，构造设备卡片行。
     /// </summary>
     /// <remarks>
-    /// 两个来源都要：宿主路由是<b>已连接</b>的设备，本地配置里还有<b>已配好但未连接</b>的。
-    /// 只取前者的话，刚添加的设备根本不出现在列表里——
-    /// 而"添加设备只写配置、不建连接"正是本页的既定行为。
-    /// 用 seen 集合而非字典去重，以保持"先宿主、后本地"的稳定顺序。
+    /// 合并规则收敛在 <see cref="DeviceViewBuilder"/>——MES 监控页做的是同一件事，
+    /// 两边各写一份的话，改端点拼法时漏改一处会让两个页面对同一台设备
+    /// 显示不同的连接信息，而且不报任何错。
     /// </remarks>
-    private List<DeviceRow> BuildRows()
-    {
-        Dictionary<string, WebDeviceRecord> local = Store.GetAll()
-            .ToDictionary(d => d.RouteId, d => d, StringComparer.OrdinalIgnoreCase);
-        List<DeviceRow> rows = new();
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (RouteDto r in Session.Routes)
-        {
-            seen.Add(r.RouteId);
-            local.TryGetValue(r.RouteId, out WebDeviceRecord? rec);
-            rows.Add(ToRow(r, rec, onHost: true));
-        }
-        foreach (WebDeviceRecord rec in Store.GetAll())
-        {
-            if (seen.Contains(rec.RouteId)) continue;
-            rows.Add(ToRow(null, rec, onHost: false));
-        }
-        return rows;
-    }
-
-    /// <summary>
-    /// 把一条路由和／或一条本地配置合成一行卡片数据。
-    /// </summary>
-    /// <param name="r">宿主路由；设备未连接时为 null。</param>
-    /// <param name="rec">本地配置；宿主上有、本地却没留底时为 null。</param>
-    /// <param name="onHost">该设备当前是否已在宿主上注册，决定按钮显示「连接」还是「断开」。</param>
-    /// <remarks>
-    /// 两个入参不会同时为 null。取值一律「宿主优先、本地兜底」——
-    /// 宿主返回的是运行中的真实参数，本地的可能是改了还没重连的草稿。
-    /// 例外是显示名与字节序：宿主都不存，只能取自本地。
-    /// </remarks>
-    private static DeviceRow ToRow(RouteDto? r, WebDeviceRecord? rec, bool onHost)
-    {
-        string id = r?.RouteId ?? rec?.RouteId ?? string.Empty;
-        string name = rec is not null && !string.IsNullOrWhiteSpace(rec.Name) ? rec.Name : id;
-        string protocol = r?.ProtocolId ?? rec?.ProtocolId ?? string.Empty;
-        string transport = r?.TransportKind ?? rec?.TransportKind ?? string.Empty;
-        string station = r?.Station ?? rec?.Station ?? string.Empty;
-        bool serial = string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase);
-        string endpoint = serial
-            ? (r?.SerialPort ?? rec?.SerialPort ?? "串口")
-            : (r is not null ? r.Address + ":" + r.Port : (rec?.Address ?? "") + ":" + (rec?.Port ?? 0));
-        // 字节序只存在于本地配置：宿主的 RouteDto 不带它（引擎不解释数值语义）
-        string byteOrder = string.IsNullOrWhiteSpace(rec?.ByteOrder) ? "ABCD" : rec!.ByteOrder;
-        return new DeviceRow(id, name, protocol, transport, station, endpoint, onHost, byteOrder);
-    }
+    private List<DeviceView> BuildRows() =>
+        DeviceViewBuilder.Build(Session.Routes, Store.GetAll());
 
     /// <summary>打开新增表单：清空字段、拉取协议与串口清单、给一份默认选择。</summary>
     private async Task OpenAdd()
@@ -577,7 +534,7 @@
     }
 
     /// <summary>打开编辑表单，用本地已存配置回填。</summary>
-    private async Task OpenEdit(DeviceRow row)
+    private async Task OpenEdit(DeviceView row)
     {
         WebDeviceRecord? rec = Store.GetAll()
             .FirstOrDefault(d => string.Equals(d.RouteId, row.RouteId, StringComparison.OrdinalIgnoreCase));
@@ -815,13 +772,13 @@
             }
             finally { _busy = false; }
 
-            await ConnectAsync(ToRow(null, record, onHost: false)).ConfigureAwait(true);
+            await ConnectAsync(record.RouteId, record.Name).ConfigureAwait(true);
             return;
         }
 
         if (thenConnect && Session.Online)
         {
-            await ConnectAsync(ToRow(null, record, onHost: false)).ConfigureAwait(true);
+            await ConnectAsync(record.RouteId, record.Name).ConfigureAwait(true);
             return;
         }
 
@@ -831,13 +788,13 @@
     }
 
     /// <summary>请求删除设备，置入待确认状态而非直接删除。</summary>
-    private void AskRemove(DeviceRow row) => _pendingRemove = row;
+    private void AskRemove(DeviceView row) => _pendingRemove = row;
 
     /// <summary>确认删除。先清空待删引用再执行，避免确认框重复点击触发两次删除。</summary>
     private async Task ConfirmRemoveAsync()
     {
         if (_pendingRemove is null) return;
-        DeviceRow row = _pendingRemove;
+        DeviceView row = _pendingRemove;
         _pendingRemove = null;
         await RemoveAsync(row).ConfigureAwait(true);
     }
@@ -849,7 +806,7 @@
     /// 顺序不能颠倒。先删本地会让界面上设备消失、而宿主仍持有连接与该 RouteId，
     /// 此后既看不到它也无法重新注册——只能重启宿主。
     /// </remarks>
-    private async Task RemoveAsync(DeviceRow row)
+    private async Task RemoveAsync(DeviceView row)
     {
         _busy = true;
         try
@@ -881,16 +838,4 @@
     /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>
     public void Dispose() => Session.Changed -= OnChanged;
 
-    /// <summary>设备管理页的一行卡片数据。</summary>
-    /// <param name="RouteId">路由 Id，用于查在线状态与所有操作。</param>
-    /// <param name="Name">显示名；无本地配置时回落为 RouteId。</param>
-    /// <param name="ProtocolId">协议 Id，用于色条与卡片副标题。</param>
-    /// <param name="TransportKind">传输介质，决定 Endpoint 的含义。</param>
-    /// <param name="Station">站号；无站号协议为空字符串。</param>
-    /// <param name="Endpoint">端点描述：TCP 为「地址:端口」，串口为设备名。</param>
-    /// <param name="OnHost">是否已在宿主注册，决定显示「连接」还是「断开」。</param>
-    /// <param name="ByteOrder">字节序，仅存在于本地配置。</param>
-    private sealed record DeviceRow(
-        string RouteId, string Name, string ProtocolId, string TransportKind,
-        string Station, string Endpoint, bool OnHost, string ByteOrder);
 }

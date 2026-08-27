@@ -924,3 +924,62 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     .page-title { font-size: 13px; }
 }
 
+
+/* ===========================================================================
+   批量改地址 / 导入范围选择
+   —— 两处弹层共用的少量补充样式。
+   =========================================================================== */
+
+/* 预览表容器。必须限高并自行滚动：改写可能命中几百条，
+   不限高会把弹层撑到超出视口，底部的「应用」按钮直接够不着。 */
+.preview-box {
+    max-height: 34vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 8px;
+}
+
+.preview-box table { margin: 0; }
+
+/* 表头在滚动时吸顶，滚到几十行下面仍知道哪列是新地址 */
+.preview-box thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-elev);
+    z-index: 1;
+}
+
+/* 复选框与文字同行。默认 .add-form label 是 block，会把勾选框挤到上一行 */
+.add-form label.inline-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--text);
+    margin: 12px 0 4px;
+    cursor: pointer;
+}
+
+.add-form label.inline-check input { margin: 0; }
+
+/* 导入范围的单选项。用 flex-start 而非 center：
+   第二项带一行补充说明，居中会让圆点跟着文字块一起下移。 */
+.add-form label.radio-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--text);
+    line-height: 1.5;
+    margin: 10px 0 0;
+    cursor: pointer;
+}
+
+.add-form label.radio-line input { margin-top: 3px; }
+
+/* 不可选时降低对比度并禁用手型，让「为什么点不了」一眼可见 */
+.add-form label.radio-line.disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}

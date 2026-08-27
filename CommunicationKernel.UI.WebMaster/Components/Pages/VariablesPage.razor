@@ -19,10 +19,13 @@
         <h2 class="page-title">变量配置</h2>
         <button class="btn primary" type="button" @onclick="ReadVisibleAsync" disabled="@(_busy || Visible.Count == 0 || !Session.Online)">批量读取</button>
         <button class="btn ghost" type="button" @onclick="OpenAdd">添加变量</button>
+        @* 换 PLC 型号时用：设备记录改协议，变量只需重写地址 *@
+        <button class="btn ghost" type="button" @onclick="OpenRewrite"
+                disabled="@(_busy || Store.GetAll().Count == 0)">批量改地址</button>
         <button class="btn ghost" type="button" @onclick="Export">导出 JSON</button>
         <label class="btn ghost file-btn">
             导入
-            <InputFile OnChange="ImportAsync" accept=".json,application/json" />
+            <InputFile OnChange="OnImportFilePicked" accept=".json,application/json" />
         </label>
         <div class="toolbar-right">
             @if (_busy) { <span class="busy-hint">处理中…</span> }
@@ -201,6 +204,151 @@
                 <div class="form-actions">
                     <button class="btn ghost" type="button" @onclick="() => _pendingRemove = null">取消</button>
                     <button class="btn danger" type="button" @onclick="ConfirmRemove">确认删除</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ================= 批量改地址 ================= *@
+    @if (_showRewrite)
+    {
+        <div class="add-form-overlay" @onclick="CloseRewrite">
+            <div class="add-form wide" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>批量改地址</h3>
+                    <button class="close-btn" type="button" @onclick="CloseRewrite">×</button>
+                </div>
+
+                <p class="hint-line">
+                    换 PLC 型号时用：变量名、类型、周期都不动，只把地址从一种体系换到另一种。
+                    <b>不会校验新地址是否合法</b>——地址语法属于协议，对不对以连接后能否读到为准。
+                </p>
+
+                <label>作用范围</label>
+                <select @bind="_rewriteScope" @bind:after="RefreshRewritePreview">
+                    <option value="">全部设备（@Store.GetAll().Count 条变量）</option>
+                    @foreach (RouteChoice r in RouteChoices)
+                    {
+                        <option value="@r.RouteId">@r.Name（@CountOf(r.RouteId) 条）</option>
+                    }
+                </select>
+
+                <label>查找</label>
+                <input @bind="_rewriteFind" @bind:event="oninput" @bind:after="RefreshRewritePreview"
+                       placeholder="@(_rewriteRegex ? "正则，例如 ^4000(\\d)" : "例如 40")" />
+
+                <label>替换为</label>
+                <input @bind="_rewriteTo" @bind:event="oninput" @bind:after="RefreshRewritePreview"
+                       placeholder="@(_rewriteRegex ? "可用 $1 引用捕获组，例如 DB1.DBW$1" : "例如 DB1.DBW")" />
+
+                <label class="inline-check">
+                    <input type="checkbox" checked="@_rewriteRegex"
+                           @onchange="OnRewriteRegexToggled" />
+                    使用正则表达式
+                </label>
+
+                @if (!string.IsNullOrEmpty(_rewriteError))
+                {
+                    <div class="status-msg status-error">@_rewriteError</div>
+                }
+                else if (_rewriteFind.Length > 0)
+                {
+                    @if (_rewritePreview.Count == 0)
+                    {
+                        <div class="status-msg status-warn">没有匹配到任何地址。</div>
+                    }
+                    else
+                    {
+                        <div class="status-msg status-info">将改动 @_rewritePreview.Count 条：</div>
+                        <div class="preview-box">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>变量</th><th>原地址</th><th>新地址</th></tr>
+                                </thead>
+                                <tbody>
+                                    @* 只渲染前 200 条：几千条变量时整表渲染会把线路撑爆，
+                                       而预览的作用是让人确认规则对不对，看头几条就够 *@
+                                    @foreach (AddressRewrite c in _rewritePreview.Take(RewritePreviewLimit))
+                                    {
+                                        <tr>
+                                            <td class="name">@c.Name</td>
+                                            <td class="mono">@c.OldAddress</td>
+                                            <td class="mono val-green">@c.NewAddress</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            @if (_rewritePreview.Count > RewritePreviewLimit)
+                            {
+                                <p class="hint-line">另有 @(_rewritePreview.Count - RewritePreviewLimit) 条未列出，应用时一并生效。</p>
+                            }
+                        </div>
+                    }
+                }
+
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="CloseRewrite">取消</button>
+                    <button class="btn primary" type="button" @onclick="ApplyRewrite"
+                            disabled="@(_busy || _rewritePreview.Count == 0 || _rewriteError.Length > 0)">
+                        应用（@_rewritePreview.Count 条）
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ================= 导入范围选择 ================= *@
+    @if (_pendingImportJson is not null)
+    {
+        <div class="add-form-overlay center" @onclick="CancelImport">
+            <div class="add-form" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>导入变量</h3>
+                    <button class="close-btn" type="button" @onclick="CancelImport">×</button>
+                </div>
+
+                <p>文件里有 <b>@_pendingImportCount</b> 条变量。选择导入方式：</p>
+
+                <label class="radio-line">
+                    <input type="radio" name="impmode" checked="@(_importMode == VariableImportMode.Append)"
+                           @onchange="() => _importMode = VariableImportMode.Append" />
+                    <span><b>追加</b>到现有表（Id 冲突自动换新）</span>
+                </label>
+
+                <label class="radio-line @(string.IsNullOrEmpty(_filterRoute) ? "disabled" : null)">
+                    <input type="radio" name="impmode" disabled="@string.IsNullOrEmpty(_filterRoute)"
+                           checked="@(_importMode == VariableImportMode.ReplaceRoute)"
+                           @onchange="() => _importMode = VariableImportMode.ReplaceRoute" />
+                    <span>
+                        <b>覆盖本设备</b>的变量
+                        @if (string.IsNullOrEmpty(_filterRoute))
+                        {
+                            <span class="label-note">（先在左侧选中一台设备）</span>
+                        }
+                        else
+                        {
+                            <span class="label-note">（@_filterRoute，现有 @CountOf(_filterRoute) 条将被删除）</span>
+                        }
+                    </span>
+                </label>
+
+                <label class="radio-line">
+                    <input type="radio" name="impmode" checked="@(_importMode == VariableImportMode.ReplaceAll)"
+                           @onchange="() => _importMode = VariableImportMode.ReplaceAll" />
+                    <span><b>清空整张表</b>后导入（现有 @Store.GetAll().Count 条全部删除）</span>
+                </label>
+
+                @if (_importMode != VariableImportMode.Append)
+                {
+                    <div class="status-msg status-warn">覆盖不可撤销。建议先「导出 JSON」留个底。</div>
+                }
+
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="CancelImport">取消</button>
+                    <button class="btn @(_importMode == VariableImportMode.Append ? "primary" : "danger")"
+                            type="button" @onclick="ConfirmImport" disabled="@_busy">
+                        @(_importMode == VariableImportMode.Append ? "导入" : "覆盖并导入")
+                    </button>
                 </div>
             </div>
         </div>
@@ -655,7 +803,31 @@
     /// 变量表是人工维护的配置，正常规模远小于此。
     /// </para>
     /// </remarks>
-    private async Task ImportAsync(InputFileChangeEventArgs e)
+    // ========================================================================
+    // 导入
+    // ========================================================================
+
+    /// <summary>待导入的 JSON 原文；为 null 表示当前没有待确认的导入。</summary>
+    private string? _pendingImportJson;
+
+    /// <summary>待导入文件里的条数，用于确认框文案。</summary>
+    private int _pendingImportCount;
+
+    /// <summary>本次导入的覆盖范围，默认追加。</summary>
+    private VariableImportMode _importMode = VariableImportMode.Append;
+
+    /// <summary>
+    /// 选中文件后先读进内存并弹出范围选择，<b>不</b>立即写入。
+    /// </summary>
+    /// <remarks>
+    /// 覆盖类导入不可撤销，必须让操作员先看清「文件里有多少条、会删掉多少条」再决定。
+    /// 这里只读文件、算条数，真正落库在 <see cref="ConfirmImport"/>。
+    /// <para>
+    /// 512 KB 上限防止超大文件把 Blazor Server 的线路撑爆——
+    /// 变量表是人工维护的配置，正常规模远小于此。
+    /// </para>
+    /// </remarks>
+    private async Task OnImportFilePicked(InputFileChangeEventArgs e)
     {
         try
         {
@@ -663,16 +835,181 @@
             using StreamReader reader = new(stream);
             string json = await reader.ReadToEndAsync().ConfigureAwait(true);
 
-            int n = Store.ImportJson(json, replace: false);
-            _banner = "已导入 " + n + " 条";
-            _bannerClass = "status-ok";
+            // 先试解析，让「文件根本不是变量表」在选范围之前就暴露
+            List<WebVariable>? probe =
+                System.Text.Json.JsonSerializer.Deserialize<List<WebVariable>>(
+                    json, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (probe is null || probe.Count == 0)
+            {
+                _banner = "文件里没有变量";
+                _bannerClass = "status-warn";
+                return;
+            }
+
+            _pendingImportJson = json;
+            _pendingImportCount = probe.Count;
+
+            // 已选中某台设备时，「覆盖本设备」是换 PLC 场景下的常用选择，默认给它
+            _importMode = string.IsNullOrEmpty(_filterRoute)
+                ? VariableImportMode.Append
+                : VariableImportMode.ReplaceRoute;
         }
         catch (Exception ex)
         {
             // 文件损坏、超限、JSON 语法错误对操作员是同一种处置：换个文件重试
+            _banner = "读取失败: " + ex.Message;
+            _bannerClass = "status-error";
+        }
+    }
+
+    /// <summary>放弃本次导入。</summary>
+    private void CancelImport()
+    {
+        _pendingImportJson = null;
+        _pendingImportCount = 0;
+    }
+
+    /// <summary>按所选范围执行导入。</summary>
+    private void ConfirmImport()
+    {
+        if (_pendingImportJson is null) return;
+
+        try
+        {
+            VariableImportResult r = Store.ImportJson(
+                _pendingImportJson, _importMode,
+                _importMode == VariableImportMode.ReplaceRoute ? _filterRoute : null);
+
+            string msg = "已导入 " + r.Imported + " 条";
+            if (r.Removed > 0) msg += "，覆盖删除 " + r.Removed + " 条";
+
+            // 跳过的条数必须报出来，否则操作员会以为文件有问题
+            if (r.SkippedOtherRoute > 0)
+                msg += "，跳过 " + r.SkippedOtherRoute + " 条（属于其它设备）";
+
+            _banner = msg;
+            _bannerClass = r.Imported > 0 ? "status-ok" : "status-warn";
+        }
+        catch (Exception ex)
+        {
             _banner = "导入失败: " + ex.Message;
             _bannerClass = "status-error";
         }
+        finally
+        {
+            CancelImport();
+        }
+    }
+
+    // ========================================================================
+    // 批量改地址
+    // ========================================================================
+
+    /// <summary>预览表最多渲染多少行。超出部分不渲染但仍会被应用。</summary>
+    private const int RewritePreviewLimit = 200;
+
+    /// <summary>是否展开批量改地址弹层。</summary>
+    private bool _showRewrite;
+
+    /// <summary>改写范围的路由 Id；空字符串表示全部设备。</summary>
+    private string _rewriteScope = string.Empty;
+
+    /// <summary>查找内容。</summary>
+    private string _rewriteFind = string.Empty;
+
+    /// <summary>替换为的内容。</summary>
+    private string _rewriteTo = string.Empty;
+
+    /// <summary>是否按正则处理。</summary>
+    private bool _rewriteRegex;
+
+    /// <summary>预览结果，只含真正会变化的条目。</summary>
+    private IReadOnlyList<AddressRewrite> _rewritePreview = Array.Empty<AddressRewrite>();
+
+    /// <summary>预览失败的原因（正则语法错误等）；为空表示无错。</summary>
+    private string _rewriteError = string.Empty;
+
+    /// <summary>统计某条路由下的变量数。</summary>
+    private int CountOf(string routeId) =>
+        Store.GetAll().Count(v => string.Equals(v.RouteId, routeId, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>打开批量改地址弹层，默认范围取当前左侧筛选。</summary>
+    private void OpenRewrite()
+    {
+        _rewriteScope = _filterRoute;
+        _rewriteFind = string.Empty;
+        _rewriteTo = string.Empty;
+        _rewriteRegex = false;
+        _rewritePreview = Array.Empty<AddressRewrite>();
+        _rewriteError = string.Empty;
+        _showRewrite = true;
+    }
+
+    /// <summary>关闭弹层。</summary>
+    private void CloseRewrite() => _showRewrite = false;
+
+    /// <summary>切换正则开关后要重算预览——同一份输入在两种模式下结果完全不同。</summary>
+    private void OnRewriteRegexToggled(ChangeEventArgs e)
+    {
+        _rewriteRegex = e.Value is true;
+        RefreshRewritePreview();
+    }
+
+    /// <summary>
+    /// 重算预览。输入每变一个字符都会调用。
+    /// </summary>
+    /// <remarks>
+    /// 计算委托给 <see cref="AddressRewriter"/>——它是纯函数且有测试覆盖，
+    /// 正则超时、无效捕获组这类边角情况都在那里处理。本页只负责把结果画出来。
+    /// </remarks>
+    private void RefreshRewritePreview()
+    {
+        if (string.IsNullOrEmpty(_rewriteFind))
+        {
+            _rewritePreview = Array.Empty<AddressRewrite>();
+            _rewriteError = string.Empty;
+            return;
+        }
+
+        IEnumerable<WebVariable> scope = Store.GetAll();
+        if (!string.IsNullOrEmpty(_rewriteScope))
+            scope = scope.Where(v => string.Equals(v.RouteId, _rewriteScope, StringComparison.OrdinalIgnoreCase));
+
+        bool okResult = AddressRewriter.TryPreview(
+            scope.Select(v => new AddressCandidate(v.Id, v.Name, v.Address)),
+            _rewriteFind, _rewriteTo, _rewriteRegex,
+            out IReadOnlyList<AddressRewrite> changes, out string error);
+
+        _rewritePreview = changes;
+        _rewriteError = okResult ? string.Empty : (error ?? "预览失败");
+    }
+
+    /// <summary>把预览结果落库。</summary>
+    /// <remarks>
+    /// 一次锁、一次落盘、一次事件——逐条更新会在几百条时把界面刷到卡顿。
+    /// 改完清空输入但<b>不关弹层</b>：换 PLC 时往往要连做几轮不同的替换规则。
+    /// </remarks>
+    private void ApplyRewrite()
+    {
+        if (_rewritePreview.Count == 0) return;
+
+        _busy = true;
+        try
+        {
+            int n = Store.ApplyAddressChanges(
+                _rewritePreview.ToDictionary(c => c.Id, c => c.NewAddress, StringComparer.Ordinal));
+
+            _banner = "已改写 " + n + " 条地址。读值已清空，请重新读取验证。";
+            _bannerClass = "status-ok";
+            Log.Info("Variables", "批量改地址 " + n + " 条（" +
+                (string.IsNullOrEmpty(_rewriteScope) ? "全部设备" : _rewriteScope) + "）");
+
+            _rewriteFind = string.Empty;
+            _rewriteTo = string.Empty;
+            _rewritePreview = Array.Empty<AddressRewrite>();
+        }
+        finally { _busy = false; }
     }
 
     /// <summary>请求删除某条变量，置入待确认状态而非直接删除。</summary>
