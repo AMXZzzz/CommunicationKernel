@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// 文件: Program.cs
+// 文件: Main.cs
 // 层级: UI 层 — Blazor Server 应用程序入口
 // 作用: 注册会话、日志、设备/变量持久化，配置中间件与组件路由。
 //
@@ -150,6 +150,29 @@ try {
             options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         });
     builder.Services.AddAuthorization();
+
+    // ------------------------------------------------------------------------
+    // 强制 HTTPS 的参数（仅在设置里开了才会被用到，见下方中间件）
+    // ------------------------------------------------------------------------
+    builder.Services.AddHttpsRedirection(options => {
+        // 307 而非默认的 302：307 保证浏览器<b>重发原方法与请求体</b>。
+        // 用 302 的话，登录表单的 POST 会被降级成 GET 重发，
+        // 口令直接丢失，用户看到的是"点了登录没反应"。
+        options.RedirectStatusCode = StatusCodes.Status307TemporaryRedirect;
+
+        // 跳到公网的 443，而不是本进程自己的端口。
+        // 不指定时框架会去猜（找本进程的 https 侦听器），而这里根本没有，
+        // 猜不出就<b>整个跳过重定向</b>——开关看着开了却毫无作用。
+        options.HttpsPort = 443;
+    });
+
+    builder.Services.AddHsts(options => {
+        // 30 天。不用常见的 365 天，也不开 IncludeSubDomains / Preload——
+        // 这些都由浏览器缓存且无法远程撤销，以后要退回 http 时会很难收拾。
+        options.MaxAge = TimeSpan.FromDays(30);
+        options.IncludeSubDomains = false;
+        options.Preload = false;
+    });
     builder.Services.AddSingleton<WebDeviceStore>();
     builder.Services.AddSingleton<WebVariableStore>();
     builder.Services.AddSingleton<WebTemplateStore>();
@@ -246,6 +269,30 @@ try {
         }
 
         app.UseForwardedHeaders(fho);
+
+        // ----------------------------------------------------------------
+        // 强制 HTTPS
+        // ----------------------------------------------------------------
+        //
+        // 必须紧跟在 UseForwardedHeaders 之后：判断依据是 Request.IsHttps，
+        // 而那个值正是上一行刚从 X-Forwarded-Proto 改写出来的。
+        // 排到它前面，每个请求看到的都还是明文 http，会无条件重定向 → 死循环。
+        //
+        // 证书在公网机上，本进程只监听明文 http：
+        // 用户 --https--> 反代（终止 TLS）--http+XFP:https--> 本进程
+        // 因此这里判定 IsHttps=true，不会再重定向；只有用户直接敲 http:// 时才跳。
+        if (proxySettings.HttpsRedirectActive)
+        {
+            // HSTS：告诉浏览器今后一律用 https，连第一次的明文跳转都省掉。
+            // 30 天而非常见的 1 年，也不带 includeSubDomains / preload——
+            // 这三项都会被浏览器缓存且<b>无法远程撤销</b>，
+            // 万一以后要退回 http，用户侧只能手动清 HSTS 记录，现场做不到。
+            app.UseHsts();
+
+            app.UseHttpsRedirection();
+
+            logStore.Info("Proxy", "已启用强制 HTTPS（http 访问将 307 跳转，并下发 HSTS 30 天）");
+        }
 
         // 反代到子路径（https://example.com/ck/）时才需要。
         // 直接反代到根路径时留空，装上反而会让所有路由多一层前缀而 404。
