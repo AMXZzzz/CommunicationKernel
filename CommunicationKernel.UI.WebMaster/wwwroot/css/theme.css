@@ -875,8 +875,94 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
         flex-shrink: 0;
     }
     .data-table tbody td[data-label=""] { justify-content: flex-end; }
-    .write-cell { width: auto; flex-wrap: wrap; }
-    .write-input { width: 100%; flex: 1; min-width: 80px; }
+
+    /* 批量改地址的预览表<b>不</b>拆成卡片，保持真表格并允许横向滚动。
+       它是「原地址 → 新地址」的逐行对照：拆成卡片后表头被隐藏、
+       三格又没有 data-label，屏幕上就是三行光秃秃的文字，
+       根本分不清哪个是改后的值。而这是个不可撤销的批量操作，
+       预览的全部意义就在于确认这个映射，宁可让它横向滚。 */
+    .preview-box { overflow: auto; }
+    .preview-box .data-table { display: table; width: 100%; }
+    .preview-box .data-table thead { display: table-header-group; }
+    .preview-box .data-table tbody { display: table-row-group; }
+    .preview-box .data-table tr { display: table-row; }
+    .preview-box .data-table th,
+    .preview-box .data-table td {
+        display: table-cell;
+        width: auto;
+        border-bottom: 1px solid var(--border);
+        padding: 8px 10px;
+        white-space: nowrap;
+    }
+    .preview-box .data-table tbody tr { border: 0; margin: 0; background: none; }
+    .preview-box .data-table tbody td::before { content: none; }
+
+    /* 导入范围的单选项：桌面上 12.5px 一行够用，手指点不准。
+       整行做成可点区域并留出 44px 高度（触控目标的通行下限）。 */
+    .add-form label.radio-line {
+        font-size: 14px;
+        min-height: 44px;
+        align-items: center;
+        padding: 6px 8px;
+        margin: 6px 0 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+    }
+    .add-form label.radio-line input { width: 18px; height: 18px; margin: 0; }
+    .add-form label.inline-check { min-height: 44px; font-size: 14px; }
+    .add-form label.inline-check input { width: 18px; height: 18px; }
+
+    /* 行内小按钮的触控尺寸。
+       桌面上 .btn-sm 是 24px 高、29px 宽，鼠标够用；手指点不中。
+       @media 里原本只放大了 .btn，把 .btn-sm 漏了，
+       而变量表每一行的「写 / 读 / 编辑 / 删」全是 .btn-sm。
+       44px 是触控目标的通行下限（误触率在此以下明显上升）。 */
+    .btn-sm {
+        min-height: 40px;
+        min-width: 44px;
+        padding: 8px 12px;
+        font-size: 13px;
+        border-radius: 6px;
+    }
+    .row-btns { gap: 8px; }
+    .row-btns .btn-sm { flex: 1; }
+
+    /* 轮询开关。原生 checkbox 在手机上渲染成 13×13，几乎点不到，
+       而它控制的是「这条变量要不要一直读」——误触和点不中都有实际后果。
+       放大到 22px 并把整个 label 撑成 44px 的可点区域。 */
+    .poll-toggle {
+        min-height: 44px;
+        min-width: 44px;
+        align-items: center;
+        justify-content: flex-end;
+        cursor: pointer;
+    }
+    .poll-toggle input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+        margin: 0;
+    }
+
+    /* 全站复选框统一放大。原生 checkbox 在手机上默认渲染成 13×13，
+       无论它出现在哪个页面都点不中——日志页的「自动滚动」就是一例。
+       包着它的 <label> 一并撑到 44px，让点文字也能切换。 */
+    input[type="checkbox"] {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+    }
+    label:has(> input[type="checkbox"]) {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+    }
+
+    /* 写入格：输入框独占一行，两个按钮并排铺满，避免挤成三个小方块 */
+    .write-cell { width: auto; flex-wrap: wrap; gap: 8px; }
+    .write-input { width: 100%; flex: 1 0 100%; min-width: 0; min-height: 40px; }
+    .write-cell .btn-sm { flex: 1; }
 
     .var-layout { flex-direction: column; }
     .device-panel {
