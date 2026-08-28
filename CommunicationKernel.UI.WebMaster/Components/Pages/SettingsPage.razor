@@ -7,6 +7,8 @@
 @page "/settings"
 @inject EngineSession Session
 @inject WebSettingsStore Settings
+@inject WebProxySettingsStore Proxy
+@inject WebAuthStore Auth
 @inject NavigationManager Nav
 @implements IDisposable
 
@@ -56,6 +58,91 @@
     </div>
 
     <div class="settings-card">
+        <h3>访问口令</h3>
+        <p class="setting-hint">
+            设了口令后，打开界面要先登录。留空即不需要登录（本机/局域网默认如此）。
+            改完必须重启 Web。文件：@Auth.FilePath
+        </p>
+
+        <div class="connect-status @(_authEnabled ? "status-ok" : "status-warn")">
+            @(_authEnabled ? "已启用登录" : "未设口令 · 任何能访问本地址的人都能操作")
+        </div>
+
+        <label style="margin-top:12px">新口令（至少 @WebAuthStore.MinPasswordLength 位）</label>
+        <input type="password" @bind="_pwd1" autocomplete="new-password" />
+
+        <label>再输一次</label>
+        <input type="password" @bind="_pwd2" autocomplete="new-password" />
+
+        <div class="form-actions">
+            <button class="btn primary" type="button" @onclick="SavePassword">保存口令</button>
+            @if (_authEnabled)
+            {
+                <button class="btn danger" type="button" @onclick="ClearPassword">取消登录</button>
+            }
+        </div>
+        <div class="connect-status @_authStatusClass" style="margin-top:12px">@_authStatus</div>
+
+        @* 忘记口令必须有一条不依赖界面的出路——设了口令又忘了就进不来了，
+           而现场没有第二个入口。 *@
+        <p class="setting-hint">
+            忘记口令：删掉 <span class="mono">config/web-auth.json</span> 再重启即可恢复免登录。
+        </p>
+        <p class="setting-hint">
+            这只是一道门槛，没有多用户与权限分级。对外暴露时，
+            反向代理上的 Basic Auth / IP 白名单仍然要加——两者叠加，不是二选一。
+        </p>
+    </div>
+
+    <div class="settings-card">
+        <h3>外地访问（反向代理）</h3>
+        <p class="setting-hint">
+            公网机（1Panel / 宝塔 / nginx）做 HTTPS 中转、经隧道转到本机时开启。
+            本机与同一 WiFi 访问<b>不需要</b>开。改完必须重启 Web。文件：@Proxy.FilePath
+        </p>
+
+        @* 警告放在界面上而不是只写在文档里：开这个开关的人多半正准备
+           把界面挂到公网，暴露面这件事必须在他动手前看到。 *@
+        @if (!_authEnabled)
+        {
+            <div class="status-msg status-error" style="margin:12px 0">
+                <b>还没设访问口令。</b>挂到公网后，任何拿到网址的人都能读写现场 PLC 寄存器。
+                请先到上面「访问口令」设一个，并在反向代理上再加一层 Basic Auth 或 IP 白名单。
+            </div>
+        }
+        else
+        {
+            <div class="status-msg status-warn" style="margin:12px 0">
+                已设访问口令。仍<b>建议</b>在反向代理上叠加 Basic Auth 或来源 IP 白名单——
+                应用内的口令只是一道门槛，没有多用户、没有审计。
+                另外确认 gRPC 的 <span class="mono">:5000</span> 没有一并暴露出去，那个口没有任何认证。
+            </div>
+        }
+
+        <label class="inline-check">
+            <input type="checkbox" checked="@_proxyEnabled" @onchange="e => _proxyEnabled = e.Value is true" />
+            启用反向代理支持
+        </label>
+
+        <label>子路径（可空）</label>
+        <input @bind="_proxyPathBase" placeholder="反代到 https://例子.com/ck/ 时填 /ck；根路径留空" />
+
+        <label>可信代理 IP（可空，每行一个）</label>
+        <textarea rows="3" @bind="_proxyTrusted"
+                  placeholder="留空表示不校验来源。此时必须保证本端口只对反代开放"></textarea>
+
+        <div class="form-actions">
+            <button class="btn primary" type="button" @onclick="SaveProxy">保存代理设置</button>
+        </div>
+        <div class="connect-status @_proxyStatusClass" style="margin-top:12px">@_proxyStatus</div>
+
+        <p class="setting-hint">
+            不开这个开关时，经 HTTPS 反代访问会出现「页面能打开、按钮全都没反应」——
+            Blazor 的实时线路按明文协议回连，被浏览器当混合内容拦掉了。
+        </p>
+    </div>
+
+    <div class="settings-card">
         <h3>关于</h3>
         <p class="setting-desc">CommunicationKernel Web 上位机</p>
         <p class="setting-hint">Blazor Server · 本进程带 Hosting.App · UI 经 Hosting.Sdk 回环 · 设备/变量落在 exe 旁 config/</p>
@@ -91,6 +178,11 @@
             ? saved.ToString()
             : _listenPort.ToString();
         _phoneUrls = LanAccess.PhoneUrls(_listenPort);
+        LoadProxyIntoForm();
+
+        _authEnabled = Auth.IsEnabled;
+        _authStatus = _authEnabled ? "已设口令" : "未设口令";
+        _authStatusClass = _authEnabled ? "status-ok" : "status-muted";
         Session.Changed += OnChanged;
     }
 
@@ -147,6 +239,164 @@
         {
             _portStatus = ex.Message;
             _portStatusClass = "status-error";
+        }
+    }
+
+    // ========================================================================
+    // 访问口令
+    // ========================================================================
+
+    /// <summary>当前是否已设口令。</summary>
+    private bool _authEnabled;
+
+    /// <summary>表单：新口令。</summary>
+    private string _pwd1 = string.Empty;
+
+    /// <summary>表单：确认口令。</summary>
+    private string _pwd2 = string.Empty;
+
+    /// <summary>口令设置的状态行文案。</summary>
+    private string _authStatus = string.Empty;
+
+    /// <summary>口令状态行的样式类。</summary>
+    private string _authStatusClass = "status-muted";
+
+    /// <summary>
+    /// 设置或修改口令。
+    /// </summary>
+    /// <remarks>
+    /// 两次输入必须一致——口令是密文输入，打错一个字符自己看不出来，
+    /// 而设完重启就进不去了，只能去删配置文件。确认框是这里最值钱的一道校验。
+    /// </remarks>
+    private void SavePassword()
+    {
+        if (_pwd1.Length < WebAuthStore.MinPasswordLength)
+        {
+            _authStatus = $"口令至少 {WebAuthStore.MinPasswordLength} 位";
+            _authStatusClass = "status-error";
+            return;
+        }
+
+        if (_pwd1 != _pwd2)
+        {
+            _authStatus = "两次输入不一致";
+            _authStatusClass = "status-error";
+            return;
+        }
+
+        try
+        {
+            Auth.SetPassword(_pwd1);
+
+            // 立刻清掉内存里的明文，别让它跟着组件状态留在服务端
+            _pwd1 = string.Empty;
+            _pwd2 = string.Empty;
+
+            _authEnabled = true;
+            _authStatus = "已保存。请退出 Web 再打开，之后访问需要登录。";
+            _authStatusClass = "status-warn";
+        }
+        catch (Exception ex)
+        {
+            _authStatus = ex.Message;
+            _authStatusClass = "status-error";
+        }
+    }
+
+    /// <summary>清除口令，恢复免登录。</summary>
+    private void ClearPassword()
+    {
+        try
+        {
+            Auth.ClearPassword();
+            _authEnabled = false;
+            _authStatus = "已取消登录。请退出 Web 再打开生效。";
+            _authStatusClass = "status-warn";
+        }
+        catch (Exception ex)
+        {
+            _authStatus = ex.Message;
+            _authStatusClass = "status-error";
+        }
+    }
+
+    // ========================================================================
+    // 反向代理
+    // ========================================================================
+
+    /// <summary>表单：是否启用反代支持。</summary>
+    private bool _proxyEnabled;
+
+    /// <summary>表单：子路径前缀，保存时会规范化成 /xxx。</summary>
+    private string _proxyPathBase = string.Empty;
+
+    /// <summary>表单：可信代理 IP，界面上每行一个。</summary>
+    private string _proxyTrusted = string.Empty;
+
+    /// <summary>代理设置的状态行文案。</summary>
+    private string _proxyStatus = "未启用";
+
+    /// <summary>代理状态行的样式类。</summary>
+    private string _proxyStatusClass = "status-muted";
+
+    /// <summary>把已保存的反代设置读进表单。</summary>
+    private void LoadProxyIntoForm()
+    {
+        WebProxySettings p = WebProxySettingsStore.Load();
+
+        _proxyEnabled = p.Enabled;
+        _proxyPathBase = p.PathBase;
+        _proxyTrusted = string.Join(Environment.NewLine, p.TrustedProxies);
+
+        _proxyStatus = p.Enabled ? "已启用（重启后生效的配置见上）" : "未启用";
+        _proxyStatusClass = p.Enabled ? "status-ok" : "status-muted";
+    }
+
+    /// <summary>
+    /// 保存反代设置。
+    /// </summary>
+    /// <remarks>
+    /// 中间件管线在启动时就装配好了，改完必须重启——因此提示语统一写「重启后生效」，
+    /// 不能只说「已保存」，否则用户会以为立刻就能用。
+    /// </remarks>
+    private void SaveProxy()
+    {
+        try
+        {
+            // 每行一个 IP，允许用逗号分隔；空行与空白一律丢掉
+            string[] proxies = _proxyTrusted
+                .Split(new[] { '\r', '\n', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .ToArray();
+
+            // 先校验再落盘：写进去一个解析不了的 IP，启动时只会在日志里
+            // 留一行警告然后被忽略，用户在界面上看不出哪里错了
+            string? bad = proxies.FirstOrDefault(s => !System.Net.IPAddress.TryParse(s, out _));
+            if (bad is not null)
+            {
+                _proxyStatus = "不是合法的 IP：" + bad;
+                _proxyStatusClass = "status-error";
+                return;
+            }
+
+            Proxy.Save(new WebProxySettings(
+                _proxyEnabled,
+                proxies,
+                WebProxySettings.NormalizePathBase(_proxyPathBase)));
+
+            // 回读一次，让界面显示规范化之后的值（例如 ck/ → /ck）
+            LoadProxyIntoForm();
+
+            _proxyStatus = _proxyEnabled
+                ? "已保存并启用。请退出 Web 再打开才生效。"
+                : "已保存（未启用）。请退出 Web 再打开才生效。";
+            _proxyStatusClass = "status-warn";
+        }
+        catch (Exception ex)
+        {
+            _proxyStatus = ex.Message;
+            _proxyStatusClass = "status-error";
         }
     }
 

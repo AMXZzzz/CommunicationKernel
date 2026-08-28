@@ -30,6 +30,8 @@ using CommunicationKernel.UI.WebMaster.Services;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 // 托盘程序不需要控制台。WinExe 双击本来没有；VS / dotnet run 会塞一个黑框过来。
@@ -119,6 +121,35 @@ try {
 
     // 本地持久化（设备 / 变量 / Web 端口）
     builder.Services.AddSingleton<WebSettingsStore>();
+    builder.Services.AddSingleton<WebProxySettingsStore>();
+    builder.Services.AddSingleton<WebAuthStore>();
+
+    // ------------------------------------------------------------------------
+    // 登录（仅在设了口令时才真正拦截）
+    // ------------------------------------------------------------------------
+    //
+    // 认证服务无条件注册：设置页要能在运行时设/改口令，
+    // 而中间件与端点策略是否生效由下面的 authEnabled 决定。
+    // 全部按启动时的状态装配——刚设完口令要重启才拦得住，设置页已写明这点。
+    builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+        .AddCookie(options => {
+            options.LoginPath = WebAuthEndpoints.LoginPath;
+            options.LogoutPath = WebAuthEndpoints.LogoutPath;
+
+            // 现场是长时间开着的看板，一天一登比较合适；滑动过期让活跃会话不被打断
+            options.ExpireTimeSpan = TimeSpan.FromDays(1);
+            options.SlidingExpiration = true;
+
+            options.Cookie.Name = "ck_auth";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+
+            // SameAsRequest 而非 Always：局域网是明文 http，
+            // 写死 Always 会让 Cookie 在内网根本存不下来，表现为"登录后又跳回登录页"。
+            // 经 HTTPS 反代时请求协议已被转发头改写成 https，这里自然会带上 Secure。
+            options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        });
+    builder.Services.AddAuthorization();
     builder.Services.AddSingleton<WebDeviceStore>();
     builder.Services.AddSingleton<WebVariableStore>();
     builder.Services.AddSingleton<WebTemplateStore>();
@@ -151,6 +182,14 @@ try {
     // 构建应用
     // ============================================================================
 
+    // 反代设置要在装配中间件之前读出来。用静态方法读文件而非从 DI 取——
+    // 此刻容器还没建好，而中间件管线的形状取决于这份配置。
+    WebProxySettings proxySettings = WebProxySettingsStore.Load();
+
+    // 是否设了口令。与反代设置同理：中间件管线在启动时装配，
+    // 设完口令要重启才生效（设置页已写明）。
+    bool authEnabled = WebAuthStore.Load() is not null;
+
     WebApplication app = builder.Build();
 
     {
@@ -160,6 +199,64 @@ try {
             logStore.Error("Engine", "未加载到任何协议插件，设备将无法选择协议");
         else
             logStore.Info("Engine", "已加载 " + protocols.Count + " 个协议；gRPC " + localGrpc);
+    }
+
+    // ========================================================================
+    // 反向代理（公网中转）
+    // ========================================================================
+    //
+    // 必须排在<b>所有</b>其它中间件之前：它的作用是把请求的协议与主机名
+    // 改写成用户浏览器那一侧的真实值，排在后面的话，前面的组件已经
+    // 按错误的协议做完决策了。
+    //
+    // 不启用时一行中间件都不装——本机与局域网直连场景没有代理，
+    // 装上反而会因为信任了不存在的转发头而带来被伪造的风险。
+    if (proxySettings.Enabled)
+    {
+        ForwardedHeadersOptions fho = new()
+        {
+            // 只认这两个：协议决定 Blazor 的 WebSocket 用 ws 还是 wss，
+            // 主机名决定页面里生成的绝对地址。
+            ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+        };
+
+        // 默认只信任回环地址。经 frp 之类的隧道进来时来源不是回环，
+        // 不清空这两个集合的话转发头会被直接丢弃，配了等于没配。
+        fho.KnownNetworks.Clear();
+        fho.KnownProxies.Clear();
+
+        if (proxySettings.TrustedProxies.Count > 0)
+        {
+            foreach (string ip in proxySettings.TrustedProxies)
+            {
+                if (System.Net.IPAddress.TryParse(ip, out System.Net.IPAddress? parsed))
+                    fho.KnownProxies.Add(parsed);
+                else
+                    logStore.Warn("Proxy", "可信代理地址无法解析，已忽略: " + ip);
+            }
+        }
+        else
+        {
+            // 未指定可信代理时，KnownProxies 为空即表示不校验来源。
+            // 这是有意的取舍：现场往往拿不到隧道出口的固定 IP。
+            // 代价是任何能直连本端口的人都能伪造协议头——所以这个端口
+            // 本来就不该直接暴露在公网上，前面必须有反代。
+            logStore.Warn("Proxy",
+                "未配置可信代理 IP：将接受任意来源的转发头。请确保 Web 端口只对反向代理开放。");
+        }
+
+        app.UseForwardedHeaders(fho);
+
+        // 反代到子路径（https://example.com/ck/）时才需要。
+        // 直接反代到根路径时留空，装上反而会让所有路由多一层前缀而 404。
+        if (proxySettings.PathBase.Length > 0)
+            app.UsePathBase(proxySettings.PathBase);
+
+        logStore.Info("Proxy",
+            "已启用反向代理支持（子路径=" +
+            (proxySettings.PathBase.Length == 0 ? "根" : proxySettings.PathBase) +
+            "，可信代理=" +
+            (proxySettings.TrustedProxies.Count == 0 ? "不限" : string.Join(",", proxySettings.TrustedProxies)) + "）");
     }
 
     // 生产环境：异常处理中间件（开发环境 Blazor 有内置错误 UI）
@@ -172,9 +269,31 @@ try {
     // 防 CSRF（Blazor 表单组件需要）
     app.UseAntiforgery();
 
+    // ========================================================================
+    // 登录拦截
+    // ========================================================================
+    //
+    // 只在设了口令时才装。没设口令＝本机/局域网直接用，不该平白多两层中间件，
+    // 也不该让人在内网被一个自己没设过的登录页拦住。
+    //
+    // 必须排在 UseStaticFiles 之后：登录页要用 theme.css，
+    // 排在前面会让样式表也需要登录才能取，登录页于是变成一片白。
+    if (authEnabled)
+    {
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapAuthEndpoints();
+    }
+
     // Blazor 组件路由（含 Interactive Server）
-    app.MapRazorComponents<App>()
+    RazorComponentsEndpointConventionBuilder blazor = app.MapRazorComponents<App>()
         .AddInteractiveServerRenderMode();
+
+    // 认证<b>只加在 Blazor 端点上</b>，绝不用全局 FallbackPolicy。
+    // gRPC 的 :5000 在同一个应用里，而 WPF 与本进程回环调用都不带 Cookie——
+    // 一旦被全局策略覆盖，上位机会直接连不上引擎，且错误信息完全看不出是认证造成的。
+    if (authEnabled)
+        blazor.RequireAuthorization();
 
     // 监听就绪后再开浏览器、记下局域网地址。
     //

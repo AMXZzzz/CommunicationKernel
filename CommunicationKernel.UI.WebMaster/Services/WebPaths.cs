@@ -31,4 +31,10 @@ internal static class WebPaths
 
     /// <summary>设备功能模板库（名称 / 类型 / 备注，不含地址）。</summary>
     public static string TemplatesFile => Path.Combine(Root, "web-templates.json");
+
+    /// <summary>反向代理（公网中转）设置。</summary>
+    public static string ProxyFile => Path.Combine(Root, "web-proxy.json");
+
+    /// <summary>登录口令（PBKDF2 哈希，非明文）。文件不存在即表示不需要登录。</summary>
+    public static string AuthFile => Path.Combine(Root, "web-auth.json");
 }
