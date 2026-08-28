@@ -124,6 +124,27 @@
             启用反向代理支持
         </label>
 
+        <label class="inline-check @(_proxyEnabled ? null : "disabled")">
+            <input type="checkbox" checked="@_proxyForceHttps" disabled="@(!_proxyEnabled)"
+                   @onchange="e => _proxyForceHttps = e.Value is true" />
+            强制 HTTPS（http 访问自动跳转，并下发 HSTS 30 天）
+        </label>
+        @if (!_proxyEnabled)
+        {
+            @* 硬联锁而非仅提示：证书在公网机上，本进程没有 HTTPS 侦听器。
+               不开反代就没有 X-Forwarded-Proto，每个请求都会被判成明文而无限重定向，
+               到那时连设置页都打不开，只能去删配置文件。 *@
+            <p class="setting-hint">需先启用上面的「反向代理支持」才能开启——本进程自身不监听 HTTPS。</p>
+        }
+        else if (_proxyForceHttps)
+        {
+            <div class="status-msg status-warn" style="margin-top:8px">
+                HSTS 会被浏览器<b>缓存 30 天且无法远程撤销</b>。
+                确认公网机的证书有效再开；证书过期或以后要退回 http 时，
+                访问过的浏览器需要手动清除 HSTS 记录才能打开。
+            </div>
+        }
+
         <label>子路径（可空）</label>
         <input @bind="_proxyPathBase" placeholder="反代到 https://例子.com/ck/ 时填 /ck；根路径留空" />
 
@@ -330,6 +351,9 @@
     /// <summary>表单：子路径前缀，保存时会规范化成 /xxx。</summary>
     private string _proxyPathBase = string.Empty;
 
+    /// <summary>表单：是否强制 HTTPS。仅在启用反代时可用，见界面上的联锁说明。</summary>
+    private bool _proxyForceHttps;
+
     /// <summary>表单：可信代理 IP，界面上每行一个。</summary>
     private string _proxyTrusted = string.Empty;
 
@@ -346,6 +370,7 @@
 
         _proxyEnabled = p.Enabled;
         _proxyPathBase = p.PathBase;
+        _proxyForceHttps = p.ForceHttps;
         _proxyTrusted = string.Join(Environment.NewLine, p.TrustedProxies);
 
         _proxyStatus = p.Enabled ? "已启用（重启后生效的配置见上）" : "未启用";
@@ -383,7 +408,8 @@
             Proxy.Save(new WebProxySettings(
                 _proxyEnabled,
                 proxies,
-                WebProxySettings.NormalizePathBase(_proxyPathBase)));
+                WebProxySettings.NormalizePathBase(_proxyPathBase),
+                _proxyEnabled && _proxyForceHttps));
 
             // 回读一次，让界面显示规范化之后的值（例如 ck/ → /ck）
             LoadProxyIntoForm();

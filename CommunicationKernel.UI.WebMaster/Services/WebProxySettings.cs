@@ -16,14 +16,16 @@
 //     2) 页面里生成的绝对链接、以及日志里的客户端 IP，都会是代理那一侧的值。
 //
 //   解决办法是让应用信任代理送来的 X-Forwarded-Proto / X-Forwarded-Host
-//   （见 Program.cs 里的 UseForwardedHeaders）。本文件负责把「信不信、信谁」
-//   这两件事做成可配置的，而不是写死。
+//   （见 Main.cs 里的 UseForwardedHeaders）。本文件负责把「信不信、信谁、
+//   要不要强制 https」这几件事做成可配置的，而不是写死。
 //
 // 安全前提（务必读）:
-//   Web UI 与 gRPC 端点<b>都没有任何认证</b>。把界面暴露到公网 =
-//   任何拿到网址的人都能读写现场 PLC 寄存器。
-//   隔离必须由部署方负责：反代上加 HTTP Basic / OAuth、限制来源 IP，
-//   或只在 VPN 内暴露。本设置只解决「能不能正常显示」，不解决「谁能访问」。
+//   Web UI 有一道口令门槛（见 WebAuthStore），但 gRPC 的 :5000 <b>没有任何认证</b>。
+//   把界面暴露到公网时：
+//     · 必须先设访问口令；
+//     · 反代上再叠一层 Basic Auth / OAuth / 来源 IP 白名单；
+//     · 确认只把 Web 口转出去，:5000 绝不能一起暴露。
+//   本文件的设置解决「能不能正常显示」与「走不走 https」，不解决「谁能访问」。
 // -----------------------------------------------------------------------------
 
 using CommunicationKernel.Hosting.Sdk;
@@ -43,14 +45,31 @@ namespace CommunicationKernel.UI.WebMaster.Services;
 /// 子路径前缀，例如反代到 <c>https://x.com/ck/</c> 时填 <c>/ck</c>；
 /// 直接反代到根路径时留空。
 /// </param>
+/// <param name="ForceHttps">
+/// 是否把 http 访问强制跳到 https，并下发 HSTS。
+/// </param>
 public sealed record WebProxySettings(
     bool Enabled,
     IReadOnlyList<string> TrustedProxies,
-    string PathBase)
+    string PathBase,
+    bool ForceHttps)
 {
     /// <summary>默认：不启用反代支持，本机/局域网直连场景无需任何配置。</summary>
     public static WebProxySettings Disabled { get; } =
-        new(false, Array.Empty<string>(), string.Empty);
+        new(false, Array.Empty<string>(), string.Empty, false);
+
+    /// <summary>
+    /// 强制 HTTPS 是否真正生效。
+    /// </summary>
+    /// <remarks>
+    /// <b>必须同时启用反代支持。</b>证书在公网机上，WebMaster 自己只监听明文 http，
+    /// 没有 HTTPS 侦听器。不开反代就没有 X-Forwarded-Proto，
+    /// <c>Request.IsHttps</c> 永远是 false，于是每个请求都被重定向到 https，
+    /// 而 https 又连不上——浏览器上表现为无限重定向或直接连接失败，
+    /// 且这台机器<b>再也打不开设置页去关掉这个开关</b>，只能去删配置文件。
+    /// 因此这里做成硬联锁，而不是只在界面上提示。
+    /// </remarks>
+    public bool HttpsRedirectActive => Enabled && ForceHttps;
 
     /// <summary>
     /// 规范化子路径：统一成 <c>/xxx</c> 形式，无前缀时返回空串。
@@ -123,7 +142,9 @@ public sealed class WebProxySettingsStore
                 ? WebProxySettings.NormalizePathBase(pb.GetString())
                 : string.Empty;
 
-            return new WebProxySettings(enabled, proxies, pathBase);
+            bool forceHttps = root.TryGetProperty("ForceHttps", out JsonElement fh) && fh.ValueKind == JsonValueKind.True;
+
+            return new WebProxySettings(enabled, proxies, pathBase, forceHttps);
         }
         catch
         {
@@ -145,6 +166,7 @@ public sealed class WebProxySettingsStore
                 settings.Enabled,
                 TrustedProxies = settings.TrustedProxies,
                 PathBase = WebProxySettings.NormalizePathBase(settings.PathBase),
+                settings.ForceHttps,
             };
 
             if (!JsonFileStore.SaveObject(WebPaths.ProxyFile, payload, out string error))
@@ -155,7 +177,7 @@ public sealed class WebProxySettingsStore
         }
 
         _log.Info("Settings",
-            "已保存反代设置（启用=" + settings.Enabled + "，子路径=" +
+            "已保存反代设置（启用=" + settings.Enabled + "，强制HTTPS=" + settings.ForceHttps + "，子路径=" +
             (settings.PathBase.Length == 0 ? "根" : settings.PathBase) + "），下次启动生效");
     }
 }
