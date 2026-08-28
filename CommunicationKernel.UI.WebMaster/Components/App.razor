@@ -20,11 +20,18 @@
     @* 样式之前先打 is-phone：华为/荣耀常忽略 viewport，按 980px 桌面排版，光靠 CSS 媒体查询不够。 *@
     <script>
         (function () {
+            // 判定条件必须与 js/app.js 的 isPhone() 完全一致。
+            //
+            // 曾经这里多一个 "触摸 && 屏幕短边<=920" 的分支，而 app.js 只认 UA
+            // 且用的是 toggle——于是触摸屏笔记本上会：本脚本加 is-phone 并把
+            // viewport 改窄 → 闪一下手机布局 → app.js 把类摘掉，
+            // 但<b>被改窄的 viewport 留了下来</b>，变成「窄视口 + 桌面类」的畸形状态。
+            //
+            // 只按 UA 判定不会漏掉真手机：忽略 viewport 的华为/鸿蒙浏览器
+            // 本来就带 Huawei/Harmony/HMSCore 标识，UA 这一条已经覆盖。
             var ua = navigator.userAgent || "";
             var minSide = Math.min(screen.width || 9999, screen.height || 9999);
-            var touch = (navigator.maxTouchPoints || 0) > 0;
-            var mobile = /Android|iPhone|iPod|Mobile|Huawei|Harmony|HMSCore|MicroMessenger/i.test(ua)
-                || (touch && minSide <= 920);
+            var mobile = /Android|iPhone|iPod|iPad|Mobile|Huawei|Harmony|HMSCore|MicroMessenger/i.test(ua);
             if (!mobile) return;
             document.documentElement.classList.add("is-phone");
             var meta = document.querySelector('meta[name="viewport"]');

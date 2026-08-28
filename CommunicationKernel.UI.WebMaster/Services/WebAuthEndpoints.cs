@@ -123,16 +123,39 @@ public static class WebAuthEndpoints
             ? $"<input type=\"hidden\" name=\"returnUrl\" value=\"{HtmlEncode(returnUrl!)}\" />"
             : string.Empty;
 
+        // 失败提示要能一眼看到。
+        //
+        // 原来只是一行 12.5px 的小字，在按桌面宽度渲染的手机上缩到几个像素高，
+        // 用户的实际观感是「点了登录，页面闪一下，什么都没发生」，
+        // 会以为是网络问题而反复重试同一个错口令。
+        // 所以：字号加大、加粗、留白拉开，并且标注 role=alert 让读屏软件也播报。
         string error = failed
-            ? "<div class=\"status-msg status-error\" style=\"margin-bottom:12px\">口令不正确</div>"
+            ? "<div class=\"status-msg status-error\" role=\"alert\" " +
+              "style=\"margin-bottom:14px;font-size:15px;font-weight:600;padding:12px 14px\">" +
+              "口令不正确，请重新输入</div>"
             : string.Empty;
+
+        // 标题也带上：手机上标签页标题有时比页面内容更早被注意到，
+        // 而且刷新后标题变了本身就是"这次提交被处理过了"的信号。
+        string title = failed ? "口令不正确 — CommunicationKernel" : "登录 — CommunicationKernel";
 
         StringBuilder sb = new();
         sb.Append("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\" />");
         sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\" />");
-        sb.Append("<title>登录 — CommunicationKernel</title>");
+        sb.Append("<title>").Append(title).Append("</title>");
         sb.Append($"<link rel=\"icon\" type=\"image/svg+xml\" href=\"{pathBase}/favicon.svg\" />");
         sb.Append($"<link rel=\"stylesheet\" href=\"{pathBase}/css/theme.css\" />");
+
+        // 与 App.razor 里那段同源：部分浏览器（华为/鸿蒙等）忽略 viewport，
+        // 按 ~980px 桌面宽排版，整页缩到手机屏上，字全都小得看不清——
+        // 登录页尤其要命，因为错误提示恰恰是这时候最需要看清的东西。
+        // 本页是手写 HTML、不加载 app.js，所以必须自带一份。
+        sb.Append("<script>(function(){var u=navigator.userAgent||\"\";");
+        sb.Append("if(!/Android|iPhone|iPod|iPad|Mobile|Huawei|Harmony|HMSCore|MicroMessenger/i.test(u))return;");
+        sb.Append("var s=Math.min(screen.width||9999,screen.height||9999);");
+        sb.Append("var m=document.querySelector('meta[name=\"viewport\"]');if(!m)return;");
+        sb.Append("m.setAttribute('content','width='+(s>0&&s<900?s:'device-width')");
+        sb.Append("+', initial-scale=1, viewport-fit=cover');})();</script>");
         sb.Append("<style>");
         sb.Append("body{display:flex;align-items:center;justify-content:center;min-height:100dvh;margin:0;padding:16px}");
         sb.Append(".login-card{width:min(360px,100%)}");
