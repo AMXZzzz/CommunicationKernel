@@ -44,6 +44,7 @@
             <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" @onclick="CloseNav">MES 监控</NavLink>
             <NavLink class="nav-item" href="/devices" @onclick="CloseNav">设备管理</NavLink>
             <NavLink class="nav-item" href="/variables" @onclick="CloseNav">变量配置</NavLink>
+            <NavLink class="nav-item" href="/templates" @onclick="CloseNav">寄存器模板</NavLink>
             <NavLink class="nav-item" href="/log" @onclick="CloseNav">通讯日志</NavLink>
             <NavLink class="nav-item" href="/settings" @onclick="CloseNav">系统设置</NavLink>
         </nav>
@@ -93,6 +94,7 @@
         "" or "/" => "MES 监控",
         "devices" => "设备管理",
         "variables" => "变量配置",
+        "templates" => "寄存器模板",
         "log" => "通讯日志",
         "settings" => "系统设置",
         _ => "通讯调试工具",

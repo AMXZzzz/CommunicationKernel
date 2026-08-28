@@ -1,0 +1,257 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Pages/TemplatesPage.razor
+   层级: UI 层 — 寄存器模板
+   作用: 维护设备功能槽（名称 / 类型 / 备注）。地址在变量表按设备填写。
+   ----------------------------------------------------------------------------- *@
+
+@page "/templates"
+@inject WebTemplateStore Templates
+@inject NavigationManager Nav
+@inject AppLogStore Log
+@implements IDisposable
+
+<PageTitle>寄存器模板 — CommunicationKernel</PageTitle>
+
+<div class="page page-var">
+    <div class="toolbar">
+        <h2 class="page-title">寄存器模板</h2>
+        <button class="btn ghost" type="button" @onclick="AddTemplate">添加模板</button>
+        <button class="btn ghost" type="button" @onclick="AddSlot" disabled="@(_current is null)">+ 功能</button>
+        <button class="btn ghost" type="button" @onclick="Export">导出 JSON</button>
+        <label class="btn ghost file-btn">
+            导入
+            <InputFile OnChange="ImportAsync" accept=".json,application/json" />
+        </label>
+        <button class="btn primary" type="button" @onclick="SyncToVariables" disabled="@(_current is null)">同步到变量表</button>
+        <div class="toolbar-right">
+            <span class="toolbar-count">@List.Count 个模板</span>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_banner))
+    {
+        <div class="status-msg banner-strip @_bannerClass">@_banner</div>
+    }
+
+    <div class="page-body flush">
+        <div class="var-layout">
+            <aside class="device-panel">
+                <div class="panel-hd">模板 <span class="count">@List.Count</span></div>
+                @foreach (WebDeviceTemplate t in List)
+                {
+                    <button class="dev-item @(_currentId == t.Id ? "active" : null)" type="button" @onclick="() => Select(t.Id)">
+                        <span class="n">@t.Name</span>
+                        <span class="sub">@(t.Slots.Count == 0 ? "空模板" : string.Join(" / ", t.Slots.Select(s => s.Name)))</span>
+                    </button>
+                }
+            </aside>
+            <section class="var-panel">
+                @if (_current is null)
+                {
+                    <div class="empty-state"><div class="empty-hint">添加一个模板，只填功能名称和类型。地址到变量页按设备填。</div></div>
+                }
+                else
+                {
+                    <div class="tpl-meta">
+                        <label>模板名</label>
+                        <input value="@_current.Name" @onchange="e => Rename(e.Value?.ToString())" />
+                        <button class="btn-sm danger" type="button" @onclick="AskRemoveTpl">删除模板</button>
+                    </div>
+                    <table class="data-table var-table">
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>类型</th>
+                                <th>字节</th>
+                                <th>备注</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < _current.Slots.Count; i++)
+                            {
+                                int idx = i;
+                                WebDeviceTemplateSlot s = _current.Slots[idx];
+                                <tr>
+                                    <td><input value="@s.Name" @onchange="e => SetSlot(idx, name: e.Value?.ToString())" /></td>
+                                    <td>
+                                        <select value="@s.DataType" @onchange="e => SetSlot(idx, type: e.Value?.ToString())">
+                                            @foreach (string t in DataTypes)
+                                            {
+                                                <option value="@t">@t</option>
+                                            }
+                                        </select>
+                                    </td>
+                                    <td class="mono">@SlotLength(s)</td>
+                                    <td><input value="@s.Note" placeholder="说明" @onchange="e => SetSlot(idx, note: e.Value?.ToString())" /></td>
+                                    <td class="row-btns">
+                                        <button class="btn-sm danger" type="button" @onclick="() => RemoveSlot(idx)">删</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <p class="empty-hint tpl-hint">Bool=1，Int16=2，Int32/Float=4。地址不在这里填。</p>
+                }
+            </section>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_exportJson))
+    {
+        <div class="add-form-overlay" @onclick="() => _exportJson = string.Empty">
+            <div class="add-form wide" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>导出模板 JSON</h3>
+                    <button class="close-btn" type="button" @onclick="() => _exportJson = string.Empty">×</button>
+                </div>
+                <textarea class="export-box" readonly>@_exportJson</textarea>
+            </div>
+        </div>
+    }
+
+    @if (_pendingRemove)
+    {
+        <div class="add-form-overlay center" @onclick="() => _pendingRemove = false">
+            <div class="add-form confirm-box" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>删除模板</h3>
+                    <button class="close-btn" type="button" @onclick="() => _pendingRemove = false">×</button>
+                </div>
+                <p>删除模板不会自动拆掉变量表里已套用的行，那些行会继续锁定，直到再同步其它模板。</p>
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="() => _pendingRemove = false">取消</button>
+                    <button class="btn danger" type="button" @onclick="ConfirmRemoveTpl">确认删除</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly string[] DataTypes = { "Bool", "Int16", "UInt16", "Int32", "UInt32", "Float", "String", "Hex" };
+
+    private IReadOnlyList<WebDeviceTemplate> List => Templates.GetAll();
+    private string? _currentId;
+    private WebDeviceTemplate? _current;
+    private string _banner = string.Empty;
+    private string _bannerClass = string.Empty;
+    private string _exportJson = string.Empty;
+    private bool _pendingRemove;
+
+    protected override void OnInitialized()
+    {
+        Templates.Changed += OnChanged;
+        if (List.Count > 0)
+            Select(List[0].Id);
+    }
+
+    private void OnChanged() => _ = InvokeAsync(() =>
+    {
+        if (_currentId is not null)
+            _current = Templates.Get(_currentId);
+        StateHasChanged();
+    });
+
+    private void Select(string id)
+    {
+        _currentId = id;
+        _current = Templates.Get(id);
+    }
+
+    private void Persist()
+    {
+        if (_current is null) return;
+        Templates.Update(_current);
+        _current = Templates.Get(_current.Id);
+    }
+
+    private void AddTemplate()
+    {
+        var t = new WebDeviceTemplate
+        {
+            Name = "新模板",
+            Slots = { new WebDeviceTemplateSlot { Name = "启动", DataType = "Bool" } }
+        };
+        Templates.Add(t);
+        Select(t.Id);
+    }
+
+    private void AddSlot()
+    {
+        if (_current is null) return;
+        _current.Slots.Add(new WebDeviceTemplateSlot { Name = "新功能", DataType = "Int16" });
+        Persist();
+    }
+
+    private void RemoveSlot(int i)
+    {
+        if (_current is null || i < 0 || i >= _current.Slots.Count) return;
+        _current.Slots.RemoveAt(i);
+        Persist();
+    }
+
+    private void SetSlot(int i, string? name = null, string? type = null, string? note = null)
+    {
+        if (_current is null || i < 0 || i >= _current.Slots.Count) return;
+        WebDeviceTemplateSlot s = _current.Slots[i];
+        if (name is not null) s.Name = name.Trim();
+        if (type is not null) s.DataType = type;
+        if (note is not null) s.Note = note;
+        Persist();
+    }
+
+    private void Rename(string? name)
+    {
+        if (_current is null || string.IsNullOrWhiteSpace(name)) return;
+        _current.Name = name.Trim();
+        Persist();
+    }
+
+    private static int SlotLength(WebDeviceTemplateSlot s) =>
+        ValueCodec.IsVariableLength(s.DataType)
+            ? Math.Max(1, s.Length == 0 ? ValueCodec.DefaultLength(s.DataType) : s.Length)
+            : ValueCodec.DefaultLength(s.DataType);
+
+    private void AskRemoveTpl() => _pendingRemove = _current is not null;
+
+    private void ConfirmRemoveTpl()
+    {
+        if (_current is null) return;
+        Templates.Remove(_current.Id);
+        _pendingRemove = false;
+        _current = null;
+        _currentId = null;
+        if (List.Count > 0) Select(List[0].Id);
+    }
+
+    private void Export() => _exportJson = Templates.ExportJson();
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            await using Stream s = e.File.OpenReadStream(512 * 1024);
+            using var reader = new StreamReader(s);
+            string json = await reader.ReadToEndAsync();
+            int n = Templates.ImportJson(json, replace: false);
+            _banner = "已导入 " + n + " 个模板";
+            _bannerClass = "status-ok";
+            if (List.Count > 0) Select(List[0].Id);
+        }
+        catch (Exception ex)
+        {
+            _banner = "导入失败: " + ex.Message;
+            _bannerClass = "status-error";
+            Log.Error("TemplatesPage", ex.Message);
+        }
+    }
+
+    private void SyncToVariables()
+    {
+        if (_current is null) return;
+        Nav.NavigateTo("/variables?template=" + Uri.EscapeDataString(_current.Id));
+    }
+
+    public void Dispose() => Templates.Changed -= OnChanged;
+}

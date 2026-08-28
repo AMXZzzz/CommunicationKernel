@@ -45,6 +45,17 @@ public sealed class WebVariable
     /// <summary>工程单位，例如「rpm」「℃」；纯展示用，不参与编解码。</summary>
     public string Unit { get; set; } = string.Empty;
 
+    /// <summary>备注。模板带下来，本机点也可填。</summary>
+    public string Note { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 所属功能模板 Id。非空表示由模板生成，变量表不得删除。
+    /// </summary>
+    public string TemplateId { get; set; } = string.Empty;
+
+    /// <summary>是否来自模板（锁定删除）。</summary>
+    public bool FromTemplate => !string.IsNullOrWhiteSpace(TemplateId);
+
     // ------------------------------------------------------------------------
     // 以下为运行期状态，一律 JsonIgnore：它们是"此刻读到什么"而非配置。
     // 落盘会把磁盘写穿（轮询每秒更新若干次），
@@ -202,16 +213,89 @@ public sealed class WebVariableStore
         Changed?.Invoke();
     }
 
-    /// <summary>按 Id 删除变量并落盘。</summary>
-    public void Remove(string id)
+    /// <summary>按 Id 删除变量并落盘。来自模板的行拒绝删除。</summary>
+    public bool Remove(string id)
     {
         lock (_lock)
         {
+            WebVariable? hit = _items.FirstOrDefault(v => v.Id == id);
+            if (hit is null) return false;
+            if (hit.FromTemplate) return false;
             _items.RemoveAll(v => v.Id == id);
             Persist_NoLock();
         }
 
         Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>
+    /// 把模板功能槽同步到指定路由：按名称对齐。
+    /// 已有行更新类型/备注/长度并打上模板标记，缺的补上；
+    /// 本路由上来自任意模板、名称已不在当前模板里的行删掉。
+    /// 无 TemplateId 的本机变量一律保留，地址不覆盖。
+    /// </summary>
+    public int ApplyTemplate(string routeId, WebDeviceTemplate template)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        if (string.IsNullOrWhiteSpace(routeId)) return 0;
+
+        int changed = 0;
+        lock (_lock)
+        {
+            var names = new HashSet<string>(
+                template.Slots.Select(s => s.Name.Trim()).Where(n => n.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (WebDeviceTemplateSlot slot in template.Slots)
+            {
+                string name = slot.Name.Trim();
+                if (name.Length == 0) continue;
+
+                WebVariable? existing = _items.FirstOrDefault(v =>
+                    v.RouteId == routeId &&
+                    string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase));
+
+                int length = ValueCodec.IsVariableLength(slot.DataType)
+                    ? Math.Max(1, slot.Length == 0 ? ValueCodec.DefaultLength(slot.DataType) : slot.Length)
+                    : ValueCodec.DefaultLength(slot.DataType);
+
+                if (existing is null)
+                {
+                    _items.Add(new WebVariable
+                    {
+                        Name = name,
+                        RouteId = routeId,
+                        Address = string.Empty,
+                        DataType = slot.DataType,
+                        Length = length,
+                        Note = slot.Note ?? string.Empty,
+                        TemplateId = template.Id,
+                        ScanRateMs = 1000
+                    });
+                    changed++;
+                    continue;
+                }
+
+                existing.DataType = slot.DataType;
+                existing.Length = length;
+                existing.Note = slot.Note ?? string.Empty;
+                existing.TemplateId = template.Id;
+                changed++;
+            }
+
+            changed += _items.RemoveAll(v =>
+                v.RouteId == routeId &&
+                v.FromTemplate &&
+                !names.Contains(v.Name));
+
+            if (changed > 0)
+                Persist_NoLock();
+        }
+
+        if (changed > 0)
+            Changed?.Invoke();
+        return changed;
     }
 
     /// <summary>只更新内存中的读值，不写盘。</summary>

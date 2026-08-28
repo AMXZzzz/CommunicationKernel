@@ -255,6 +255,25 @@ button:disabled { cursor: not-allowed; }
     white-space: nowrap;
 }
 .toolbar-right + .toolbar-count, .toolbar-right .toolbar-count { margin-left: 0; }
+.toolbar-select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font: inherit;
+    max-width: 180px;
+}
+.tpl-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+}
+.tpl-meta label { color: var(--text-muted); }
+.tpl-meta input { max-width: 240px; }
+.tpl-hint { padding: 10px 12px; }
 
 /* 实时脉冲徽标 */
 .live {
