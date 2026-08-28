@@ -28,4 +28,7 @@ internal static class WebPaths
 
     /// <summary>本端变量表。</summary>
     public static string VariablesFile => Path.Combine(Root, "web-variables.json");
+
+    /// <summary>设备功能模板库（名称 / 类型 / 备注，不含地址）。</summary>
+    public static string TemplatesFile => Path.Combine(Root, "web-templates.json");
 }
