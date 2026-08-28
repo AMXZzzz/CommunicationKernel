@@ -193,21 +193,37 @@ internal static class MewtocolFrame
     // -------------------------------------------------------------------------
 
     /// <summary>构建完整 MEWTOCOL 帧：% + SS + # + CommandBody + BCC + CR。</summary>
+    /// <remarks>
+    /// <b>BCC 的计算范围含帧头 '%'。</b>规范原文是「从帧头 % 起、到 BCC 之前为止
+    /// 全部 ASCII 字符的水平奇偶校验（XOR）」——'%' 是被算进去的。
+    /// <para>
+    /// 这里曾经漏掉 '%'，只对 <c>SS + # + 命令体</c> 求 XOR。
+    /// 后果是每一帧的校验和都恰好差一个 0x25，PLC 一律以
+    /// <c>%01!40</c>（error 40: BCC error）拒收，任何读写都做不成。
+    /// 而且这个错误在自测里发现不了——我们自己发、自己算，两边同样漏掉 '%'，
+    /// 只有接上真 PLC 才暴露。
+    /// </para>
+    /// </remarks>
     private static byte[] BuildFrame(byte station, string commandBody)
     {
-        // payload = SS + # + commandBody（BCC 计算范围）
+        // 先拼出待校验的完整前缀（含 '%'），再对它整体求 BCC
         string stationHex = station.ToString("X2");
-        string payload    = stationHex + "#" + commandBody;
-        string bcc        = CalcBcc(payload);
-        string frame      = "%" + payload + bcc + "\r";
-        return Encoding.ASCII.GetBytes(frame);
+        string checkedPart = "%" + stationHex + "#" + commandBody;
+        string bcc = CalcBcc(checkedPart);
+
+        return Encoding.ASCII.GetBytes(checkedPart + bcc + "\r");
     }
 
-    /// <summary>计算 BCC：payload 所有字符 XOR。</summary>
-    internal static string CalcBcc(string payload)
+    /// <summary>
+    /// 计算 BCC：对传入字符串的全部字符求 XOR，输出两位大写十六进制。
+    /// </summary>
+    /// <param name="checkedPart">
+    /// 待校验部分，<b>必须含帧头 '%'</b>，且不含 BCC 与结尾 CR。
+    /// </param>
+    internal static string CalcBcc(string checkedPart)
     {
         byte x = 0;
-        foreach (char c in payload) x ^= (byte)c;
+        foreach (char c in checkedPart) x ^= (byte)c;
         return x.ToString("X2");
     }
 
