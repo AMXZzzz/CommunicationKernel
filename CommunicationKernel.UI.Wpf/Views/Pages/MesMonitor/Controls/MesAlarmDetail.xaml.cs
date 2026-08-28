@@ -22,6 +22,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls {
         /// <summary>请求返回告警列表子面板。</summary>
         public event Action BackRequested;
 
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public MesAlarmDetail () {
             // 解析 XAML，构建视觉树
             InitializeComponent();

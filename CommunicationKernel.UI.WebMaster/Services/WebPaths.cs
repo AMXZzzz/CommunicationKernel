@@ -37,4 +37,7 @@ internal static class WebPaths
 
     /// <summary>登录口令（PBKDF2 哈希，非明文）。文件不存在即表示不需要登录。</summary>
     public static string AuthFile => Path.Combine(Root, "web-auth.json");
+
+    /// <summary>内网穿透（frpc）设置。</summary>
+    public static string TunnelFile => Path.Combine(Root, "web-tunnel.json");
 }

@@ -23,8 +23,19 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
     /// 业务（CRUD / 写入）全部在 <see cref="VariablePageViewModel"/>。
     /// </summary>
     public partial class VariableConfigPage : Page {
+        /// <summary>
+        /// 消息框的待办动作。
+        /// </summary>
+        /// <remarks>
+        /// 主题消息框是异步的（点确定才回调），确认后要做什么必须先记下来。
+        /// 只有一个待办槽位——同时只允许一个弹层，不会有第二件事在排队。
+        /// </remarks>
         private enum MsgPending {
+
+            /// <summary>无待办，点确定只是关掉。</summary>
             None,
+
+            /// <summary>确认后清空当前设备的变量再导入。</summary>
             ImportClear
         }
 
@@ -125,13 +136,19 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
             _vm.RequestShowInfo -= OnRequestShowInfo;
         }
 
-        // ViewModel 请求弹 Info 时走本页主题对话框
+        /// <summary>ViewModel 请求弹提示时，走本页的主题对话框。</summary>
+        /// <param name="title">标题。</param>
+        /// <param name="msg">正文。</param>
         private void OnRequestShowInfo (string title, string msg) => ShowInfo(title, msg);
 
-        // 重新进入可视树时恢复订阅（首次即初次订阅）
+        /// <summary>进入可视树：恢复订阅（首次即初次订阅）。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void VariableConfigPage_Loaded (object sender, RoutedEventArgs e) => WireViewModel();
 
-        // 离开可视树立即退订，防止切页后重复弹框
+        /// <summary>离开可视树：立即退订。ViewModel 是单例，不退订会导致切页后同一提示弹多次。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void VariableConfigPage_Unloaded (object sender, RoutedEventArgs e) => UnwireViewModel();
 
         /// <summary>
@@ -206,6 +223,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 设备选择
         // ============================================================================
 
+        /// <summary>左侧列表选中设备：同步 ViewModel，再刷标题栏与变量表。</summary>
+        /// <param name="deviceId">设备 Id，可为 null（无选中）。</param>
         private void OnDeviceSelected (string deviceId) {
             // 同步 ViewModel 选中项，再刷标题栏和变量表
             _vm.SelectDevice(deviceId);
@@ -217,6 +236,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 单条编辑
         // ============================================================================
 
+        /// <summary>打开新增变量面板。未选设备时由 ViewModel 弹提示并拦下。</summary>
         private void OpenAdd () {
             // 未选设备时 ViewModel 会弹提示，面板未生成则忽略
             if (!_vm.EnsureDeviceSelected() || editPanel == null)
@@ -302,6 +322,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 导入 / 导出
         // ============================================================================
 
+        /// <summary>打开导出面板，并把当前设备信息交给它生成默认文件名。</summary>
         private void OpenExport () {
             // 面板未生成时忽略顶栏点击
             if (exportPanel == null)
@@ -459,6 +480,14 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 写入
         // ============================================================================
 
+        /// <summary>变量表请求写入 PLC。</summary>
+        /// <remarks>
+        /// <c>async void</c> 在这里是必要的——它是事件处理器，签名不能改。
+        /// 内部 <c>await</c> 的 <c>WriteVariableAsync</c> 自行捕获异常并走
+        /// RequestShowInfo 提示，不会有异常逃逸成为未观察的任务异常。
+        /// </remarks>
+        /// <param name="variableId">变量 Id。</param>
+        /// <param name="writeText">操作员输入的值文本，解析由下层负责。</param>
         private async void OnVariableWriteRequested (string variableId, string writeText) {
             // 协议写入走 ViewModel，失败时由 RequestShowInfo 弹主题框
             await _vm.WriteVariableAsync(variableId, writeText);
@@ -468,6 +497,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 消息
         // ============================================================================
 
+        /// <summary>子面板请求提示：统一走本页的主题信息框。</summary>
+        /// <param name="title">标题。</param>
+        /// <param name="message">正文。</param>
         private void OnPanelInfo (string title, string message) =>
             ShowInfo(title, message);
 
@@ -499,6 +531,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
         // 弹层 Visibility
         // ============================================================================
 
+        /// <summary>显示指定弹层，并保证同时只有一个可见。</summary>
+        /// <param name="panel">要显示的弹层；为 null 时只显示遮罩。</param>
         private void ShowPanel (UIElement panel) {
             // 同时只显示一个弹层，先收起其它再打开目标
             HideAllPanels();

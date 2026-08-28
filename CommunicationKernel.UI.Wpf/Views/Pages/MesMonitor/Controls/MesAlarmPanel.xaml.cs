@@ -17,6 +17,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls {
     /// 交给宿主（DataMonitorPage）处理页面切换。
     /// </summary>
     public partial class MesAlarmPanel : UserControl {
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public MesAlarmPanel () {
             // 解析 XAML，构建视觉树
             InitializeComponent();

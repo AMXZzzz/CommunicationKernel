@@ -16,6 +16,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls {
     /// 包含告警入口，点击后通过 AlarmClickedEvent 通知宿主弹出告警列表面板。
     /// </summary>
     public partial class MesLineControlBar : UserControl {
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public MesLineControlBar () {
             // 解析 XAML，构建视觉树
             InitializeComponent();

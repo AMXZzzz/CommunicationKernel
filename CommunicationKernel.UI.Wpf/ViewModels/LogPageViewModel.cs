@@ -89,8 +89,11 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
             = new List<LogEntryItemViewModel>();
 
         // 过滤条件后备字段
+        /// <summary><see cref="FilterLevel"/> 的后备字段。</summary>
         private string _filterLevel = "ALL";
+        /// <summary><see cref="FilterText"/> 的后备字段。</summary>
         private string _filterText  = string.Empty;
+        /// <summary><see cref="AutoScroll"/> 的后备字段。</summary>
         private bool   _autoScroll  = true;
 
         // ============================================================================

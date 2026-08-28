@@ -19,9 +19,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         /// <summary>由页面注入。</summary>
         public IDeviceService DeviceService { get; set; }
 
+        /// <summary>「添加变量」被点击。</summary>
         public event Action AddClicked;
+
+        /// <summary>「批量添加」被点击。</summary>
         public event Action BatchAddClicked;
 
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public VariableDeviceHeader () {
             // 解析 XAML，构建视觉树
             InitializeComponent();
@@ -31,6 +35,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // 标题刷新
         // ============================================================================
 
+        /// <summary>刷新标题与元信息行。</summary>
+        /// <param name="deviceId">
+        /// 设备 Id。为空、服务未注入、或该设备已不存在时，一律回到「请选择设备」占位——
+        /// 保留上一台设备的标题会让操作员以为变量表还是那台机器的。
+        /// </param>
         public void Show (string deviceId) {
             // 未选设备或服务未注入：回到占位文案
             if (string.IsNullOrEmpty(deviceId) || DeviceService == null) {
@@ -55,9 +64,15 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // 按钮
         // ============================================================================
 
+        /// <summary>「添加变量」按钮。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnAdd_Click (object sender, RoutedEventArgs e) =>
             AddClicked?.Invoke();
 
+        /// <summary>「批量添加」按钮。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnBatchAdd_Click (object sender, RoutedEventArgs e) =>
             BatchAddClicked?.Invoke();
     }

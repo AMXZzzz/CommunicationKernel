@@ -123,6 +123,14 @@ try {
     builder.Services.AddSingleton<WebSettingsStore>();
     builder.Services.AddSingleton<WebProxySettingsStore>();
     builder.Services.AddSingleton<WebAuthStore>();
+    builder.Services.AddSingleton<WebTunnelSettingsStore>();
+
+    // 内网穿透：frpc.exe 不随包分发，由用户自行放到 exe 旁边（见 WebTunnelSettings.cs）。
+    // 单例既供设置页读状态，也作为 HostedService 托管子进程。
+    WebTunnelSettings tunnelSettings = WebTunnelSettingsStore.Load();
+    builder.Services.AddSingleton(sp =>
+        new FrpcHost(tunnelSettings, listenPort, sp.GetRequiredService<AppLogStore>()));
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<FrpcHost>());
 
     // ------------------------------------------------------------------------
     // 登录（仅在设了口令时才真正拦截）

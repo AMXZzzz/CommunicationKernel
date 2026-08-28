@@ -34,10 +34,14 @@ public sealed class VariablePageViewModel : ViewModelBase {
     // 私有字段
     // ============================================================================
 
+    /// <summary>变量服务，变量的增删改查都经它。</summary>
     private readonly IVariableService _variables;
+    /// <summary>设备服务，用于取当前设备信息与校验选中。</summary>
     private readonly IDeviceService   _devices;
+    /// <summary>应用日志记录器，可为 null（此时不记录日志）。</summary>
     private readonly IAppLogger       _log;
 
+    /// <summary><see cref="SelectedDeviceId"/> 的后备字段。</summary>
     private string _selectedDeviceId;
 
     // ============================================================================

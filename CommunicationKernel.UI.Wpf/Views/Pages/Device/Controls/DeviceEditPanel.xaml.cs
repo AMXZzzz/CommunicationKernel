@@ -24,16 +24,31 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
     /// 协议名列表来自属性注入的 <see cref="ProtocolResolver"/>
     /// </summary>
     public partial class DeviceEditPanel : UserControl {
+        /// <summary>请求收起面板，本次编辑不保存。</summary>
         public event Action CloseRequested;
+
+        /// <summary>请求保存。面板本身不落盘，由页面取 <see cref="BuildDeviceInfo"/> 的结果去写。</summary>
         public event Action SaveRequested;
+
+        /// <summary>请求删除当前编辑的设备。新增态下按钮不可用，不会触发。</summary>
         public event Action DeleteRequested;
 
+        /// <summary>正在编辑的设备 Id；为空表示新增。决定 <see cref="IsNew"/> 与保存时是否保留 Id。</summary>
         private string _editingId;
 
+        /// <summary>是否正处于标题栏拖动中。</summary>
         private bool _dragging;
+
+        /// <summary>拖动起点（屏幕坐标）。</summary>
         private Point _dragStart;
+
+        /// <summary>拖动开始时的 X 偏移，用于累加而非从零重算。</summary>
         private double _originX;
+
+        /// <summary>拖动开始时的 Y 偏移。</summary>
         private double _originY;
+
+        /// <summary>双轨设备标记。界面上是两个互斥按钮，没有对应的输入控件，故用字段暂存。</summary>
         private bool _isDual;
 
         /// <summary>编辑时保留原扩展 JSON，一期界面不改。</summary>
@@ -57,11 +72,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// </remarks>
         public ISerialPortProvider SerialPortProvider { get; set; }
 
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public DeviceEditPanel () {
             // 解析 XAML，构建视觉树
             InitializeComponent();
         }
 
+        /// <summary>当前是否为「新增设备」，由页面决定标题与删除按钮的可用性。</summary>
         public bool IsNew => string.IsNullOrEmpty(_editingId);
 
         // ============================================================================
@@ -109,6 +126,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>下拉选中某个串口时，把纯设备名写回文本框。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void OnSerialPortSelected (object sender, SelectionChangedEventArgs e) {
             if (cmbSerialPort?.SelectedItem is ComboBoxItem item && item.Tag is string portName)
                 cmbSerialPort.Text = portName;
@@ -155,18 +174,18 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// 协议选择变化：按所选协议的描述符切换连接参数表单。
         /// UI 不内置任何协议知识，全部依据服务端下发的描述符渲染。
         /// </summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void CmbProtocol_SelectionChanged (object sender, SelectionChangedEventArgs e) {
             ApplyProtocolLayout(GetSelectedDescriptor());
         }
 
         /// <summary>
-        /// 依据协议描述符决定：显示 TCP 参数还是串口参数、是否显示站号、站号提示文案。
-        /// descriptor 为 null（协议列表尚未就绪）时退化为 TCP + 显示站号的通用布局。
-        /// </summary>
-        /// <summary>
         /// 填充「连接方式」下拉框。
         /// 协议只支持一种介质时隐藏该选择器，避免无意义的单选项。
         /// </summary>
+        /// <param name="descriptor">当前协议描述符；为 null 时按仅支持 TCP 处理。</param>
+        /// <param name="preferred">希望保留的介质标识，来自设备已存配置或切换协议前的选择。</param>
         private void LoadTransportList (ProtocolDescriptorDto descriptor, string preferred) {
             if (cmbTransport == null) return;
 
@@ -213,6 +232,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>介质标识 → 面向操作员的说明文案。</summary>
+        /// <param name="kind">介质标识，如 Tcp / Serial。</param>
+        /// <returns>可读文案；未知标识原样返回，不隐藏它。</returns>
         private static string DescribeTransport (string kind) {
             // 串口 / 以太网给出操作员可读文案，其它标识原样返回
             if (string.Equals(kind, "Serial", StringComparison.OrdinalIgnoreCase))
@@ -223,6 +244,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>取当前选中的介质标识；无选择时回落到协议默认介质。</summary>
+        /// <returns>介质标识，最终兜底为 <c>"Tcp"</c>，绝不返回空串——空串会让服务端解析枚举失败。</returns>
         private string GetSelectedTransport () {
             ComboBoxItem item = cmbTransport != null
                 ? cmbTransport.SelectedItem as ComboBoxItem
@@ -238,12 +260,16 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>连接方式变化：仅切换连接参数表单，不改变协议选择。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void CmbTransport_SelectionChanged (object sender, SelectionChangedEventArgs e) {
             // 重建下拉期间抑制，避免中间态刷新布局
             if (_suppressTransportEvent) return;
             ApplyTransportLayout(GetSelectedDescriptor(), GetSelectedTransport());
         }
 
+        /// <summary>协议变化后重建介质列表并重排表单。</summary>
+        /// <param name="descriptor">新选中的协议描述符，可为 null。</param>
         private void ApplyProtocolLayout (ProtocolDescriptorDto descriptor) {
             // 协议变化时重建介质列表，尽量保留操作员此前的选择
             LoadTransportList(descriptor, GetSelectedTransportTagOrNull());
@@ -251,6 +277,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>读取当前介质选择，用于协议切换时尽量保留；无选择返回 null。</summary>
+        /// <returns>介质标识，或 null。与 <see cref="GetSelectedTransport"/> 的区别是<b>不兜底</b>——
+        /// 调用方需要区分「操作员真的选过」和「只是默认值」。</returns>
         private string GetSelectedTransportTagOrNull () {
             ComboBoxItem item = cmbTransport != null
                 ? cmbTransport.SelectedItem as ComboBoxItem
@@ -261,6 +289,12 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// <summary>
         /// 按「所选介质」渲染连接参数表单，并按「所选协议」决定站号可见性。
         /// </summary>
+        /// <remarks>
+        /// descriptor 为 null（协议列表尚未就绪）时退化为「显示站号」的通用布局：
+        /// 多显示一个字段远好过少显示——少了操作员根本不知道还需要填。
+        /// </remarks>
+        /// <param name="descriptor">当前协议描述符，可为 null。</param>
+        /// <param name="transportKind">当前介质标识。</param>
         private void ApplyTransportLayout (ProtocolDescriptorDto descriptor, string transportKind) {
             bool isSerial = string.Equals(transportKind, "Serial", StringComparison.OrdinalIgnoreCase);
 
@@ -303,6 +337,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>取当前选中项挂载的协议描述符；未选中或无 Tag 时返回 null。</summary>
+        /// <returns>描述符，或 null。</returns>
         private ProtocolDescriptorDto GetSelectedDescriptor () {
             ComboBoxItem item = cmbProtocol != null
                 ? cmbProtocol.SelectedItem as ComboBoxItem
@@ -315,6 +350,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         // ============================================================================
 
         /// <summary>载入设备到表单。</summary>
+        /// <param name="info">要编辑的设备；为 null 时按空白新增处理。</param>
+        /// <param name="isNew">true 表示新增（忽略 info.Id），false 表示编辑既有设备。</param>
         public void LoadData (DeviceInfo info, bool isNew) {
             ResetPosition();
             if (info == null)
@@ -367,6 +404,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>从表单构建 DeviceInfo。</summary>
+        /// <remarks>
+        /// 只做「界面字段 → 数据字段」的搬运和缺省兜底，<b>不校验业务合法性</b>
+        /// （名称是否为空、IP 是否可达都由页面判断）。也不解析地址或协议语义。
+        /// </remarks>
+        /// <returns>可直接落盘/注册路由的设备对象。编辑态保留原 Id，新增态由存储层分配。</returns>
         public DeviceInfo BuildDeviceInfo () {
             DeviceInfo d = new DeviceInfo();
             if (!string.IsNullOrEmpty(_editingId))
@@ -440,6 +482,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             return d;
         }
 
+        /// <summary>按状态给状态文字上色，颜色取自主题资源。</summary>
+        /// <param name="type">设备状态。未列出的状态回落到次要文本色。</param>
         private void ApplyStatusColor (DeviceStatusType type) {
             if (txtStatus == null)
                 return;
@@ -469,6 +513,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// 按 ProtocolId 选中下拉项（编辑既有设备时还原选择）。
         /// 匹配依据是 Tag 中的 ProtocolId，不是展示名。
         /// </summary>
+        /// <param name="protocolId">要选中的协议标识；为空或未匹配时回落到第一项。</param>
         private void SelectProtocol (string protocolId) {
             if (cmbProtocol == null || cmbProtocol.Items.Count == 0)
                 return;
@@ -494,6 +539,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// 取当前选中协议的 ProtocolId（服务端匹配用的键）。
         /// 描述符缺失时返回空串，由上层校验拦截。
         /// </summary>
+        /// <returns>ProtocolId，或空串。</returns>
         private string GetSelectedProtocolId () {
             ProtocolDescriptorDto d = GetSelectedDescriptor();
             return d != null ? d.ProtocolId : "";
@@ -503,6 +549,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         // 轨道 / 按钮
         // ============================================================================
 
+        /// <summary>
+        /// 把「单轨 / 双轨」两个按钮刷成当前选择的样式。
+        /// </summary>
+        /// <remarks>
+        /// 这两个按钮扮演的是单选组，但没有用 RadioButton——主题样式挂在 Button 上。
+        /// 因此选中态只能靠手工换 Style 表达。
+        /// </remarks>
         private void UpdateLaneButtons () {
             if (btnLaneSingle == null || btnLaneDual == null)
                 return;
@@ -516,16 +569,41 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             }
         }
 
+        /// <summary>设置单轨/双轨并刷新按钮样式。</summary>
+        /// <param name="dual">true 为双轨。</param>
         private void SetLane (bool dual) {
             _isDual = dual;
             UpdateLaneButtons();
         }
 
+        /// <summary>「单轨」按钮。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnLaneSingle_Click (object sender, RoutedEventArgs e) => SetLane(false);
+
+        /// <summary>「双轨」按钮。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnLaneDual_Click (object sender, RoutedEventArgs e) => SetLane(true);
+
+        /// <summary>右上角关闭按钮。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnClose_Click (object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
+
+        /// <summary>点击遮罩区域关闭。与上面同名但签名不同，供 XAML 的鼠标事件绑定。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnClose_Click (object sender, MouseButtonEventArgs e) => CloseRequested?.Invoke();
+
+        /// <summary>「保存」按钮。面板只发事件，落盘由页面完成。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnSave_Click (object sender, RoutedEventArgs e) => SaveRequested?.Invoke();
+
+        /// <summary>「删除」按钮。二次确认由页面弹，面板不自行判断。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnDelete_Click (object sender, RoutedEventArgs e) => DeleteRequested?.Invoke();
 
         // ============================================================================
@@ -542,6 +620,12 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         }
 
         /// <summary>标题栏按下：整条色块开始拖动（关闭按钮已被独立命中）。</summary>
+        /// <remarks>
+        /// 向上遍历视觉树排除按钮：不排除的话，按住关闭按钮轻微移动就会变成拖窗口，
+        /// 松手时点击丢失，表现为「关不掉」。
+        /// </remarks>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void TitleBar_MouseLeftButtonDown (object sender, MouseButtonEventArgs e) {
             if (e.ChangedButton != MouseButton.Left)
                 return;
@@ -561,6 +645,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             e.Handled = true;
         }
 
+        /// <summary>拖动中：按位移更新平移量。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void TitleBar_MouseMove (object sender, MouseEventArgs e) {
             // 未进入拖动或已松开左键则忽略
             if (!_dragging || e.LeftButton != MouseButtonState.Pressed)
@@ -572,14 +659,27 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             }
         }
 
+        /// <summary>松开左键：结束拖动。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void TitleBar_MouseLeftButtonUp (object sender, MouseButtonEventArgs e) {
             StopDrag();
         }
 
+        /// <summary>
+        /// 鼠标捕获丢失：同样结束拖动。
+        /// </summary>
+        /// <remarks>
+        /// 光标被拖出窗口或系统抢走捕获时不会触发 MouseUp，
+        /// 只处理 MouseUp 的话面板会一直粘在光标上。
+        /// </remarks>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void TitleBar_LostMouseCapture (object sender, MouseEventArgs e) {
             StopDrag();
         }
 
+        /// <summary>结束拖动并释放鼠标捕获。可重复调用。</summary>
         private void StopDrag () {
             // 未在拖动中无需释放捕获
             if (!_dragging)

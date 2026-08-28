@@ -19,8 +19,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text.Json;
 using CommunicationKernel.UI.Wpf.Core.Logging;
 using CommunicationKernel.UI.Wpf.Core.Models;
 
@@ -38,12 +36,10 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>配置文件完整路径。本端独立目录，见 <see cref="WpfPaths"/>。</summary>
         private static readonly string FilePath = WpfPaths.DevicesFile;
 
-        private static readonly JsonSerializerOptions SerializerOptions = new JsonSerializerOptions
-        {
-            WriteIndented = true
-        };
-
+        /// <summary>保护 <see cref="_records"/> 与落盘的互斥锁。</summary>
         private readonly object _lock = new object();
+
+        /// <summary>日志记录器，可为 null（未注入时静默）。</summary>
         private readonly IAppLogger _log;
 
         /// <summary>
@@ -68,21 +64,49 @@ namespace CommunicationKernel.UI.Wpf.Services
         public sealed class DeviceRecord
         {
             // 注册路由所需
+
+            /// <summary>路由 ID，同时是本记录在字典中的键。</summary>
             public string Id            { get; set; }
+
+            /// <summary>协议标识（插件选择键）。宿主据此挑协议插件，本层不解析其含义。</summary>
             public string Protocol      { get; set; }
+
+            /// <summary>传输介质标识，Tcp 或 Serial。</summary>
             public string TransportKind { get; set; }
+
+            /// <summary>目标 IP，串口路由为空。</summary>
             public string Ip            { get; set; }
+
+            /// <summary>目标端口，串口路由为 0。</summary>
             public int    Port          { get; set; }
+
+            /// <summary>站号的字符串形式，注册路由时实际传的是它。</summary>
             public string Station       { get; set; }
+
+            /// <summary>站号的数值形式，供界面回填输入框。与 <see cref="Station"/> 同步写入。</summary>
             public int    StationNo     { get; set; }
+
+            /// <summary>串口设备名，TCP 路由为空。注意这是<b>宿主机器</b>上的设备名。</summary>
             public string SerialPort    { get; set; }
+
+            /// <summary>波特率，TCP 路由为 0。</summary>
             public int    BaudRate      { get; set; }
 
             // gRPC 路由模型里没有、必须本地留存的展示元数据
+
+            /// <summary>设备显示名。宿主只认路由 ID，这个名字只存在于本地。</summary>
             public string Name              { get; set; }
+
+            /// <summary>设备型号，仅用于显示。</summary>
             public string Model             { get; set; }
+
+            /// <summary>是否双轨设备。</summary>
+            /// <remarks>
+            /// 不存 Lane——它是从本属性派生的只读值，存了两份就会出现互相矛盾的可能。
+            /// </remarks>
             public bool   IsDualLane        { get; set; }
-            // 注意：不存 Lane——它是从 IsDualLane 派生的只读属性，存了会与之矛盾
+
+            /// <summary>预留的扩展配置 JSON，本期界面不编辑，仅原样保留。</summary>
             public string ExtraSettingsJson { get; set; }
         }
 
@@ -104,6 +128,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         // ============================================================================
 
         /// <summary>返回全部已持久化的设备配置快照。</summary>
+        /// <returns>内部集合的副本，调用方可安全遍历。</returns>
         public IReadOnlyList<DeviceRecord> GetAll()
         {
             lock (_lock)
@@ -114,6 +139,8 @@ namespace CommunicationKernel.UI.Wpf.Services
         }
 
         /// <summary>按路由 ID 取配置；不存在返回 null。</summary>
+        /// <param name="routeId">路由 ID。</param>
+        /// <returns>配置记录，或 null。</returns>
         public DeviceRecord Get(string routeId)
         {
             // 空 ID 无法对账，直接视为没有配置
@@ -127,6 +154,8 @@ namespace CommunicationKernel.UI.Wpf.Services
         }
 
         /// <summary>写入（或覆盖）一台设备的配置并落盘。</summary>
+        /// <param name="routeId">路由 ID。为空则忽略本次调用。</param>
+        /// <param name="info">设备信息。运行期状态（连接与否）不会被存下来。</param>
         public void Save(string routeId, DeviceInfo info)
         {
             // 缺 ID 或设备对象则无法持久化
@@ -158,6 +187,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         }
 
         /// <summary>删除一台设备的配置并落盘。</summary>
+        /// <param name="routeId">路由 ID。不存在时不做任何事，也不写盘。</param>
         public void Delete(string routeId)
         {
             // 空 ID 无需处理

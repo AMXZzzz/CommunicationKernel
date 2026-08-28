@@ -9,6 +9,8 @@
 @inject WebSettingsStore Settings
 @inject WebProxySettingsStore Proxy
 @inject WebAuthStore Auth
+@inject WebTunnelSettingsStore Tunnel
+@inject FrpcHost Frpc
 @inject NavigationManager Nav
 @implements IDisposable
 
@@ -164,6 +166,67 @@
     </div>
 
     <div class="settings-card">
+        <h3>内网穿透（frpc）</h3>
+        <p class="setting-hint">
+            让公网服务器能连到本机，配合上面的反向代理实现外地访问。
+            公网机上仍需自行部署 <span class="mono">frps</span>——隧道两头都要有。
+            改完必须重启 Web。文件：@Tunnel.FilePath
+        </p>
+
+        @if (!WebTunnelSettingsStore.FrpcPresent)
+        {
+            @* frpc.exe 刻意不随包分发：内网穿透工具被杀软报毒是常态，
+               打进安装包会连累整个 WebMaster 被拦。改由用户自行放置，
+               我们只负责生成配置、托管进程、显示状态。 *@
+            <div class="status-msg status-warn" style="margin:12px 0">
+                <b>未检测到 @WebTunnelSettingsStore.FrpcFileName。</b>
+                本程序不附带穿透工具（会被杀软误报，可能连累整个软件被拦）。
+                请自行到
+                <span class="mono">@WebTunnelSettingsStore.FrpcDownloadUrl</span>
+                下载对应版本，把 <span class="mono">@WebTunnelSettingsStore.FrpcFileName</span>
+                放到本程序 exe 所在目录，再重启。
+            </div>
+            <label>应放置到</label>
+            <input readonly value="@WebTunnelSettingsStore.FrpcPath" />
+        }
+        else
+        {
+            <div class="connect-status @_tunnelStatusClass">
+                @_tunnelRuntimeStatus
+            </div>
+
+            <label class="inline-check" style="margin-top:12px">
+                <input type="checkbox" checked="@_tunnelEnabled"
+                       @onchange="e => _tunnelEnabled = e.Value is true" />
+                启用内网穿透
+            </label>
+
+            <label>服务器地址</label>
+            <input @bind="_tunnelAddr" placeholder="公网 IP 或域名" />
+
+            <label>服务器端口（frps 的 bindPort）</label>
+            <input type="number" @bind="_tunnelPort" placeholder="7000" inputmode="numeric" />
+
+            <label>Token（与 frps 的 auth.token 相同）</label>
+            <input type="password" @bind="_tunnelToken" autocomplete="off" />
+
+            <label>远端端口（公网机上反代指向它）</label>
+            <input type="number" @bind="_tunnelRemotePort" placeholder="16400" inputmode="numeric" />
+
+            <div class="form-actions">
+                <button class="btn primary" type="button" @onclick="SaveTunnel">保存穿透设置</button>
+            </div>
+            <div class="connect-status @_tunnelStatusClass" style="margin-top:12px">@_tunnelStatus</div>
+
+            <div class="status-msg status-warn" style="margin-top:12px">
+                开启后本机会<b>主动向公网建立长连接</b>，界面即可从外网访问。
+                请确认已设访问口令，且公网机上只把远端端口反代给 Nginx、
+                <b>不要</b>在安全组里对外开放。
+            </div>
+        }
+    </div>
+
+    <div class="settings-card">
         <h3>关于</h3>
         <p class="setting-desc">CommunicationKernel Web 上位机</p>
         <p class="setting-hint">Blazor Server · 本进程带 Hosting.App · UI 经 Hosting.Sdk 回环 · 设备/变量落在 exe 旁 config/</p>
@@ -200,6 +263,8 @@
             : _listenPort.ToString();
         _phoneUrls = LanAccess.PhoneUrls(_listenPort);
         LoadProxyIntoForm();
+
+        LoadTunnelIntoForm();
 
         _authEnabled = Auth.IsEnabled;
         _authStatus = _authEnabled ? "已设口令" : "未设口令";
@@ -338,6 +403,100 @@
         {
             _authStatus = ex.Message;
             _authStatusClass = "status-error";
+        }
+    }
+
+    // ========================================================================
+    // 内网穿透
+    // ========================================================================
+
+    /// <summary>表单：是否启用穿透。</summary>
+    private bool _tunnelEnabled;
+
+    /// <summary>表单：公网服务器地址。</summary>
+    private string _tunnelAddr = string.Empty;
+
+    /// <summary>表单：frps 的 bindPort。</summary>
+    private int _tunnelPort = 7000;
+
+    /// <summary>表单：与 frps 相同的 token。</summary>
+    private string _tunnelToken = string.Empty;
+
+    /// <summary>表单：在公网机上暴露的端口。</summary>
+    private int _tunnelRemotePort = 16400;
+
+    /// <summary>保存操作的状态行文案。</summary>
+    private string _tunnelStatus = string.Empty;
+
+    /// <summary>状态行样式类。</summary>
+    private string _tunnelStatusClass = "status-muted";
+
+    /// <summary>当前隧道的运行状态，来自 <see cref="FrpcHost"/>。</summary>
+    private string _tunnelRuntimeStatus = "未启动";
+
+    /// <summary>把已保存的穿透设置读进表单，并取一次运行状态。</summary>
+    private void LoadTunnelIntoForm()
+    {
+        WebTunnelSettings t = WebTunnelSettingsStore.Load();
+
+        _tunnelEnabled = t.Enabled;
+        _tunnelAddr = t.ServerAddr;
+        _tunnelPort = t.ServerPort;
+        _tunnelRemotePort = t.RemotePort;
+
+        // token 回填到密码框：不回填的话，用户改别的项再保存就会把 token 清空
+        _tunnelToken = t.Token;
+
+        _tunnelRuntimeStatus = "隧道：" + Frpc.Status;
+        _tunnelStatusClass = Frpc.Connected ? "status-ok"
+            : t.Enabled ? "status-warn" : "status-muted";
+    }
+
+    /// <summary>校验并保存穿透设置。</summary>
+    /// <remarks>
+    /// 启用时才校验必填项：只是先把服务器地址存下来、暂不启用，是合理的用法，
+    /// 这时候拦着不让存反而碍事。
+    /// </remarks>
+    private void SaveTunnel()
+    {
+        if (_tunnelEnabled)
+        {
+            if (string.IsNullOrWhiteSpace(_tunnelAddr))
+            {
+                _tunnelStatus = "请填服务器地址";
+                _tunnelStatusClass = "status-error";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_tunnelToken))
+            {
+                _tunnelStatus = "请填 token（要与服务器 frps 的 auth.token 相同）";
+                _tunnelStatusClass = "status-error";
+                return;
+            }
+
+            if (_tunnelPort is < 1 or > 65535 || _tunnelRemotePort is < 1 or > 65535)
+            {
+                _tunnelStatus = "端口必须在 1–65535";
+                _tunnelStatusClass = "status-error";
+                return;
+            }
+        }
+
+        try
+        {
+            Tunnel.Save(new WebTunnelSettings(
+                _tunnelEnabled, _tunnelAddr.Trim(), _tunnelPort, _tunnelToken, _tunnelRemotePort));
+
+            _tunnelStatus = _tunnelEnabled
+                ? "已保存。请退出 Web 再打开，隧道才会建立。"
+                : "已保存（未启用）。请退出 Web 再打开生效。";
+            _tunnelStatusClass = "status-warn";
+        }
+        catch (Exception ex)
+        {
+            _tunnelStatus = ex.Message;
+            _tunnelStatusClass = "status-error";
         }
     }
 

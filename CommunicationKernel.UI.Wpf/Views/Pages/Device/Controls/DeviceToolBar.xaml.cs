@@ -38,6 +38,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// <summary>取消多选，恢复普通工具栏。</summary>
         public event Action CancelSelectClicked;
 
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public DeviceToolBar () {
             // 解析 XAML，构建视觉树
             InitializeComponent();
