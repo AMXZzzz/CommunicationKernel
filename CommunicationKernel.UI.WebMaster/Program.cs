@@ -121,6 +121,7 @@ try {
     builder.Services.AddSingleton<WebSettingsStore>();
     builder.Services.AddSingleton<WebDeviceStore>();
     builder.Services.AddSingleton<WebVariableStore>();
+    builder.Services.AddSingleton<WebTemplateStore>();
 
     // 本进程带上 Hosting.App：同一份组合根，gRPC 对外，UI 经 HostingClient 走回环。
     HostingComposition.AddServices(builder.Services, builder.Configuration);

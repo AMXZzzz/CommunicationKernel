@@ -10,6 +10,8 @@
 @inject WebDeviceStore Devices
 @inject AppLogStore Log
 @inject IWebVariableService Variables
+@inject WebTemplateStore Templates
+@inject NavigationManager Nav
 @implements IDisposable
 
 <PageTitle>变量配置 — CommunicationKernel</PageTitle>
@@ -27,6 +29,17 @@
             导入
             <InputFile OnChange="OnImportFilePicked" accept=".json,application/json" />
         </label>
+        @if (!string.IsNullOrEmpty(_filterRoute))
+        {
+            <span class="toolbar-count">模板</span>
+            <select class="toolbar-select" @bind="_bindTemplateId" @bind:after="ApplySelectedTemplate">
+                <option value="">（不使用模板）</option>
+                @foreach (WebDeviceTemplate t in Templates.GetAll())
+                {
+                    <option value="@t.Id">@t.Name</option>
+                }
+            </select>
+        }
         <div class="toolbar-right">
             @if (_busy) { <span class="busy-hint">处理中…</span> }
             <span class="toolbar-count">@Visible.Count 个变量</span>
@@ -43,13 +56,15 @@
     <div class="var-layout">
         <aside class="device-panel">
             <div class="panel-hd">设备 <span class="count">@RouteChoices.Count</span></div>
-            <button class="dev-item @(_filterRoute == "" ? "active" : null)" type="button" @onclick='() => _filterRoute = ""'>
+            @* 用 string.Empty 而不是 ""：特性由双引号界定，参数里再写双引号
+               会让 Razor 在第一个引号处截断特性值，解析成无参调用。 *@
+            <button class="dev-item @(_filterRoute.Length == 0 ? "active" : null)" type="button" @onclick="() => SelectRoute(string.Empty)">
                 <span class="n">全部</span>
                 <span class="sub">@Store.GetAll().Count 条变量</span>
             </button>
             @foreach (RouteChoice r in RouteChoices)
             {
-                <button class="dev-item @(_filterRoute == r.RouteId ? "active" : null)" type="button" @onclick="() => _filterRoute = r.RouteId">
+                <button class="dev-item @(_filterRoute == r.RouteId ? "active" : null)" type="button" @onclick="() => SelectRoute(r.RouteId)">
                     <span class="n">
                         <span class="dot @(Session.IsRouteOnline(r.RouteId) ? "on" : "off")"></span>
                         @r.Name
@@ -73,6 +88,7 @@
                             <th>路由</th>
                             <th>地址</th>
                             <th>类型</th>
+                            <th>备注</th>
                             <th>当前值</th>
                             <th>写入</th>
                             <th>轮询</th>
@@ -87,6 +103,7 @@
                                 <td class="addr" data-label="路由">@row.RouteId</td>
                                 <td class="mono" data-label="地址">@row.Address</td>
                                 <td data-label="类型"><span class="type-pill">@row.DataType</span></td>
+                                <td data-label="备注" title="@row.Note">@(string.IsNullOrEmpty(row.Note) ? "—" : row.Note)@(row.FromTemplate ? " ·模板" : "")</td>
                                 <td class="val-green mono" data-label="当前值" title="@row.LastUpdated">@row.DisplayValue</td>
                                 <td class="write-cell" data-label="写入">
                                     <input class="write-input" @bind="row.WriteText" placeholder="值" />
@@ -100,7 +117,14 @@
                                 </td>
                                 <td class="row-btns" data-label="">
                                     <button class="btn-sm ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
-                                    <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
+                                    @if (row.FromTemplate)
+                                    {
+                                        <button class="btn-sm ghost" type="button" disabled title="来自模板，不能删除">锁</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -406,6 +430,7 @@
 
     /// <summary>左侧设备筛选选中的路由 Id；空字符串表示「全部」。</summary>
     private string _filterRoute = string.Empty;
+    private string _bindTemplateId = string.Empty;
 
     /// <summary>导出面板里待复制的 JSON 文本。</summary>
     private string _exportJson = string.Empty;
@@ -477,6 +502,63 @@
         // 表单默认选中第一条路由，省去操作员每次新增都要手动选
         if (RouteChoices.Count > 0)
             _routeId = RouteChoices[0].RouteId;
+
+        string tid = QueryValue("template");
+        if (!string.IsNullOrEmpty(tid))
+        {
+            _bindTemplateId = tid;
+            if (RouteChoices.Count > 0 && string.IsNullOrEmpty(_filterRoute))
+                _filterRoute = RouteChoices[0].RouteId;
+            ApplySelectedTemplate();
+        }
+        else
+        {
+            InferTemplateFromRows();
+        }
+    }
+
+    private void SelectRoute(string routeId)
+    {
+        _filterRoute = routeId;
+        InferTemplateFromRows();
+    }
+
+    private void InferTemplateFromRows()
+    {
+        if (string.IsNullOrEmpty(_filterRoute))
+        {
+            _bindTemplateId = string.Empty;
+            return;
+        }
+        string? tid = Store.GetAll()
+            .FirstOrDefault(v => v.RouteId == _filterRoute && v.FromTemplate)?.TemplateId;
+        _bindTemplateId = tid ?? string.Empty;
+    }
+
+    private void ApplySelectedTemplate()
+    {
+        if (string.IsNullOrEmpty(_filterRoute) || string.IsNullOrEmpty(_bindTemplateId))
+            return;
+        WebDeviceTemplate? tpl = Templates.Get(_bindTemplateId);
+        if (tpl is null) return;
+        int n = Store.ApplyTemplate(_filterRoute, tpl);
+        _banner = "已套用模板「" + tpl.Name + "」，" + n + " 处更新。地址请在本表填写。";
+        _bannerClass = "status-ok";
+    }
+
+    private string QueryValue(string key)
+    {
+        Uri uri = Nav.ToAbsoluteUri(Nav.Uri);
+        string q = uri.Query.TrimStart('?');
+        foreach (string part in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            if (!string.Equals(Uri.UnescapeDataString(part[..eq]), key, StringComparison.OrdinalIgnoreCase))
+                continue;
+            return Uri.UnescapeDataString(part[(eq + 1)..]);
+        }
+        return string.Empty;
     }
 
     /// <summary>
@@ -1012,8 +1094,17 @@
         finally { _busy = false; }
     }
 
-    /// <summary>请求删除某条变量，置入待确认状态而非直接删除。</summary>
-    private void AskRemove(WebVariable row) => _pendingRemove = row;
+    /// <summary>请求删除某条变量。模板行直接拒绝。</summary>
+    private void AskRemove(WebVariable row)
+    {
+        if (row.FromTemplate)
+        {
+            _banner = "「" + row.Name + "」来自模板，不能删除";
+            _bannerClass = "status-warn";
+            return;
+        }
+        _pendingRemove = row;
+    }
 
     /// <summary>确认删除待删变量。</summary>
     /// <remarks>
@@ -1022,7 +1113,7 @@
     /// </remarks>
     private void ConfirmRemove()
     {
-        if (_pendingRemove is null) return;
+        if (_pendingRemove is null || _pendingRemove.FromTemplate) return;
 
         Store.Remove(_pendingRemove.Id);
         _pendingRemove = null;
