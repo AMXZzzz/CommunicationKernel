@@ -37,9 +37,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         /// <summary>需页面用主题框提示：(标题, 正文)。</summary>
         public event Action<string, string> InfoRequested;
 
+        /// <summary>当前选中的设备 Id，「当前设备」范围据此过滤。</summary>
         private string _deviceId;
+
+        /// <summary>导出范围：true = 仅当前设备，false = 全部设备。</summary>
         private bool _scopeCurrent = true;
 
+        /// <summary>构造：加载 XAML 并同步范围/格式按钮高亮。</summary>
         public VariableExportPanel () {
             // 解析 XAML 并同步范围/格式按钮高亮
             InitializeComponent();
@@ -53,6 +57,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // ============================================================================
 
         /// <summary>打开前注入当前设备信息。</summary>
+        /// <param name="deviceId">当前设备 Id。</param>
+        /// <param name="deviceTitle">当前设备显示名，用于提示条与默认文件名。</param>
+        /// <param name="variableCount">该设备下的变量数，仅用于提示条。</param>
         public void Prepare (string deviceId, string deviceTitle, int variableCount) {
             // 记住当前设备，默认范围切回「当前设备」
             _deviceId = deviceId;
@@ -70,6 +77,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             txtFileName.Text = safe + "_变量_" + DateTime.Now.ToString("yyyyMMdd");
         }
 
+        /// <summary>导出范围切换，目标范围由按钮 Tag 携带。</summary>
+        /// <param name="sender">事件源，Tag 为 <c>All</c> 表示全部设备，其余表示当前设备。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnScope_Click (object sender, RoutedEventArgs e) {
             // Tag=All 导出全部设备，否则只导当前设备
             string tag = (sender as FrameworkElement)?.Tag as string;
@@ -77,9 +87,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             UpdateScopeButtons();
         }
 
+        /// <summary>格式切换。一期只有 JSON，点了也只是刷新高亮。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnFormat_Click (object sender, RoutedEventArgs e) =>
             UpdateFormatButtons();
 
+        /// <summary>把两个范围按钮刷成当前选择的样式。</summary>
         private void UpdateScopeButtons () {
             // 选中项用 Primary，未选中用 Dark，和变量页其它切换按钮一致
             Style dark = TryFindResource("SF.Style.DarkButton") as Style;
@@ -88,6 +102,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             btnScopeAll.Style = !_scopeCurrent ? primary : dark;
         }
 
+        /// <summary>刷新格式按钮高亮。一期恒为 JSON。</summary>
         private void UpdateFormatButtons () {
             // 一期仅 JSON，始终高亮 JSON 按钮
             Style primary = TryFindResource("SF.Style.PrimaryButton") as Style;
@@ -95,7 +110,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
                 btnFmtJson.Style = primary;
         }
 
-        // 交给页面收起导出弹层，不写文件
+        /// <summary>「关闭」按钮：交给页面收起导出弹层，不写文件。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnClose_Click (object sender, RoutedEventArgs e) =>
             CloseRequested?.Invoke();
 
@@ -103,6 +120,16 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // 导出
         // ============================================================================
 
+        /// <summary>
+        /// 「导出」按钮：按范围取变量、弹保存框、写文件。
+        /// </summary>
+        /// <remarks>
+        /// 成功后<b>先关弹层再报成功</b>：顺序反过来的话，成功框会被弹层遮住一部分，
+        /// 而成功框里带「打开目录」，点不到就等于没有。
+        /// 失败则保持弹层打开，方便改个文件名直接重试。
+        /// </remarks>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void BtnExport_Click (object sender, RoutedEventArgs e) {
             // 服务未注入时无法取变量列表
             if (VariableService == null)
@@ -171,6 +198,18 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // JSON 序列化
         // ============================================================================
 
+        /// <summary>把变量列表拼成 JSON 数组文本。</summary>
+        /// <remarks>
+        /// 手写拼串而非用序列化器：字段是否输出由界面上的复选框逐项决定，
+        /// 用 <c>JsonSerializer</c> 得为每种勾选组合建一个类型或写自定义转换器，
+        /// 反而更绕。字段少、结构扁平，值一律按字符串写出并转义。
+        /// <para>
+        /// <c>deviceId</c> 无视勾选<b>始终写出</b>：没有它，导出的文件再导入时
+        /// 不知道该挂到哪台设备上。
+        /// </para>
+        /// </remarks>
+        /// <param name="list">要导出的变量。</param>
+        /// <returns>JSON 文本。</returns>
         private string BuildJson (List<VariableItem> list) {
             var sb = new StringBuilder();
             sb.Append("[\n");
@@ -196,6 +235,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             return sb.ToString();
         }
 
+        /// <summary>追加一个 <c>"键": "值"</c> 对，自动处理字段间的逗号。</summary>
+        /// <param name="sb">目标缓冲。</param>
+        /// <param name="first">是否为本对象的首个字段；调用后被置为 false。</param>
+        /// <param name="key">字段名。</param>
+        /// <param name="value">字段值，null 按空串处理。</param>
         private static void Append (StringBuilder sb, ref bool first, string key, string value) {
             // 字段之间用逗号分隔，首字段前面不加
             if (!first) sb.Append(", ");
@@ -204,9 +248,19 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
               .Append(Escape(value ?? "")).Append("\"");
         }
 
+        /// <summary>转义 JSON 字符串值。</summary>
+        /// <remarks>
+        /// 反斜杠必须<b>第一个</b>替换：放到后面会把前几步刚插入的转义符再转义一遍。
+        /// 只处理这四类——备注里可能带换行和引号，其余字符按 UTF-8 原样写出。
+        /// </remarks>
+        /// <param name="s">原始值。</param>
+        /// <returns>可直接放进双引号里的文本。</returns>
         private static string Escape (string s) =>
             s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
 
+        /// <summary>权限枚举 → 导出文案。与导入面板约定同一套：R / W / R/W。</summary>
+        /// <param name="a">权限。</param>
+        /// <returns>文案。</returns>
         private static string AccessToString (VariableAccess a) {
             // 与导入面板约定同一套文案：R / W / R/W
             if (a == VariableAccess.ReadOnly) return "R";
@@ -214,6 +268,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             return "R/W";
         }
 
+        /// <summary>把设备名清洗成合法文件名。</summary>
+        /// <param name="name">原始名称。设备名常含 <c>·</c>、<c>/</c>、<c>:</c> 等。</param>
+        /// <returns>非法字符替换为下划线后的名称；清洗后为空时返回 <c>"export"</c>。</returns>
         private static string SanitizeFileName (string name) {
             // 设备名可能含 · / : 等，替换成下划线以免保存失败
             foreach (char c in Path.GetInvalidFileNameChars())

@@ -1,4 +1,4 @@
-﻿# 部署到 Linux / 树莓派
+# 部署到 Linux / 树莓派
 
 本文覆盖两种部署形态。先确定你属于哪一种，再往下读对应章节——两者的产物、
 依赖和排障方式都不同。
@@ -39,8 +39,10 @@
   - [拓扑](#拓扑)
   - [第 1 步：车间照常跑 WebMaster](#第-1-步车间照常跑-webmaster)
   - [第 2 步：公网机只留一套面板](#第-2-步公网机只留一套面板)
-  - [第 3 步：frp 把 64000 顶到服务器](#第-3-步frp-把-64000-顶到服务器)
-  - [第 4 步：1Panel / 宝塔反代 HTTPS](#第-4-步1panel--宝塔反代-https)
+  - [第 3 步：公网机装 frps（隧道的服务器那半边）](#第-3-步公网机装-frps隧道的服务器那半边)
+  - [第 4 步：车间侧开启内网穿透（WebMaster 直接托管 frpc）](#第-4-步车间侧开启内网穿透webmaster-直接托管-frpc)
+  - [第 5 步：1Panel / 宝塔反代 HTTPS](#第-5-步1panel--宝塔反代-https)
+  - [第 6 步：在 WebMaster 里开启反代支持（最容易漏）](#第-6-步在-webmaster-里开启反代支持最容易漏)
   - [必须加上的两件事](#必须加上的两件事)
 - [管理面板 ck](#管理面板-ck)
   - [安装](#安装)
@@ -626,36 +628,160 @@ WPF 仍应走车间内网或 VPN 连 `:5000`，不要把 gRPC 挂到 443。
 1Panel 和宝塔都会占 80/443。**只留一个当网站入口**，另一个改掉网站端口或卸掉。
 域名 A 记录指到这台公网 IP，面板里给站点签发 Let's Encrypt。
 
-### 第 3 步：frp 把 64000 顶到服务器
+### 第 3 步：公网机装 frps（隧道的服务器那半边）
 
-公网 `frps.toml`（只给本机反代用，不要把 16400 防火墙对世界放开）：
+隧道**必须两头都有**：车间侧 frpc 主动拨出去，公网侧 frps 接住。
+WebMaster 只托管车间那半边，服务器这半边要自己装一次，装完基本不用再动。
+
+**装法一：面板应用商店（推荐）**
+
+1Panel 应用商店搜 `frp`，宝塔软件商店也有 frp 插件。装完在应用配置里填 `bindPort` 和 `auth.token` 即可，跳到本步末尾的验证。
+
+**装法二：自己下、自己跑 systemd**
+
+```bash
+# 按公网机架构选：amd64 常见，ARM 云主机用 arm64
+FRP_VER=0.61.1
+cd /tmp
+wget https://github.com/fatedier/frp/releases/download/v${FRP_VER}/frp_${FRP_VER}_linux_amd64.tar.gz
+tar -xzf frp_${FRP_VER}_linux_amd64.tar.gz
+sudo mkdir -p /opt/frp
+sudo cp frp_${FRP_VER}_linux_amd64/frps /opt/frp/
+sudo chmod +x /opt/frp/frps
+```
+
+生成一个足够长的随机 token —— **这串东西是隧道的唯一凭据，别用弱口令**：
+
+```bash
+openssl rand -hex 24
+```
+
+写 `/opt/frp/frps.toml`：
 
 ```toml
 bindPort = 7000
-# 鉴权，车间 frpc 必须相同
-auth.token = "换成足够长的随机串"
+
+# 鉴权：车间 WebMaster 里必须填一模一样的一串
+auth.method = "token"
+auth.token = "把上面 openssl 生成的那串贴进来"
+
+# 只允许车间那一个端口，别人拿到 token 也开不出别的隧道
+allowPorts = [{ start = 16400, end = 16400 }]
 ```
 
-车间 `frpc.toml`：
+`allowPorts` 不是可选项：不写的话，任何知道 token 的人都能把**自己机器上的任意服务**顶到你这台公网机的任意端口上，等于白送一个跳板。
 
-```toml
-serverAddr = "你的公网IP"
-serverPort = 7000
-auth.token = "和上面相同"
+装成开机自启：
 
-[[proxies]]
-name = "ck-web"
-type = "tcp"
-localIP = "127.0.0.1"
-localPort = 64000
-remotePort = 16400
+```bash
+sudo tee /etc/systemd/system/frps.service > /dev/null <<'EOF'
+[Unit]
+Description=frp server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/frp/frps -c /opt/frp/frps.toml
+Restart=always
+RestartSec=5
+# 不需要 root：只监听 7000 和 16400，都在 1024 以上
+User=nobody
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now frps
 ```
 
-公网安全组只放行 **80 / 443 / 7000**。`16400` 仅本机 Nginx 来连。
+**验证 frps 起来了：**
 
-1Panel 应用商店有 Frp；宝塔也可装 frp 插件。自己 systemd 跑同样可以。
+```bash
+systemctl status frps --no-pager        # 应为 active (running)
+ss -lntp | grep 7000                    # 应看到 7000 在监听
+```
 
-### 第 4 步：1Panel / 宝塔反代 HTTPS
+**安全组只放行 80 / 443 / 7000。**`16400` 千万不要对外开——它是明文 HTTP，
+放开就等于绕过了 Nginx 上的 HTTPS 和 Basic Auth，直接裸奔。只让本机 Nginx 连它。
+
+### 第 4 步：车间侧开启内网穿透（WebMaster 直接托管 frpc）
+
+车间这半边不用自己写配置、不用自己开机自启 —— WebMaster 会生成 `frpc.toml`、
+拉起进程、崩了自动重启、输出并入日志页，并在下次启动时清掉上次残留的 frpc 进程。
+
+#### 为什么发布包里没有 frpc.exe
+
+内网穿透工具被国内杀软报毒是常态。**一旦打进发布包，落地那一刻就会被扫**——
+放在哪个目录、跑不跑都一样，杀软扫的是磁盘上的文件，不是运行中的进程。
+严重时会连累整个 WebMaster 一起被拦掉。
+
+所以产物里不含任何穿透工具：需要的人自己放一个进去，那是你自己电脑上的文件，
+放不放行由你自己决定，跟本软件无关。**文件不在，功能就不存在**，这也是最彻底的默认关闭。
+
+#### 放置
+
+到 <https://github.com/fatedier/frp/releases> 下 Windows 版，
+把里面的 `frpc.exe` 放到 **`UI.WebMaster.exe` 同一个目录**，然后重启 WebMaster。
+
+只要这个文件不在，设置页会显示下载指引而不是开关，程序其它部分完全不受影响。
+
+#### 填写
+
+`http://localhost:64000` → **系统设置 → 内网穿透（frpc）**：
+
+| 项 | 填什么 |
+|---|---|
+| 启用内网穿透 | 勾上 |
+| 服务器地址 | 公网机的 IP 或域名 |
+| 服务器端口 | `7000`，和 frps 的 `bindPort` 一致 |
+| Token | 和 frps 的 `auth.token` **完全一致** |
+| 远端端口 | `16400`，Nginx 反代就指它 |
+
+保存后**退出 WebMaster 再打开**——和反代设置一样，隧道在启动时装配。
+
+> Token 只写进 `config/web-tunnel.json`，**不会进日志**。日志页任何登录用户都能看，
+> 所以那里只记服务器地址和端口。
+
+本机 `localPort` 不用填：WebMaster 自己知道监听在哪个端口，会直接写进生成的配置。
+生成的 `config/frpc.toml` 每次启动都重写，手工改它没有意义——要改去设置页。
+
+#### 验证隧道通了
+
+车间侧看日志页（顶栏 → 通讯日志），筛 `Tunnel` / `frpc`：
+
+| 日志 | 含义 |
+|---|---|
+| `frpc 已启动，目标 ...:7000，远端口 16400` | 进程拉起来了 |
+| `login to server success` | **token 对、网络通，隧道已建立** |
+| `start proxy success` | 端口映射成功，可以往下走了 |
+
+公网机上确认端口真的被顶上来了：
+
+```bash
+ss -lntp | grep 16400        # frps 应在监听 16400
+curl -I http://127.0.0.1:16400/    # 应返回 HTTP 200，这时已经打到车间那台机器了
+```
+
+`curl` 这一条通了，就说明隧道整条链路是好的，后面出问题只可能在 Nginx。
+
+常见失败，都能在日志页直接看出来：
+
+| 日志里出现 | 原因 |
+|---|---|
+| `token in login doesn't match` | 两边 token 不一致（注意别把引号或空格一起复制了）|
+| `port already used` | 服务器上 16400 被占——多半是上一份 frpc 还活着 |
+| `connect: connection refused` | frps 没起来，或安全组没放行 7000 |
+| 反复「已退出 → 已启动」 | 看紧挨着的错误行，重启间隔 5 秒是故意的，防止刷屏 |
+
+#### 想自己管 frpc 也可以
+
+托管是可选的。已经用 1Panel 的 frpc、或自己写了 systemd/计划任务的，
+**别勾**「启用内网穿透」即可，两者互不干扰——
+WebMaster 只在启动时清理**自己目录下**那一个 frpc，不会碰机器上别人的 frpc 进程。
+
+### 第 5 步：1Panel / 宝塔反代 HTTPS
 
 站点根反代到 `http://127.0.0.1:16400`。Blazor Server 靠 WebSocket，必须加上：
 
@@ -663,28 +789,85 @@ remotePort = 16400
 location / {
     proxy_pass http://127.0.0.1:16400;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # ① 身份与协议：应用靠这几个头判断"用户那一侧其实是 https"
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header X-Forwarded-Host  $host;
+
+    # ② WebSocket 升级：Blazor Server 的界面全靠这条长连接
+    proxy_set_header Upgrade    $http_upgrade;
     proxy_set_header Connection "upgrade";
+
+    # ③ 长超时：默认 60s 会让线路每分钟断一次，界面隔一会儿就"卡住"
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
 }
 ```
 
+三组缺一不可，各自对应一种故障：
+
+| 漏了哪组 | 现象 |
+|---|---|
+| ① `X-Forwarded-Proto` | 页面能打开，**所有按钮没反应**，过一会儿弹「未处理异常」 |
+| ② `Upgrade` / `Connection` | 同上——线路根本建不起来 |
+| ③ 长超时 | 能用，但每分钟断一次，反复重连 |
+
 宝塔：网站 → 反向代理 → 目标 `http://127.0.0.1:16400`，然后在配置里核对上面这几行。
 1Panel：网站 → 创建反向代理，目标相同。
+
+### 第 6 步：在 WebMaster 里开启反代支持（最容易漏）
+
+**上面的 Nginx 配置只是把头送过去，应用默认并不采信。** 必须在车间这台机器上：
+
+打开 `http://localhost:64000` → **系统设置 → 外地访问（反向代理）**：
+
+| 项 | 填什么 |
+|---|---|
+| 启用反向代理支持 | 勾上 |
+| 强制 HTTPS | 勾上（公网机有证书时）|
+| 子路径 | 反代到域名根目录就留空；反代到 `https://域名/ck/` 才填 `/ck` |
+| 可信代理 IP | 可留空。留空表示不校验来源，此时务必保证 64000 只对 frpc 开放 |
+
+**改完必须退出 WebMaster 再打开**——中间件在启动时装配。
+
+> 不做这一步的表现，正是上表里 ① 那一行：页面打得开、按钮全都没反应。
+> 因为 Blazor 会按"当前请求是明文 http"去生成 `ws://` 回连地址，
+> 而页面本身是 https，浏览器按混合内容直接拦掉。
+> 这个症状看不出跟反代有关，很容易往界面 bug 的方向查。
+
+「强制 HTTPS」勾上后，用户敲 `http://域名` 会被 307 跳到 https，并下发 30 天的 HSTS。
+它**依赖**「启用反向代理支持」——单独勾不生效（应用自身不监听 HTTPS，
+单独生效会导致无限重定向且再也打不开设置页，因此代码里做了硬联锁）。
 
 手机开 `https://你的域名` 即车间那套 MES。底栏适配走的是浏览器宽度，和在局域网打开一样。
 
 ### 必须加上的两件事
 
-1. **访问限制。** 这套 Web 能添加设备、写寄存器，现在没有登录。
-   面板给站点加「访问认证 / 授权访问」（HTTP Basic）或 IP 白名单，
-   不要把裸地址发到群里。
-2. **不要反代 5000。** 那是明文 gRPC，能连上就能写 PLC。
-   外地 WPF 用 Tailscale / 组网，不要走这个中转。
+**1. 两层访问控制，叠加使用。**
+
+内层——**先设访问口令**：系统设置 → 访问口令。没设的话任何拿到网址的人都能改 PLC。
+口令以 PBKDF2 加盐哈希存在 `config/web-auth.json`，忘了就删掉该文件重启即可恢复免登录。
+
+外层——**面板上再加一层 HTTP Basic**：
+
+```bash
+htpasswd -c /etc/nginx/ck.htpasswd operator
+```
+
+```nginx
+auth_basic           "CommunicationKernel";
+auth_basic_user_file /etc/nginx/ck.htpasswd;
+```
+
+宝塔：网站设置 → 密码访问。1Panel：网站 → 高级 → 密码访问。
+
+两层不是二选一：外层挡住绝大多数扫描器与爬虫，内层保证即使反代配置改错也不是完全裸奔。
+条件允许时再加来源 IP 白名单，或干脆只在 VPN（Tailscale / WireGuard）内开放。
+
+**2. 不要反代 5000。** 那是明文 gRPC，**没有任何认证**，能连上就能写 PLC。
+外地 WPF 用 Tailscale / 组网直连车间内网，不要走这个中转。
 
 车间断网或 WebMaster 没开：域名打不开，PLC 不受影响。
 
@@ -800,3 +983,6 @@ info: Hosting.App.Startup[0]
 | 上位机连不上宿主 | 宿主还绑在 `localhost` |
 | 进程起不来，exec 格式错误 | RID 搞错了（32 位系统用了 `linux-arm64`） |
 | 重启后接到了错误的 PLC | 用了 `/dev/ttyUSB0` 而非 by-id 路径 |
+| 设置页没有内网穿透的开关，只有下载指引 | `frpc.exe` 没放到 exe 同目录，或放完没重启 |
+| 隧道日志反复「已启动 → 已退出」 | 看紧邻的错误行：`token ... doesn't match` 是 token 不一致，`port already used` 是远端口被占 |
+| 域名能打开但按钮全都没反应 | 反代支持没开，或 Nginx 少了 `X-Forwarded-Proto` / `Upgrade` |

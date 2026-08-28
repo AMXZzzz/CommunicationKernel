@@ -37,13 +37,16 @@ public sealed class DevicePageViewModel : ViewModelBase {
     // ============================================================================
 
     /// <summary>设备管理服务，封装 gRPC 路由管理操作。</summary>
+    /// <summary>设备服务，所有设备增删连断都经它。</summary>
     private readonly IDeviceService _devices;
 
     /// <summary>应用日志记录器，可为 null（此时不记录日志）。</summary>
     private readonly IAppLogger _log;
 
+    /// <summary><see cref="IsSelectMode"/> 的后备字段。</summary>
     private bool _isSelectMode;
 
+    /// <summary><see cref="DeviceCount"/> 的后备字段。</summary>
     private int _deviceCount;
 
     // ============================================================================

@@ -70,6 +70,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // 筛选 / 重建
         // ============================================================================
 
+        /// <summary>切换到指定设备并重建表格。</summary>
+        /// <param name="deviceId">设备 Id；为空时表格清空。</param>
         public void Load (string deviceId) {
             // 记住当前设备，后续筛选/删除都只作用于这台
             _deviceId = deviceId;
@@ -333,6 +335,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
                 }
             }
 
+            /// <summary>轮询读回的当前值文本。相同值不发通知，减轻高频刷新下的绑定开销。</summary>
             public string ValueText {
                 get { return _valueText; }
                 set {
@@ -343,6 +346,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
                 }
             }
 
+            /// <summary>写入框内容。一经修改即标记 dirty，防止轮询回写冲掉正在编辑的内容。</summary>
             public string WriteText {
                 get { return _writeText; }
                 set {

@@ -65,6 +65,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             }
         }
 
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public DeviceCard () {
             // 解析 XAML，构建视觉树
             InitializeComponent();

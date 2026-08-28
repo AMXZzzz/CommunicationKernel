@@ -18,6 +18,7 @@ using System.Windows.Media;
 
 //! 视觉树查找
 namespace CommunicationKernel.UI.Wpf.Views.Tools {
+    /// <summary>视觉树/逻辑树查找扩展。</summary>
     public static class VisualTreeExtensions {
 
         // ============================================================================

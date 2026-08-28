@@ -49,22 +49,45 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
 
         // ============================================================================
         // 后备字段
+        //
+        // 与下方同名属性一一对应。字段上只放一句指向属性的交叉引用，
+        // 完整语义写在属性上——同一件事说两遍，迟早有一遍过期，
+        // 而读代码的人无从判断该信哪一遍。
+        //
+        // 默认值统一在这里给：字符串一律 string.Empty 而非 null。
+        // null 绑定到界面同样显示空白，看不出区别，但一参与字符串拼接就炸，
+        // 而崩溃点会离真正的原因很远。
         // ============================================================================
 
+        /// <summary><see cref="Id"/> 的后备字段。</summary>
         private string _id             = string.Empty;
+        /// <summary><see cref="Name"/> 的后备字段。</summary>
         private string _name           = string.Empty;
+        /// <summary><see cref="Model"/> 的后备字段。</summary>
         private string _model          = string.Empty;
+        /// <summary><see cref="Protocol"/> 的后备字段。</summary>
         private string _protocol       = string.Empty;
+        /// <summary><see cref="Ip"/> 的后备字段。</summary>
         private string _ip             = string.Empty;
+        /// <summary><see cref="Port"/> 的后备字段。</summary>
         private int    _port;
+        /// <summary><see cref="Station"/> 的后备字段。</summary>
         private string _station        = string.Empty;
+        /// <summary><see cref="StationNo"/> 的后备字段。</summary>
         private int    _stationNo;
+        /// <summary><see cref="TransportKind"/> 的后备字段。</summary>
         private string _transportKind  = string.Empty;
+        /// <summary><see cref="SerialPort"/> 的后备字段。</summary>
         private string _serialPort     = string.Empty;
+        /// <summary><see cref="BaudRate"/> 的后备字段。</summary>
         private int    _baudRate;
+        /// <summary><see cref="ExtraSettingsJson"/> 的后备字段。默认空对象而非 null。</summary>
         private string _extraSettingsJson = "{}";
+        /// <summary><see cref="IsConnected"/> 的后备字段。</summary>
         private bool   _isConnected;
+        /// <summary><see cref="StatusType"/> 的后备字段。默认离线——未验证过的连接不能显示成在线。</summary>
         private DeviceStatusType _statusType = DeviceStatusType.Offline;
+        /// <summary><see cref="IsDualLane"/> 的后备字段。</summary>
         private bool   _isDualLane;
 
         // ============================================================================

@@ -48,10 +48,15 @@ public sealed class SettingsViewModel : ViewModelBase {
     private readonly IConfiguration _config;
 
     // 后备字段
+    /// <summary><see cref="HostAddress"/> 的后备字段。</summary>
     private string _hostAddress    = WpfAppSettings.FallbackAddress;
+    /// <summary><see cref="IsRemoteMode"/> 的后备字段。</summary>
     private bool   _isRemoteMode   = false;
+    /// <summary><see cref="TestResultText"/> 的后备字段。</summary>
     private string _testResultText = string.Empty;
+    /// <summary><see cref="SaveConfirmText"/> 的后备字段。</summary>
     private string _saveConfirmText = string.Empty;
+    /// <summary><see cref="IsTesting"/> 的后备字段。</summary>
     private bool   _isTesting      = false;
 
     // ============================================================================

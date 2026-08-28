@@ -19,10 +19,11 @@ namespace CommunicationKernel.UI.Wpf.Core.Models;
 /// </summary>
 public sealed class VariableItem : INotifyPropertyChanged {
 
-    // WPF 数据绑定引擎订阅此事件以侦测属性变更
+    /// <summary>属性变更通知。WPF 数据绑定引擎订阅此事件以侦测变更。</summary>
     public event PropertyChangedEventHandler PropertyChanged;
 
-    // 属性变更时通知 DataGrid / 轮询结果列刷新
+    /// <summary>触发属性变更通知，刷新 DataGrid 与轮询结果列。</summary>
+    /// <param name="name">属性名，由编译器按调用点自动填入，不要手写。</param>
     private void Notify([CallerMemberName] string name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 

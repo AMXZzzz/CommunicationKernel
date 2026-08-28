@@ -14,6 +14,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.MesMonitor.Controls {
     /// 当前仅为静态展示控件，无额外交互逻辑。
     /// </summary>
     public partial class MesWidthBar : UserControl {
+        /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public MesWidthBar () {
             // 解析 XAML，构建视觉树
             InitializeComponent();

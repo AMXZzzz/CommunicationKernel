@@ -81,6 +81,16 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         // 卡片注入
         // ============================================================================
 
+        /// <summary>
+        /// 设备列表变化后重新给卡片注入服务。
+        /// </summary>
+        /// <remarks>
+        /// 延到 <see cref="DispatcherPriority.Loaded"/> 再做：集合变更事件触发时，
+        /// ItemsControl 还没有为新项生成容器，此刻遍历可视树找不到那张新卡片，
+        /// 它就会一直缺服务——表现为新加的设备点连接没反应。
+        /// </remarks>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void DisplayList_CollectionChanged (object sender, NotifyCollectionChangedEventArgs e) {
             Dispatcher.BeginInvoke(
                 new Action(InjectServicesToCards),
@@ -158,6 +168,11 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         // 工具栏 / 编辑面板 / 消息框
         // ============================================================================
 
+        /// <summary>把工具栏按钮接到 ViewModel 命令上。</summary>
+        /// <remarks>
+        /// 每个回调都先问 <c>CanExecute</c>：工具栏按钮没有绑定命令的禁用态，
+        /// 不问就会在引擎未连接时也把命令发出去。
+        /// </remarks>
         private void WireToolbar () {
             if (toolBar == null) return;
 
@@ -226,6 +241,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         // 编辑面板
         // ============================================================================
 
+        /// <summary>供外部（如「添加设备」占位卡片）请求打开新增面板。</summary>
         public void OpenAddDevice () => _vm.OpenAdd();
 
         /// <summary>供外部（卡片双击等）请求编辑某台设备。转交 ViewModel 决定是否放行。</summary>
@@ -259,11 +275,17 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         // 主题消息框
         // ============================================================================
 
+        /// <summary>弹出警告消息框。</summary>
+        /// <param name="title">标题。</param>
+        /// <param name="message">正文。</param>
         private void ShowWarning (string title, string message) {
             ShowMessage(AppMessageKind.Warning, title, message);
         }
 
         /// <summary>弹出通用消息框。</summary>
+        /// <param name="kind">消息种类，决定配色与图标。</param>
+        /// <param name="title">标题。</param>
+        /// <param name="message">正文。</param>
         private void ShowMessage (AppMessageKind kind, string title, string message) {
             if (msgDialog == null || editOverlay == null) return;
 
@@ -307,6 +329,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
                 editOverlay.Visibility = Visibility.Collapsed;
         }
 
+        /// <summary>点击遮罩空白处：收起编辑面板与消息框。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void EditOverlay_MouseLeftButtonDown (object sender, MouseButtonEventArgs e) {
             if (editPanel != null)
                 editPanel.Visibility = Visibility.Collapsed;
@@ -315,6 +340,9 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
                 editOverlay.Visibility = Visibility.Collapsed;
         }
 
+        /// <summary>吞掉面板内的点击，避免冒泡到遮罩把面板关掉。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void Panel_MouseLeftButtonDown (object sender, MouseButtonEventArgs e) {
             e.Handled = true; // 点击面板本身不关闭遮罩
         }
@@ -323,6 +351,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         // 多选
         // ============================================================================
 
+        /// <summary>把多选模式同步到所有卡片，顺便补一次服务注入。</summary>
+        /// <param name="selectMode">true 进入多选模式（卡片显示勾选框）。</param>
         private void ApplySelectModeToCards (bool selectMode) {
             foreach (DeviceCard card in FindVisualChildren<DeviceCard>(deviceList)) {
                 card.ConnectDevice = _vm.ConnectDevice;
@@ -331,6 +361,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             }
         }
 
+        /// <summary>收集当前被勾选的设备 Id。</summary>
+        /// <returns>设备 Id 列表；没有勾选时返回空列表，不返回 null。</returns>
         private List<string> CollectSelectedIds () {
             var ids = new List<string>();
             foreach (DeviceCard card in FindVisualChildren<DeviceCard>(deviceList)) {
@@ -340,17 +372,34 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             return ids;
         }
 
+        /// <summary>进入可视树：订阅 ViewModel 并补一次卡片服务注入。</summary>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void DevicePage_Loaded (object sender, RoutedEventArgs e) {
             // 恢复订阅（首次为初次订阅），再刷新卡片上的服务注入
             WireViewModel();
             InjectServicesToCards();
         }
 
+        /// <summary>
+        /// 离开可视树：立即退订。
+        /// </summary>
+        /// <remarks>
+        /// ViewModel 是单例，页面每次导航都会重建。不退订的话，
+        /// 单例会攒下一串指向已废弃页面的事件订阅——既泄漏，
+        /// 又会让一次数据变更被多个死页面各响应一遍。
+        /// </remarks>
+        /// <param name="sender">事件源。</param>
+        /// <param name="e">事件参数。</param>
         private void DevicePage_Unloaded (object sender, RoutedEventArgs e) {
             // 离开可视树立即退订，防止单例 ViewModel 持有已废弃的页面实例
             UnwireViewModel();
         }
 
+        /// <summary>深度优先遍历可视树，找出全部指定类型的后代。</summary>
+        /// <typeparam name="T">目标类型。</typeparam>
+        /// <param name="parent">起点；为 null 时返回空序列。</param>
+        /// <returns>惰性序列，按可视树顺序产出。</returns>
         private static IEnumerable<T> FindVisualChildren<T> (DependencyObject parent)
             where T : DependencyObject {
             if (parent == null) yield break;

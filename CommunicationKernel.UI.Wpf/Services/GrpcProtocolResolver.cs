@@ -28,8 +28,10 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>协议清单本地缓存路径。本端独立目录，见 <see cref="WpfPaths"/>。</summary>
         private static readonly string CachePath = WpfPaths.ProtocolsCacheFile;
 
+        /// <summary>缓存文件的序列化选项。缩进是为了出问题时人能直接读这个文件。</summary>
         private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
+        /// <summary>gRPC 客户端，协议清单的实时来源。</summary>
         private readonly HostingClient _client;
 
         /// <summary>
@@ -131,6 +133,12 @@ namespace CommunicationKernel.UI.Wpf.Services
         // 本地缓存
         // ============================================================================
 
+        /// <summary>载入上次成功拉取的协议清单。</summary>
+        /// <remarks>
+        /// 任何失败（文件不存在、损坏、结构变了）都静默忽略：
+        /// 缓存只是宿主暂时连不上时的降级显示，拿不到就等实时清单，
+        /// 绝不该因为一个缓存文件让设备编辑面板打不开。
+        /// </remarks>
         private void LoadCache()
         {
             try
@@ -157,6 +165,8 @@ namespace CommunicationKernel.UI.Wpf.Services
             }
         }
 
+        /// <summary>把成功拉取的协议清单写入本地缓存。</summary>
+        /// <param name="protocols">协议清单。</param>
         private static void SaveCache(IReadOnlyList<ProtocolDescriptorDto> protocols)
         {
             try

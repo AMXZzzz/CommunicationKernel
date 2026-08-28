@@ -17,7 +17,7 @@ namespace CommunicationKernel.UI.Wpf.ViewModels;
 /// </summary>
 public abstract class ViewModelBase : INotifyPropertyChanged {
 
-    // WPF 数据绑定引擎订阅此事件以侦测属性变更
+    /// <summary>属性变更通知。WPF 数据绑定引擎订阅此事件以侦测变更。</summary>
     public event PropertyChangedEventHandler PropertyChanged;
 
     /// <summary>

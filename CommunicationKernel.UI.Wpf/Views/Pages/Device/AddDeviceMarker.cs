@@ -16,6 +16,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// <summary>全局唯一占位实例。</summary>
         public static readonly AddDeviceMarker Instance = new AddDeviceMarker();
 
+        /// <summary>私有构造：本类型是纯标记，只允许存在 <see cref="Instance"/> 一个实例。</summary>
         private AddDeviceMarker () {
         }
     }

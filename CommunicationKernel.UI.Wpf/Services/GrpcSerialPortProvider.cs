@@ -25,8 +25,12 @@ namespace CommunicationKernel.UI.Wpf.Services
     /// </remarks>
     public sealed class GrpcSerialPortProvider : ISerialPortProvider
     {
+        /// <summary>gRPC 客户端。串口清单来自<b>宿主机器</b>，不是本机。</summary>
         private readonly HostingClient _client;
 
+        /// <summary>构造。</summary>
+        /// <param name="client">gRPC 客户端，不可为 null。</param>
+        /// <exception cref="ArgumentNullException"><paramref name="client"/> 为 null。</exception>
         public GrpcSerialPortProvider(HostingClient client)
         {
             // gRPC 客户端必填，串口清单一律来自宿主机器

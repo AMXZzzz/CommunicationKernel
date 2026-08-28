@@ -92,6 +92,7 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // 构造函数
         // -------------------------------------------------------------------------
 
+        /// <summary>构造：加载 XAML 并把范围按钮刷成默认的「当前设备」。</summary>
         public VariableImportPanel() {
             InitializeComponent();
             // 初始化范围按钮样式（默认「当前设备」模式高亮）
@@ -396,6 +397,14 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         // 静态解析辅助
         // -------------------------------------------------------------------------
 
+        /// <summary>解析数据类型文案。</summary>
+        /// <remarks>
+        /// 无法识别时回落 <see cref="VariableDataType.Int16"/> 而不是报错整批中止：
+        /// 导入文件常来自别的工具，字段拼写五花八门，为一个类型名让整份文件进不来
+        /// 得不偿失。类型错了操作员在表里一眼能看见，也能直接改。
+        /// </remarks>
+        /// <param name="s">类型文案，大小写不敏感。</param>
+        /// <returns>数据类型。</returns>
         private static VariableDataType ParseDataType(string s) {
             if (string.IsNullOrWhiteSpace(s))
                 return VariableDataType.Int16;
@@ -403,6 +412,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
                 ? t : VariableDataType.Int16;
         }
 
+        /// <summary>解析读写权限文案。</summary>
+        /// <param name="s">权限文案：<c>R</c>/<c>ReadOnly</c>、<c>W</c>/<c>WriteOnly</c>，
+        /// 其余（含空值）一律按读写处理。</param>
+        /// <returns>权限枚举。</returns>
         private static VariableAccess ParseAccess(string s) {
             if (string.IsNullOrWhiteSpace(s))
                 return VariableAccess.ReadWrite;
@@ -457,13 +470,29 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
 
         /// <summary>JSON 粗解析中间体，字段全部为可空字符串。</summary>
         private sealed class RawItem {
+
+            /// <summary>源文件里的设备 Id。导入到当前设备时会被覆盖。</summary>
             public string DeviceId    { get; set; }
+
+            /// <summary>变量名。</summary>
             public string Name        { get; set; }
+
+            /// <summary>地址原文。不在此解析——地址语义属于协议插件。</summary>
             public string Address     { get; set; }
+
+            /// <summary>数据类型文案，交给 <see cref="ParseDataType"/>。</summary>
             public string DataType    { get; set; }
+
+            /// <summary>权限文案，交给 <see cref="ParseAccess"/>。</summary>
             public string Access      { get; set; }
+
+            /// <summary>工程单位。</summary>
             public string Unit        { get; set; }
+
+            /// <summary>分类。</summary>
             public string Category    { get; set; }
+
+            /// <summary>备注。</summary>
             public string Description { get; set; }
         }
     }
