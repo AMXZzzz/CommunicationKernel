@@ -35,6 +35,25 @@
       现场 Linux / 树莓派无界面时跑独立的 Hosting.App；本机有界面时开 WebMaster 即可。
     -->
     <OutputType>WinExe</OutputType>
+
+    <!--
+      允许自包含发布引用 Hosting.App。
+
+      Hosting.App 走 Microsoft.NET.Sdk.Web，OutputType 默认是 Exe（它要能在树莓派
+      上独立跑）。而本项目以 SelfContained=true 发布时，SDK 会报 NETSDK1150
+      拦下「自包含应用引用非自包含可执行文件」——VS 里表现为一句无关的
+      "未能找到元数据文件 ...\obj\Release\net8.0\win-x64\ref\...dll"，
+      因为编译在生成 ref 程序集之前就被拦停了，很难联想到真正的原因。
+
+      这条校验防的是「把被引用的 exe 也当 exe 分发」：那个 apphost 是框架依赖的，
+      混进自包含产物里跑不起来。本项目不属于这种情况——
+      我们只用 Hosting.App 的程序集（引擎 + gRPC 端点），入口点在本项目的 Main.cs，
+      Hosting.App 的入口从不执行。
+
+      不改成让 Hosting.App 自包含：那会要求它任何时候都带 RID，
+      连不带 RID 的 dotnet build 都做不了。
+    -->
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
   </PropertyGroup>
 
   <ItemGroup>
@@ -132,6 +151,34 @@
     <Copy SourceFiles="@(_PluginRuntimeAsset)"
           DestinationFiles="@(_PluginRuntimeAsset->'$(OutDir)plugins\runtimes\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    发布时剔除 Hosting.App 带过来的 appsettings.json。
+
+    Hosting.App 是本项目的 ProjectReference，它自己那份 appsettings.json 会随引用
+    流进本项目的发布集合，与本项目同名文件撞成 NETSDK1152（同一相对路径两个来源）。
+
+    只在 publish 出现：build 阶段 MSBuild 遇到同名直接取本项目那份，
+    已验证 bin 里落的就是 WebMaster 的版本，所以这里剔除的是「本来也没在用」的那份。
+
+    剔除它是安全的，不是压掉报错了事：
+      · WebMaster 的 appsettings.json 自带 EngineRuntime 全部键，不依赖那份补充；
+      · Hosting.App 那份里唯一多出来的 Kestrel:Endpoints 段本进程用不上——
+        监听地址由 Main.cs 的 ConfigureKestrel 直接给定。
+
+    不用 ErrorOnDuplicatePublishOutputFiles=false：那是把冲突检查整个关掉，
+    以后真出现别的同名文件也会被静默吞掉，只能靠运气决定发布出去的是哪一份。
+  -->
+  <Target Name="RemoveReferencedAppSettingsFromPublish"
+          AfterTargets="ComputeFilesToPublish"
+          BeforeTargets="_HandleFileConflictsForPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish
+          Remove="@(ResolvedFileToPublish)"
+          Condition="'%(ResolvedFileToPublish.RelativePath)' == 'appsettings.json'
+                     And '%(ResolvedFileToPublish.FullPath)' != '$(MSBuildProjectDirectory)\appsettings.json'" />
+    </ItemGroup>
   </Target>
 
   <Target Name="CopyPluginsToPublishDir" AfterTargets="Publish">

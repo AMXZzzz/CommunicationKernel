@@ -114,6 +114,14 @@ public enum VariableImportMode
 /// </param>
 public sealed record VariableImportResult(int Imported, int Removed, int SkippedOtherRoute);
 
+/// <summary>某路由上模板行的概况，供「不使用模板」前的确认提示使用。</summary>
+/// <param name="Count">模板行总数。</param>
+/// <param name="WithAddress">
+/// 其中已填了地址的条数。这部分是操作员自己录的、模板里没有的信息，
+/// 解除模板会一并删掉，所以要单独告诉他。
+/// </param>
+public sealed record TemplateRowSummary(int Count, int WithAddress);
+
 /// <summary>变量表磁盘镜像。线程安全。</summary>
 /// <remarks>
 /// 单例。写入方是 Blazor 渲染线程（增删改）与后台轮询线程（回填读值），
@@ -308,6 +316,57 @@ public sealed class WebVariableStore
         if (changed > 0)
             Changed?.Invoke();
         return changed;
+    }
+
+    /// <summary>统计某路由上的模板行，供解除模板前的确认提示使用。</summary>
+    /// <param name="routeId">路由 Id。为空时返回全 0。</param>
+    /// <returns>模板行总数，以及其中已填地址的条数。</returns>
+    public TemplateRowSummary SummarizeTemplateRows(string routeId)
+    {
+        if (string.IsNullOrWhiteSpace(routeId)) return new TemplateRowSummary(0, 0);
+
+        lock (_lock)
+        {
+            List<WebVariable> rows = _items
+                .Where(v => v.RouteId == routeId && v.FromTemplate)
+                .ToList();
+
+            return new TemplateRowSummary(
+                rows.Count,
+                rows.Count(v => !string.IsNullOrWhiteSpace(v.Address)));
+        }
+    }
+
+    /// <summary>
+    /// 解除某路由的模板：删掉该路由上全部模板行。
+    /// </summary>
+    /// <remarks>
+    /// 补的是一个死结：<see cref="Remove"/> 拒绝删模板行（行尾按钮显示为「锁」），
+    /// 而 <see cref="ApplyTemplate"/> 只按名称对齐、不处理「一个模板都不要了」。
+    /// 没有本方法时，套过模板的设备再也去不掉那些行。
+    /// <para>
+    /// <b>会连带删掉操作员在这些行上填的地址</b>——地址不属于模板，是本机独有信息。
+    /// 因此调用方必须先确认，不要直接挂在下拉框的变更事件上。
+    /// 用 <see cref="SummarizeTemplateRows"/> 拿到会丢多少地址再问。
+    /// </para>
+    /// </remarks>
+    /// <param name="routeId">路由 Id。为空时不做任何事。</param>
+    /// <returns>实际删除的条数。</returns>
+    public int DetachTemplate(string routeId)
+    {
+        if (string.IsNullOrWhiteSpace(routeId)) return 0;
+
+        int removed;
+        lock (_lock)
+        {
+            removed = _items.RemoveAll(v => v.RouteId == routeId && v.FromTemplate);
+            if (removed > 0)
+                Persist_NoLock();
+        }
+
+        if (removed > 0)
+            Changed?.Invoke();
+        return removed;
     }
 
     /// <summary>只更新内存中的读值，不写盘。</summary>

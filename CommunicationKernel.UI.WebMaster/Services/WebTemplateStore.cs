@@ -145,26 +145,62 @@ public sealed class WebTemplateStore
         return incoming.Count;
     }
 
+    /// <summary>
+    /// 从磁盘载入模板库。支持两种顶层结构：带 schema 的对象，或裸的模板数组。
+    /// </summary>
+    /// <remarks>
+    /// 两种格式必须各自 try：<c>Deserialize&lt;TemplatePack&gt;</c> 遇到数组是<b>抛异常</b>
+    /// 而不是返回 null。此前两次反序列化共用一个 try，扁平数组的回退分支
+    /// 因此永远执行不到——手写或导出的数组式模板文件会静默载入失败，
+    /// 界面上模板列表空空如也，只在日志里留一行看不懂的类型转换错误。
+    /// </remarks>
     private void Load()
     {
+        string json;
         try
         {
             if (!File.Exists(WebPaths.TemplatesFile)) return;
-            string json = File.ReadAllText(WebPaths.TemplatesFile);
+            json = File.ReadAllText(WebPaths.TemplatesFile);
+        }
+        catch (Exception ex)
+        {
+            _log.Error("WebTemplateStore", "读取模板库文件失败: " + ex.Message);
+            return;
+        }
+
+        // 首选格式：{ "schema": ..., "templates": [...] }
+        try
+        {
             TemplatePack? pack = JsonSerializer.Deserialize<TemplatePack>(json, JsonOptions);
             if (pack?.Templates is { Count: > 0 })
             {
                 _items.AddRange(pack.Templates.Select(Clone));
                 return;
             }
-            List<WebDeviceTemplate>? flat = JsonSerializer.Deserialize<List<WebDeviceTemplate>>(json, JsonOptions);
-            if (flat is not null)
-                _items.AddRange(flat.Select(Clone));
         }
-        catch (Exception ex)
+        catch (JsonException)
         {
-            _log.Error("WebTemplateStore", "载入模板库失败: " + ex.Message);
+            // 不是对象结构，落到下面按数组再试一次
         }
+
+        // 兼容格式：顶层直接是模板数组
+        try
+        {
+            List<WebDeviceTemplate>? flat =
+                JsonSerializer.Deserialize<List<WebDeviceTemplate>>(json, JsonOptions);
+            if (flat is { Count: > 0 })
+            {
+                _items.AddRange(flat.Select(Clone));
+                return;
+            }
+        }
+        catch (JsonException ex)
+        {
+            _log.Error("WebTemplateStore", "载入模板库失败，两种格式都解析不了: " + ex.Message);
+            return;
+        }
+
+        // 两种格式都解析成功但内容为空：正常的"还没建过模板"，不记错误
     }
 
     private void Persist_NoLock()

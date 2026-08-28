@@ -129,7 +129,8 @@
                                     <button class="btn-sm ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
                                     @if (row.FromTemplate)
                                     {
-                                        <button class="btn-sm ghost" type="button" disabled title="来自模板，不能删除">锁</button>
+                                        <button class="btn-sm ghost" type="button" disabled
+                                                title="来自模板，不能单条删除（下次同步模板会把它加回来）。要去掉整套请把上方模板选成「（不使用模板）」">锁</button>
                                     }
                                     else
                                     {
@@ -258,6 +259,36 @@
                 <div class="form-actions">
                     <button class="btn ghost" type="button" @onclick="() => _pendingRemove = null">取消</button>
                     <button class="btn danger" type="button" @onclick="ConfirmRemove">确认删除</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ================= 解除模板确认 ================= *@
+    @if (_pendingDetach is not null)
+    {
+        @* 点遮罩等同取消，同样要把下拉框拨回去，否则界面和数据对不上 *@
+        <div class="add-form-overlay center" @onclick="CancelDetachTemplate">
+            <div class="add-form confirm-box" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>不使用模板</h3>
+                    <button class="close-btn" type="button" @onclick="CancelDetachTemplate">×</button>
+                </div>
+                <p>
+                    将删除本设备由模板生成的 <span class="mono">@_pendingDetach.Count</span> 条变量。
+                </p>
+                @if (_pendingDetach.WithAddress > 0)
+                {
+                    @* 地址是本机独有信息，模板里没有，删了就找不回来——必须单独点出来 *@
+                    <p class="status-msg status-warn">
+                        其中 <span class="mono">@_pendingDetach.WithAddress</span> 条已经填了地址，
+                        会一并删除。地址不属于模板，删掉无法从模板恢复。
+                    </p>
+                }
+                <p class="hint">只影响本机配置，不改动模板本身，也不影响其它设备。</p>
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="CancelDetachTemplate">取消</button>
+                    <button class="btn danger" type="button" @onclick="ConfirmDetachTemplate">确认删除</button>
                 </div>
             </div>
         </div>
@@ -474,6 +505,15 @@
     /// </remarks>
     private WebVariable? _pendingRemove;
 
+    /// <summary>
+    /// 等待二次确认的「解除模板」；为 null 表示没有待确认的解除。
+    /// </summary>
+    /// <remarks>
+    /// 内容是待删模板行的条数与其中已填地址的条数，
+    /// 确认框据此把「会丢掉多少已填地址」明写出来。
+    /// </remarks>
+    private TemplateRowSummary? _pendingDetach;
+
     // ========================================================================
     // 表单字段
     // ========================================================================
@@ -596,8 +636,17 @@
     /// </remarks>
     private void ApplySelectedTemplate()
     {
-        if (string.IsNullOrEmpty(_filterRoute) || string.IsNullOrEmpty(_bindTemplateId))
+        if (string.IsNullOrEmpty(_filterRoute))
             return;
+
+        // 选了「（不使用模板）」：这不是"什么都不做"，而是要把模板行清掉。
+        // 此前这里直接 return，导致套过模板的设备再也去不掉那些行——
+        // 行尾是「锁」删不掉，下拉切到不使用又没反应，是个死结。
+        if (string.IsNullOrEmpty(_bindTemplateId))
+        {
+            AskDetachTemplate();
+            return;
+        }
 
         WebDeviceTemplate? tpl = Templates.Get(_bindTemplateId);
         if (tpl is null) return;
@@ -609,6 +658,54 @@
             ? "模板「" + tpl.Name + "」与本设备变量已经一致，无需改动。"
             : "已按模板「" + tpl.Name + "」同步 " + n + " 处（名称/类型/长度/备注）。地址不受模板管辖，请在本表填写。";
         _bannerClass = n == 0 ? "status-info" : "status-ok";
+    }
+
+    /// <summary>
+    /// 请求解除当前设备的模板（下拉切到「（不使用模板）」时）。
+    /// </summary>
+    /// <remarks>
+    /// 一定要确认再删：模板行上的地址是操作员一条条填的、模板里没有，
+    /// 删掉就没了。下拉框滑一下就静默清空是不能接受的。
+    /// <para>
+    /// 没有模板行时不弹框——那种情况下「不使用模板」本来就已经成立，
+    /// 弹一个"确认删除 0 条"只会让人困惑。
+    /// </para>
+    /// </remarks>
+    private void AskDetachTemplate()
+    {
+        TemplateRowSummary s = Store.SummarizeTemplateRows(_filterRoute);
+        if (s.Count == 0)
+        {
+            // 已经是「不使用模板」的状态，目标已达成，静默即可
+            _pendingDetach = null;
+            return;
+        }
+
+        _pendingDetach = s;
+    }
+
+    /// <summary>确认解除模板，删掉本设备全部模板行。</summary>
+    private void ConfirmDetachTemplate()
+    {
+        int n = Store.DetachTemplate(_filterRoute);
+        _pendingDetach = null;
+
+        _banner = "已解除模板，删除 " + n + " 条模板变量。";
+        _bannerClass = "status-ok";
+    }
+
+    /// <summary>
+    /// 取消解除模板。
+    /// </summary>
+    /// <remarks>
+    /// 必须把下拉框拨回原来的模板：<c>@bind</c> 在 <c>@bind:after</c> 之前就已经
+    /// 把 <see cref="_bindTemplateId"/> 写成空了，只关掉弹框的话，
+    /// 界面显示「不使用模板」而行还在，两边对不上。
+    /// </remarks>
+    private void CancelDetachTemplate()
+    {
+        _pendingDetach = null;
+        InferTemplateFromRows();
     }
 
     private string QueryValue(string key)
@@ -1178,7 +1275,8 @@
     {
         if (row.FromTemplate)
         {
-            _banner = "「" + row.Name + "」来自模板，不能删除";
+            _banner = "「" + row.Name + "」来自模板，不能单条删除——下次同步模板还会加回来。"
+                      + "要去掉整套，请把上方的模板选成「（不使用模板）」。";
             _bannerClass = "status-warn";
             return;
         }
