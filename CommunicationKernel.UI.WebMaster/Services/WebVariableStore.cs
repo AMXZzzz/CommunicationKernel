@@ -277,9 +277,21 @@ public sealed class WebVariableStore
                     continue;
                 }
 
+                // 只在确有差异时计数。无条件 changed++ 会让「模板没改过」
+                // 也报出一堆更新，用户无法判断这次同步到底动没动东西，
+                // 也就永远看不到「已经一致」这个结论。
+                string note = slot.Note ?? string.Empty;
+                bool same =
+                    existing.DataType == slot.DataType &&
+                    existing.Length == length &&
+                    existing.Note == note &&
+                    existing.TemplateId == template.Id;
+
+                if (same) continue;
+
                 existing.DataType = slot.DataType;
                 existing.Length = length;
-                existing.Note = slot.Note ?? string.Empty;
+                existing.Note = note;
                 existing.TemplateId = template.Id;
                 changed++;
             }

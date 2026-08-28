@@ -39,6 +39,14 @@
                     <option value="@t.Id">@t.Name</option>
                 }
             </select>
+            @* 必须有这个按钮：下拉框只在「选中项变化」时才套用，
+               而它一进页面就被 InferTemplateFromRows 预置成当前模板，
+               再点同一项不算变化，改过的模板永远推不下来。 *@
+            <button class="btn ghost" type="button" @onclick="ApplySelectedTemplate"
+                    disabled="@(_busy || string.IsNullOrEmpty(_bindTemplateId))"
+                    title="模板改过名称/类型/备注后，点这里把改动同步到本设备的变量">
+                重新同步模板
+            </button>
         }
         <div class="toolbar-right">
             @if (_busy) { <span class="busy-hint">处理中…</span> }
@@ -535,15 +543,37 @@
         _bindTemplateId = tid ?? string.Empty;
     }
 
+    /// <summary>
+    /// 把当前所选模板同步到当前设备。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 两个入口：下拉框换选项时自动调用，以及工具栏的「重新同步模板」按钮。
+    /// <b>后者不能省</b>——下拉框一进页面就被 <see cref="InferTemplateFromRows"/>
+    /// 预置成变量行已带的模板，此时再点同一项，<c>@bind</c> 不认为值变了，
+    /// 不会触发套用。于是「在模板里补了备注」这类改动永远推不到已套用的设备上。
+    /// </para>
+    /// <para>
+    /// 同步是<b>按功能名对齐</b>的：名称相同的行更新类型/长度/备注，
+    /// 模板里新增的补进来，模板里已删掉的从本设备移除。
+    /// 地址不属于模板（同一功能在不同 PLC 上地址不同），因此一律保留。
+    /// </para>
+    /// </remarks>
     private void ApplySelectedTemplate()
     {
         if (string.IsNullOrEmpty(_filterRoute) || string.IsNullOrEmpty(_bindTemplateId))
             return;
+
         WebDeviceTemplate? tpl = Templates.Get(_bindTemplateId);
         if (tpl is null) return;
+
         int n = Store.ApplyTemplate(_filterRoute, tpl);
-        _banner = "已套用模板「" + tpl.Name + "」，" + n + " 处更新。地址请在本表填写。";
-        _bannerClass = "status-ok";
+
+        // 报「0 处更新」也要说清楚，否则用户会以为按钮没生效
+        _banner = n == 0
+            ? "模板「" + tpl.Name + "」与本设备变量已经一致，无需改动。"
+            : "已按模板「" + tpl.Name + "」同步 " + n + " 处（名称/类型/长度/备注）。地址不受模板管辖，请在本表填写。";
+        _bannerClass = n == 0 ? "status-info" : "status-ok";
     }
 
     private string QueryValue(string key)
