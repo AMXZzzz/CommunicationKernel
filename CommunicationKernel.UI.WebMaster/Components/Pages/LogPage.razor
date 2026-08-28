@@ -11,6 +11,11 @@
 
 <PageTitle>通讯日志 — CommunicationKernel</PageTitle>
 
+@* 整个模板共用这一份：计数、遍历、空判都基于它，避免同一帧内重复过滤快照 *@
+@{
+    List<AppLogEntry> rows = BuildRows();
+}
+
 <div class="page page-log">
     <div class="toolbar">
         <h2 class="page-title">通讯日志</h2>
@@ -28,13 +33,20 @@
                 <input type="checkbox" @bind="AutoScroll" />
                 自动滚动
             </label>
-            <span class="toolbar-count">@Filtered.Count 条</span>
+            <span class="toolbar-count">@_matchCount 条</span>
         </div>
     </div>
 
     <div class="page-body">
     <div class="log-area" id="log-area">
-        @foreach (AppLogEntry entry in Filtered)
+        @if (_matchCount > rows.Count)
+        {
+            @* 说明这里为什么不是全部：不写的话，操作员会以为早先的日志丢了 *@
+            <div class="empty-hint">
+                共 @_matchCount 条，仅显示最近 @rows.Count 条。需要完整记录请用顶栏「导出」。
+            </div>
+        }
+        @foreach (AppLogEntry entry in rows)
         {
             <div class="log-row">
                 <span class="log-time">@entry.Timestamp.ToString("HH:mm:ss.fff")</span>
@@ -43,7 +55,7 @@
                 <span class="log-msg level-@entry.LevelClass">@entry.Message</span>
             </div>
         }
-        @if (Filtered.Count == 0)
+        @if (_matchCount == 0)
         {
             <div class="empty-hint">暂无日志。注册路由、读写变量会写到这里。</div>
         }
@@ -78,19 +90,52 @@
     private string _exportText = string.Empty;
 
     /// <summary>
-    /// 应用两级筛选后的日志行。
+    /// 一次渲染最多输出多少行。
     /// </summary>
     /// <remarks>
-    /// 每次访问都重新过滤整个快照。缓冲上限 2000 条，
-    /// 这个量级的线性过滤远快于一次渲染，不值得为它引入缓存与失效逻辑。
-    /// 关键字匹配用 <c>OrdinalIgnoreCase</c>：操作员搜 "plc" 应当能命中 "PLC-1"。
+    /// 缓冲上限 2000 条，全渲染就是 2000 个 log-row、每行 4 个 span——
+    /// 上万个节点的差异要经 SignalR 推到客户端。本机上感觉不出来，
+    /// 但经内网穿透用手机看时，切到本页会明显卡一下。
+    /// <para>
+    /// 日志是"看最近发生了什么"的工具，往上翻几百条已经足够；
+    /// 真要全量分析走顶栏的「导出」，那条路不受此限制。
+    /// </para>
     /// </remarks>
-    private List<AppLogEntry> Filtered =>
-        Logs.Snapshot().Where(e =>
+    private const int MaxRenderRows = 300;
+
+    /// <summary>本次筛选命中的总条数，不受 <see cref="MaxRenderRows"/> 影响。</summary>
+    private int _matchCount;
+
+    /// <summary>
+    /// 应用两级筛选，返回要渲染的日志行（最多 <see cref="MaxRenderRows"/> 条，取最新的）。
+    /// </summary>
+    /// <remarks>
+    /// <b>每次渲染只调一次</b>，结果存进局部变量给整个模板用。
+    /// 此前是个属性，模板里被访问三次（计数、遍历、空判），
+    /// 于是每渲染一帧就把 2000 条的快照复制并过滤三遍。
+    /// 过滤本身很快，问题在于日志页订阅了变更通知——
+    /// 轮询开着时每来一条新日志就重跑一整轮。
+    /// <para>
+    /// 关键字匹配用 <c>OrdinalIgnoreCase</c>：操作员搜 "plc" 应当能命中 "PLC-1"。
+    /// </para>
+    /// </remarks>
+    /// <returns>按时间升序的日志行，最新的在末尾。</returns>
+    private List<AppLogEntry> BuildRows()
+    {
+        List<AppLogEntry> hit = Logs.Snapshot().Where(e =>
             (FilterLevel == "ALL" || e.LevelText == FilterLevel) &&
             (string.IsNullOrEmpty(FilterText) ||
              e.Message.Contains(FilterText, StringComparison.OrdinalIgnoreCase) ||
              e.Category.Contains(FilterText, StringComparison.OrdinalIgnoreCase))).ToList();
+
+        _matchCount = hit.Count;
+
+        // 取末尾而非开头：快照是时间升序，最新的在后面，
+        // 而日志页默认滚到底部看最新——截掉开头才是对的。
+        return hit.Count > MaxRenderRows
+            ? hit.GetRange(hit.Count - MaxRenderRows, MaxRenderRows)
+            : hit;
+    }
 
     /// <summary>订阅日志缓冲的变更通知。</summary>
     protected override void OnInitialized() => Logs.Changed += OnChanged;

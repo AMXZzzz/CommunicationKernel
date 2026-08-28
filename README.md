@@ -10,6 +10,7 @@ UI 只持有 `route_id` 与 SDK DTO。
 | 本 README | 怎么跑、怎么构建、分层一览 |
 | [`计划.md`](计划.md) | 金字塔红线、数据流、协议地址、事故档案。**改代码前先读第一节。** |
 | [`部署-Linux与树莓派.md`](部署-Linux与树莓派.md) | 现场网关发布、监听、串口、systemd |
+| [`打包发布-Windows安装包.md`](打包发布-Windows安装包.md) | Windows 安装向导：打包、升级、卸载 |
 | [`.github/copilot-instructions.md`](.github/copilot-instructions.md) | 助手硬约束（与结构纪律同源） |
 
 ## 金字塔（L0 → L7）

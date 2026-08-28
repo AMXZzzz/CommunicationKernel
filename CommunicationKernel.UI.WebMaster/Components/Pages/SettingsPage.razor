@@ -11,7 +11,7 @@
 @inject WebAuthStore Auth
 @inject WebTunnelSettingsStore Tunnel
 @inject FrpcHost Frpc
-@inject NavigationManager Nav
+@inject WebRuntimeInfo Runtime
 @implements IDisposable
 
 <PageTitle>系统设置 — CommunicationKernel</PageTitle>
@@ -239,9 +239,16 @@
     /// 当前<b>实际</b>监听的端口。
     /// </summary>
     /// <remarks>
-    /// 取自浏览器地址栏（Nav.BaseUri）而不是配置文件——
-    /// 改过端口但还没重启时，配置里是新值、实际跑的是旧值，
-    /// 拿配置当"当前"会让提示语与现实矛盾。
+    /// 取自启动时解析出的真实值（<see cref="WebRuntimeInfo"/>），
+    /// 既不是配置文件也不是浏览器地址栏：
+    /// <list type="bullet">
+    /// <item>配置文件——改过端口但还没重启时，配置是新值、实际跑的是旧值；</item>
+    /// <item>浏览器地址栏（<c>Nav.BaseUri</c>）——本机直连时碰巧对，
+    /// 但经反向代理访问拿到的是<b>代理</b>的端口。曾经就是这么写的，
+    /// 于是手机经 https 打开时页面显示"当前实际监听 443"，
+    /// 局域网地址也拼成 <c>192.168.x.x:443</c> 这种不存在的地址，
+    /// 而端口输入框被预填成 443——顺手一保存，下次启动就去绑 443 了。</item>
+    /// </list>
     /// </remarks>
     private int _listenPort = LanAccess.DefaultPort;
     /// <summary>输入框文本。与 <see cref="_listenPort"/> 分开：未保存前不影响实际监听。</summary>
@@ -256,8 +263,7 @@
     /// <summary>读出实际端口与已保存端口，并算出局域网访问地址。</summary>
     protected override void OnInitialized()
     {
-        if (Uri.TryCreate(Nav.BaseUri, UriKind.Absolute, out Uri? uri) && uri.Port > 0)
-            _listenPort = uri.Port;
+        _listenPort = Runtime.ListenPort;
         _portText = WebSettingsStore.TryReadSavedPort(out int saved)
             ? saved.ToString()
             : _listenPort.ToString();
@@ -270,10 +276,43 @@
         _authStatus = _authEnabled ? "已设口令" : "未设口令";
         _authStatusClass = _authEnabled ? "status-ok" : "status-muted";
         Session.Changed += OnChanged;
+        Frpc.Changed += OnTunnelChanged;
     }
 
     /// <summary>会话状态变化时重绘；事件来自后台线程，必须经 InvokeAsync 切回。</summary>
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>
+    /// frpc 状态变化：刷新状态行并重绘。
+    /// </summary>
+    /// <remarks>
+    /// 事件来自 frpc 的输出回调线程，必须经 <c>InvokeAsync</c> 切回渲染上下文。
+    /// </remarks>
+    private void OnTunnelChanged() => _ = InvokeAsync(() =>
+    {
+        RefreshTunnelStatus();
+        StateHasChanged();
+    });
+
+    /// <summary>
+    /// 只刷新隧道的运行状态显示。
+    /// </summary>
+    /// <remarks>
+    /// <b>刻意不复用 <see cref="LoadTunnelIntoForm"/></b>：那个方法会把地址/端口/Token
+    /// 从磁盘重新灌进表单，而本方法在 frpc 每次状态变化时都会被调用——
+    /// 用户正在输入的内容会被无声冲掉。
+    /// <para>
+    /// 样式不看设置文件而是从状态文案反推：只要 frpc 被启动过，Status 就不是「未启动」。
+    /// 这样本方法完全自足，不必再去读一次磁盘。
+    /// </para>
+    /// </remarks>
+    private void RefreshTunnelStatus()
+    {
+        _tunnelRuntimeStatus = "隧道：" + Frpc.Status;
+        _tunnelStatusClass = Frpc.Connected ? "status-ok"
+            : Frpc.Status == "未启动" ? "status-muted"
+            : "status-warn";
+    }
 
     /// <summary>
     /// 校验并保存监听端口。
@@ -447,9 +486,7 @@
         // token 回填到密码框：不回填的话，用户改别的项再保存就会把 token 清空
         _tunnelToken = t.Token;
 
-        _tunnelRuntimeStatus = "隧道：" + Frpc.Status;
-        _tunnelStatusClass = Frpc.Connected ? "status-ok"
-            : t.Enabled ? "status-warn" : "status-muted";
+        RefreshTunnelStatus();
     }
 
     /// <summary>校验并保存穿透设置。</summary>
@@ -586,5 +623,12 @@
     }
 
     /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>
-    public void Dispose() => Session.Changed -= OnChanged;
+    public void Dispose()
+    {
+        Session.Changed -= OnChanged;
+
+        // FrpcHost 是单例，生命周期远长于本组件。漏退订会让已销毁的组件
+        // 继续收到状态变化并调 StateHasChanged，每次切页泄漏一个组件实例。
+        Frpc.Changed -= OnTunnelChanged;
+    }
 }

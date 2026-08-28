@@ -125,6 +125,10 @@ try {
     builder.Services.AddSingleton<WebAuthStore>();
     builder.Services.AddSingleton<WebTunnelSettingsStore>();
 
+    // 把「实际」端口带给界面。设置页不能从浏览器地址栏推断——
+    // 经反向代理访问时那是代理的端口，见 WebRuntimeInfo.cs 文件头。
+    builder.Services.AddSingleton(new WebRuntimeInfo(listenPort, grpcPort));
+
     // 内网穿透：frpc.exe 不随包分发，由用户自行放到 exe 旁边（见 WebTunnelSettings.cs）。
     // 单例既供设置页读状态，也作为 HostedService 托管子进程。
     WebTunnelSettings tunnelSettings = WebTunnelSettingsStore.Load();

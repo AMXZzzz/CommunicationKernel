@@ -46,6 +46,44 @@ public sealed class FrpcHost : IHostedService, IDisposable
     /// <summary>最近一次的状态描述，供设置页显示。</summary>
     public string Status { get; private set; } = "未启动";
 
+    /// <summary>
+    /// 状态或连接标志变化时触发，供界面重绘。
+    /// </summary>
+    /// <remarks>
+    /// 没有本事件时，设置页只在打开那一刻读一次 <see cref="Status"/>，
+    /// 之后停在那个快照上——隧道明明已经连上，界面却一直显示「连接中」，
+    /// 让人以为没通而去反复排查一个并不存在的故障。
+    /// <para>
+    /// <b>在后台线程上触发</b>（frpc 输出回调、监管循环），
+    /// 订阅方必须自行切回自己的同步上下文再碰 UI。
+    /// </para>
+    /// </remarks>
+    public event Action? Changed;
+
+    /// <summary>
+    /// 改写状态并在确有变化时通知订阅方。
+    /// </summary>
+    /// <remarks>
+    /// 所有状态改动都必须走这里，不要直接赋值给两个属性——
+    /// 散落的赋值点迟早会漏掉通知，表现为界面偶尔卡在旧状态上，极难复现。
+    /// <para>
+    /// 值没变就不通知：frpc 每次重连都会重复报同样的状态，
+    /// 无条件触发会让界面空转重绘。
+    /// </para>
+    /// </remarks>
+    /// <param name="connected">隧道是否已连上。</param>
+    /// <param name="status">状态描述。</param>
+    private void SetState(bool connected, string status)
+    {
+        if (Connected == connected && Status == status) return;
+
+        Connected = connected;
+        Status = status;
+
+        // 订阅方（界面）抛异常不能连累 frpc 托管——那是两件不相干的事
+        try { Changed?.Invoke(); } catch { }
+    }
+
     /// <param name="settings">隧道设置。</param>
     /// <param name="localPort">本进程 Web 监听端口。</param>
     /// <param name="log">应用日志。</param>
@@ -67,7 +105,7 @@ public sealed class FrpcHost : IHostedService, IDisposable
 
         if (!WebTunnelSettingsStore.FrpcPresent)
         {
-            Status = "未找到 frpc.exe";
+            SetState(false, "未找到 frpc.exe");
             _log.Warn("Tunnel",
                 "已启用内网穿透，但 exe 目录下没有 " + WebTunnelSettingsStore.FrpcFileName +
                 "。请自行下载后放入，再重启。");
@@ -76,7 +114,7 @@ public sealed class FrpcHost : IHostedService, IDisposable
 
         if (!_settings.IsComplete)
         {
-            Status = "配置不完整";
+            SetState(false, "配置不完整");
             _log.Warn("Tunnel", "内网穿透配置不完整（缺服务器地址或 token），未启动。");
             return Task.CompletedTask;
         }
@@ -91,7 +129,7 @@ public sealed class FrpcHost : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            Status = "写配置失败";
+            SetState(false, "写配置失败");
             _log.Error("Tunnel", "生成 frpc 配置失败: " + ex.Message);
             return Task.CompletedTask;
         }
@@ -151,8 +189,22 @@ public sealed class FrpcHost : IHostedService, IDisposable
         sb.AppendLine("auth.method = \"token\"");
         sb.AppendLine($"auth.token = \"{_settings.Token}\"");
         sb.AppendLine();
+
+        // 登录失败不退出，交给 frpc 自己按退避重试。
+        //
+        // 默认 loginFailExit = true：连不上就整个进程退出，于是变成
+        // 「本类拉起 → 10 秒超时 → 进程退出 → 等 5 秒 → 再拉起」的循环，
+        // 每轮都往日志里灌一整段启动横幅，真正有用的那行错误被淹掉。
+        // 服务器防火墙没放行、域名还没生效这类情况可能持续几分钟到几小时，
+        // 那段时间日志会被刷得没法看。
+        //
+        // 交给 frpc 自己重试后：进程一直在，只在每次尝试失败时打一行，
+        // 且它的退避比我们固定 5 秒更合理。本类的监管循环仍然保留——
+        // 那是给「进程真的崩了」兜底的，与登录失败是两回事。
+        sb.AppendLine("loginFailExit = false");
+        sb.AppendLine();
         sb.AppendLine("[[proxies]]");
-        sb.AppendLine("name = \"ck-web\"");
+        sb.AppendLine($"name = \"{ProxyName()}\"");
         sb.AppendLine("type = \"tcp\"");
         sb.AppendLine("localIP = \"127.0.0.1\"");
         sb.AppendLine($"localPort = {_localPort}");
@@ -163,6 +215,40 @@ public sealed class FrpcHost : IHostedService, IDisposable
 
     /// <summary>生成的 frpc 配置路径，与其它配置同放 config/。</summary>
     private static string ConfigPath => Path.Combine(WebPaths.Root, "frpc.toml");
+
+    /// <summary>
+    /// 本机的代理名，形如 <c>ck-web-WORKSHOP01</c>。
+    /// </summary>
+    /// <remarks>
+    /// 代理名在一台 frps 上必须全局唯一。此前写死为 <c>ck-web</c>，
+    /// 于是同一台 frps 只能接一台 WebMaster：第二台登录能成功，
+    /// 注册代理时被拒（<c>proxy [ck-web] already exists</c>），
+    /// 而界面上只显示「已连接」，根因完全看不出来。
+    /// <para>
+    /// 带上机器名即可各不相同。注意<b>远端口仍需各机不同</b>，
+    /// 且 frps 的 <c>allowPorts</c> 要放开相应范围——名字唯一只解决了一半。
+    /// </para>
+    /// </remarks>
+    /// <returns>只含字母、数字、连字符的代理名。</returns>
+    private static string ProxyName()
+    {
+        string host;
+        try { host = Environment.MachineName; }
+        catch { host = string.Empty; }
+
+        // frp 的代理名不接受任意字符，中文机器名尤其常见。
+        // 逐字符过滤而不是整体校验：留下能用的部分，比因为一个字符就整个放弃要好。
+        StringBuilder safe = new();
+        foreach (char c in host)
+        {
+            if (char.IsAsciiLetterOrDigit(c)) safe.Append(c);
+            else if (c is '-' or '_') safe.Append('-');
+        }
+
+        // 机器名全是中文时上面会过滤成空串，退回原来的固定名——
+        // 那种情况下多机部署仍会冲突，但至少不会生成一个非法的 name 让 frpc 起不来。
+        return safe.Length > 0 ? "ck-web-" + safe : "ck-web";
+    }
 
     // ========================================================================
     // 进程
@@ -185,14 +271,13 @@ public sealed class FrpcHost : IHostedService, IDisposable
             }
             catch (Exception ex)
             {
-                Status = "启动失败";
+                SetState(false, "启动失败");
                 _log.Error("Tunnel", "frpc 启动失败: " + ex.Message);
             }
 
             if (ct.IsCancellationRequested) return;
 
-            Connected = false;
-            Status = "已断开，重连中";
+            SetState(false, "已断开，重连中");
 
             try { await Task.Delay(RestartDelayMs, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
@@ -224,7 +309,7 @@ public sealed class FrpcHost : IHostedService, IDisposable
             throw new InvalidOperationException("Process.Start 返回 false");
 
         _proc = p;
-        Status = "已启动，连接中";
+        SetState(false, "已启动，连接中");
         _log.Info("Tunnel",
             "frpc 已启动，目标 " + _settings.ServerAddr + ":" + _settings.ServerPort +
             "，远端口 " + _settings.RemotePort);
@@ -250,14 +335,26 @@ public sealed class FrpcHost : IHostedService, IDisposable
     {
         if (string.IsNullOrWhiteSpace(line)) return;
 
-        if (line.Contains("login to server success", StringComparison.OrdinalIgnoreCase))
+        if (line.Contains("start proxy success", StringComparison.OrdinalIgnoreCase))
         {
-            Connected = true;
-            Status = "已连接";
+            SetState(true, "隧道就绪");
         }
-        else if (line.Contains("start proxy success", StringComparison.OrdinalIgnoreCase))
+        else if (line.Contains("start error", StringComparison.OrdinalIgnoreCase))
         {
-            Status = "隧道就绪";
+            // 代理注册失败：登录成功 ≠ 隧道可用。
+            //
+            // 这两件事是分开的：先向 frps 登录（认证 token），再注册代理（占远端口）。
+            // 第二步失败时界面若停留在「已连接」，会让人以为一切正常，
+            // 转头去查 Nginx 或浏览器——而真正的问题在这里，且日志里那行
+            // 混在 frpc 的输出中很容易被划过去。
+            SetState(false, line.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+                ? "代理名冲突：同一台 frps 上已有别的 WebMaster"
+                : "未建立（代理注册失败，见日志）");
+        }
+        else if (line.Contains("login to server success", StringComparison.OrdinalIgnoreCase))
+        {
+            // 只代表认证通过，代理还没注册。真正可用要等 start proxy success
+            SetState(true, "已连接");
         }
 
         // frpc 自己的错误行按错误级别记，便于在日志页筛出来
@@ -273,7 +370,11 @@ public sealed class FrpcHost : IHostedService, IDisposable
     {
         Process? p = _proc;
         _proc = null;
-        Connected = false;
+
+        // 保留原状态文案，只把"已连接"降下来：
+        // 本方法在停机与重启两条路径上都会走，覆盖成固定文案会把
+        // 「已断开，重连中」这类更有信息量的描述冲掉。
+        SetState(false, Status);
 
         if (p is null) return;
 

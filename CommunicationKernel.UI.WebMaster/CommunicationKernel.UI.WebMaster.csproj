@@ -170,6 +170,31 @@
     不用 ErrorOnDuplicatePublishOutputFiles=false：那是把冲突检查整个关掉，
     以后真出现别的同名文件也会被静默吞掉，只能靠运气决定发布出去的是哪一份。
   -->
+  <!--
+    发布时剔除 Hosting.App 的 apphost 及其配套文件。
+
+    本项目自包含发布时，Hosting.App.dll 已经打进单文件 exe，但 SDK 仍会把
+    被引用项目的 apphost（Hosting.App.exe）连同 runtimeconfig.json / deps.json
+    一起复制过来。它们指向的那个 .dll 并不在旁边，是三个孤儿文件：
+
+      · Hosting.App.exe 是「框架依赖」的，而自包含产物的前提正是目标机器没装 .NET，
+        双击它只会弹「必须安装 .NET」——恰好出现在一个号称免安装的包里；
+      · 操作员看到两个 exe，很可能以为那个才是"引擎"，点错了还查不出原因。
+
+    独立部署 Hosting.App（树莓派/无界面场景）走它自己的发布配置，不受这里影响。
+  -->
+  <Target Name="RemoveReferencedAppHostFromPublish"
+          AfterTargets="ComputeFilesToPublish"
+          BeforeTargets="_HandleFileConflictsForPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish
+          Remove="@(ResolvedFileToPublish)"
+          Condition="'%(ResolvedFileToPublish.RelativePath)' == 'CommunicationKernel.Hosting.App.exe'
+                     Or '%(ResolvedFileToPublish.RelativePath)' == 'CommunicationKernel.Hosting.App.runtimeconfig.json'
+                     Or '%(ResolvedFileToPublish.RelativePath)' == 'CommunicationKernel.Hosting.App.deps.json'" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="RemoveReferencedAppSettingsFromPublish"
           AfterTargets="ComputeFilesToPublish"
           BeforeTargets="_HandleFileConflictsForPublish">
