@@ -49,3 +49,6 @@ publish/
 
 # 安装包产物（每次 55 MB，不入库）
 installer/output/
+
+# 压测采样结果（体积大且是运行产物）
+tools/SoakHarness/results/

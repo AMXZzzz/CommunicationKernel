@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========================================================================
+       文件: tools/SoakHarness/SoakHarness.csproj
+       层级: 压测工具
+       作用: 长时满负荷压测引擎，找内存/句柄泄漏与吞吐衰减。
+
+       刻意不加入 CommunicationKernel.slnx：
+         它不是产品的一部分，进解决方案只会拖慢每一次常规构建，
+         还会被插件部署那套 MSBuild 机制卷进去。
+         按需单独跑（用法见 Program.cs 文件头）。
+       ======================================================================== -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CommunicationKernel.SoakHarness</RootNamespace>
+    <AssemblyName>SoakHarness</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- 压测工具不受产品的零警告门槛约束：它的价值在于跑得久，
+         不值得为一条风格警告卡住一次通宵压测。 -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!-- 服务器 GC：压测要模拟长期高吞吐的常驻服务，
+         用工作站 GC 会把 GC 行为测成另一回事。 -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 只引擎与其抽象；协议/传输插件在运行时从 plugins 目录加载，
+         这样压测走的才是真实的插件加载路径。 -->
+    <ProjectReference Include="..\..\CommunicationKernel.Core.EngineRuntime\CommunicationKernel.Core.EngineRuntime.csproj" />
+    <ProjectReference Include="..\..\CommunicationKernel.Core.EngineRouter\CommunicationKernel.Core.EngineRouter.csproj" />
+  </ItemGroup>
+
+</Project>

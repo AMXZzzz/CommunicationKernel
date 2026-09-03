@@ -96,7 +96,11 @@ internal static class MewtocolFrame
     {
         string resp = Decode(responseBytes);
 
-        // 先看 '!' 错误标志，再解析数据
+        // 先验 BCC 再解释内容：帧若已被干扰损坏，里面的错误码同样不可信
+        OperationResult bccCheck = VerifyBcc(resp);
+        if (!bccCheck.Success)
+            return OperationResult<byte[]>.Fail(bccCheck.ErrorMessage, bccCheck.ErrorCode);
+
         OperationResult errCheck = CheckError(resp);
         if (!errCheck.Success)
             return OperationResult<byte[]>.Fail(errCheck.ErrorMessage, errCheck.ErrorCode);
@@ -127,6 +131,11 @@ internal static class MewtocolFrame
     internal static OperationResult<byte[]> ParseReadDataResponse(byte[] responseBytes, int wordCount)
     {
         string resp = Decode(responseBytes);
+
+        // 先验 BCC 再解释内容：帧若已被干扰损坏，里面的错误码同样不可信
+        OperationResult bccCheck = VerifyBcc(resp);
+        if (!bccCheck.Success)
+            return OperationResult<byte[]>.Fail(bccCheck.ErrorMessage, bccCheck.ErrorCode);
 
         OperationResult errCheck = CheckError(resp);
         if (!errCheck.Success)
@@ -168,12 +177,13 @@ internal static class MewtocolFrame
     }
 
     /// <summary>
-    /// 解析写响应（WCS/WD），仅校验错误标志。
+    /// 解析写响应（WCS/WD）：先验 BCC，再看错误标志。
     /// </summary>
     internal static OperationResult ParseWriteResponse(byte[] responseBytes)
     {
         string resp = Decode(responseBytes);
-        return CheckError(resp);
+        OperationResult bcc = VerifyBcc(resp);
+        return bcc.Success ? CheckError(resp) : bcc;
     }
 
     // -------------------------------------------------------------------------
@@ -228,8 +238,57 @@ internal static class MewtocolFrame
     }
 
     /// <summary>
+    /// 校验响应帧的 BCC。
+    /// </summary>
+    /// <remarks>
+    /// <b>不校验的后果是静默读到错值。</b>此前解析响应时把 BCC 当尾部垃圾直接丢掉
+    /// （代码里写的是"忽略 BCC 和 CR"），于是 RS-485 线上被噪声打翻一位的响应，
+    /// 会被当作有效数据接受、标成成功送到界面上。而现场恰恰是长线缆、
+    /// 变频器旁边这类环境——校验和存在的全部意义就是拦住这种帧。
+    /// <para>
+    /// 校验范围与 <see cref="CalcBcc"/> 一致：从帧头 <c>%</c> 起、到 BCC 之前，含 <c>%</c>。
+    /// </para>
+    /// </remarks>
+    /// <param name="resp">已解码的响应文本，可能带结尾 CR。</param>
+    /// <returns>校验通过、或帧形态不足以校验时返回成功；确实不匹配时返回协议错误。</returns>
+    private static OperationResult VerifyBcc(string resp)
+    {
+        if (string.IsNullOrEmpty(resp)) return OperationResult.Ok;
+
+        // 去掉结尾的 CR / LF / 空白，BCC 是它们之前的最后两个字符
+        string body = resp.TrimEnd('\r', '\n', ' ', '\0');
+
+        // % + SS + 至少一个内容字符 + BCC(2) 才谈得上校验
+        if (body.Length < 6 || body[0] != '%') return OperationResult.Ok;
+
+        string bcc = body[^2..];
+
+        // 规范允许用 ** / !! 表示本帧不做校验
+        if (bcc is "**" or "!!") return OperationResult.Ok;
+
+        // 末两位不是十六进制：属于"认不出格式"，交给后续内容解析给更准确的报错，
+        // 而不是在这里含糊地报一句校验失败
+        if (!IsHexPair(bcc)) return OperationResult.Ok;
+
+        string expected = CalcBcc(body[..^2]);
+        if (string.Equals(expected, bcc, StringComparison.OrdinalIgnoreCase))
+            return OperationResult.Ok;
+
+        return OperationResult.Fail(
+            $"MEWTOCOL BCC 校验失败：帧内 {bcc}，按内容应为 {expected}。" +
+            "多为串口干扰或接线问题，可降低波特率或缩短线缆后重试。",
+            KernelErrorCode.ProtocolError);
+    }
+
+    /// <summary>判断字符串是否为两位十六进制数字。</summary>
+    /// <param name="s">待判断的字符串。</param>
+    /// <returns>长度为 2 且两位都是 0-9/A-F/a-f 时为 true。</returns>
+    private static bool IsHexPair(string s) =>
+        s.Length == 2 && Uri.IsHexDigit(s[0]) && Uri.IsHexDigit(s[1]);
+
+    /// <summary>
     /// 检查响应是否包含错误标志 '!'。
-    /// 错误格式：%SS!NN<BCC>CR，NN 为 2 位错误码。
+    /// 错误格式：%SS!NN&lt;BCC&gt;CR，NN 为 2 位错误码。
     /// </summary>
     private static OperationResult CheckError(string resp)
     {

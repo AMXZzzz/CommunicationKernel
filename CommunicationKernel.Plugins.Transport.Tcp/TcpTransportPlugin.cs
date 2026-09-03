@@ -114,6 +114,30 @@ public sealed class TcpTransportClient : ITransportClient
     private bool           _disposed;
 
     /// <summary>
+    /// 连接是否可能已失步：请求发出去了，响应却没读完。
+    /// </summary>
+    /// <remarks>
+    /// 出现在读取被取消或中途出错时。那次响应随后仍会到达，
+    /// 静静躺在内核接收缓冲里，于是<b>下一次请求读到的是上一次的响应</b>，
+    /// 之后每一次都错位一格。
+    /// <para>
+    /// 发送前排空缓冲只能清掉<b>已经到达</b>的字节；响应若还在路上就够不着，
+    /// 所以必须再加这个标记：一旦置位，下次收发直接以
+    /// <see cref="KernelErrorCode.TransportIoError"/> 失败，
+    /// 交给上层的重连策略重建连接——那是唯一能确保重新同步的做法。
+    /// </para>
+    /// <para>
+    /// Modbus TCP 有事务 ID，失步至少能被认出来；而 <b>MEWTOCOL 没有</b>，
+    /// 那边失步只会让每个值都变成"上一次读到的那个"，帧完整、校验也对，
+    /// 没有任何迹象。所以这件事必须在传输层解决，不能指望协议层兜。
+    /// </para>
+    /// </remarks>
+    private bool _desynced;
+
+    /// <summary>排空缓冲用的一次性丢弃区，避免每次收发都新分配。</summary>
+    private readonly byte[] _drainScratch = new byte[MaxResponseBytes];
+
+    /// <summary>
     /// 分帧读取器：残留处理、两级超时、上限保护、取消与超时的区分全在其中。
     /// </summary>
     /// <remarks>
@@ -177,6 +201,11 @@ public sealed class TcpTransportClient : ITransportClient
                 .ConfigureAwait(false);
             _stream = _tcp.GetStream();
 
+            // 新连接上不存在"欠着的响应"，失步标记必须清零。
+            // 不能只依赖调用方先 Disconnect 再 Connect——传输层的状态
+            // 应当自洽，否则换个调用顺序这条路由就再也起不来。
+            _desynced = false;
+
             EnableKeepAlive(_tcp.Client);
             return OperationResult.Ok;
         }
@@ -210,6 +239,13 @@ public sealed class TcpTransportClient : ITransportClient
             return OperationResult<byte[]>.Fail(
                 "TCP not connected", KernelErrorCode.TransportIoError);
 
+        // 上一次请求发出后没能读完响应：这条连接的请求/响应对应关系已经不可信。
+        // 直接以 IO 错误失败，让上层重连——重连是唯一能确保重新对齐的手段。
+        if (_desynced)
+            return OperationResult<byte[]>.Fail(
+                "上一次请求被中断，连接可能失步，需要重连", KernelErrorCode.TransportIoError);
+
+        bool requestSent = false;
         try
         {
             // 分支1：丢弃上一次请求遗留的残留字节，再发送请求。
@@ -225,14 +261,26 @@ public sealed class TcpTransportClient : ITransportClient
             // 两个传输的语义因此不一致。
             _frameReader.DiscardResidual();
 
+            // DiscardResidual 清的是 FrameReader 自己的缓冲，够不着内核接收缓冲。
+            // 迟到的响应就躺在那里，不清掉就会被当成本次请求的响应。
+            // 串口侧对应的是 DiscardInBuffer()。
+            DrainSocketBuffer();
+
             await _stream.WriteAsync(request, 0, request.Length, cancellationToken)
                 .ConfigureAwait(false);
             await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
+            // 从这一刻起，对端欠我们一个响应。中途退出就意味着连接失步
+            requestSent = true;
+
             // 分支2：按协议给出的帧长读取恰好一帧
-            return await _frameReader
+            OperationResult<byte[]> frame = await _frameReader
                 .ReadFrameAsync(_stream, tryGetFrameLength, cancellationToken)
                 .ConfigureAwait(false);
+
+            // 读到完整一帧才算把这次响应消费干净
+            if (frame.Success) requestSent = false;
+            return frame;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -246,6 +294,40 @@ public sealed class TcpTransportClient : ITransportClient
         {
             return OperationResult<byte[]>.Fail(
                 $"TCP SendAndReceive error: {ex.Message}", KernelErrorCode.TransportIoError);
+        }
+        finally
+        {
+            // 请求已发出但没读完响应：标记失步，下次收发直接要求重连。
+            // 放在 finally 里而不是各个 catch 分支：将来新增退出路径也不会漏掉。
+            if (requestSent) _desynced = true;
+        }
+    }
+
+    /// <summary>
+    /// 排空内核接收缓冲中已到达的字节。
+    /// </summary>
+    /// <remarks>
+    /// 对应串口的 <c>DiscardInBuffer()</c>。发送前调用：此刻缓冲里若还有东西，
+    /// 只可能是重复响应或早先请求的迟到响应——路由层的 I/O 门保证同一时刻
+    /// 只有一个在途请求。
+    /// <para>
+    /// 异常整体吞掉：排空失败最多是没清干净，而失步还有 <see cref="_desynced"/>
+    /// 兜底；为清缓冲失败而让整次收发失败得不偿失。
+    /// </para>
+    /// </remarks>
+    private void DrainSocketBuffer()
+    {
+        try
+        {
+            while (_stream is { DataAvailable: true })
+            {
+                int n = _stream.Read(_drainScratch, 0, _drainScratch.Length);
+                if (n <= 0) break;
+            }
+        }
+        catch (Exception)
+        {
+            // 见上：尽力而为
         }
     }
 
@@ -305,6 +387,11 @@ public sealed class TcpTransportClient : ITransportClient
 
         // 断链后残留字节属于上一条连接，必须丢弃，否则重连后首帧被污染
         _frameReader.DiscardResidual();
+
+        // 失步标记必须随连接一起清掉：新连接上没有欠着的响应。
+        // 忘了清的话，这条路由重连之后仍然每次都以"可能失步"失败，
+        // 表现为设备再也连不上，而日志里只有一句看不懂的失步提示。
+        _desynced = false;
     }
 
     private void ThrowIfDisposed()
