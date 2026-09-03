@@ -174,6 +174,25 @@ public sealed class SerialPortTransportClient : ITransportClient
     private bool _disposed;
 
     /// <summary>
+    /// 连接是否可能已失步：请求发出去了，响应却没读完。
+    /// </summary>
+    /// <remarks>
+    /// 与 TCP 侧同源的缺陷，修法也必须一致。<c>DiscardInBuffer()</c> 只能清掉
+    /// <b>已经到达</b>的字节；被取消的那次请求，其响应可能还在线上传输中，
+    /// 清不掉。它随后落进缓冲，就成了下一次请求读到的"响应"，此后永久错位一格。
+    /// <para>
+    /// 串口这边比 TCP 更要命：Modbus RTU 与 MEWTOCOL <b>都没有事务 ID</b>，
+    /// 错位的响应帧格式完整、CRC/BCC 也全对，没有任何一层能认出它不属于本次请求——
+    /// 现场表现是每个寄存器都稳定地显示上一次的值，而且一直"成功"。
+    /// </para>
+    /// <para>
+    /// 一旦置位就以 <see cref="KernelErrorCode.TransportIoError"/> 失败，
+    /// 交给上层重连——重开串口是唯一能确保重新对齐的手段。
+    /// </para>
+    /// </remarks>
+    private bool _desynced;
+
+    /// <summary>
     /// 分帧读取器：残留处理、两级超时、上限保护、取消与超时的区分全在其中。
     /// </summary>
     /// <remarks>
@@ -249,6 +268,10 @@ public sealed class SerialPortTransportClient : ITransportClient
             _port.DiscardInBuffer();
             _port.DiscardOutBuffer();
 
+            // 新打开的串口上不存在"欠着的响应"，失步标记必须清零。
+            // 不能只依赖调用方先 Disconnect 再 Connect——传输层的状态应当自洽。
+            _desynced = false;
+
             return Task.FromResult(OperationResult.Ok);
         }
         catch (Exception ex)
@@ -276,6 +299,13 @@ public sealed class SerialPortTransportClient : ITransportClient
             return OperationResult<byte[]>.Fail(
                 "SerialPort not open", KernelErrorCode.TransportIoError);
 
+        // 上一次请求发出后没能读完响应：请求/响应的对应关系已不可信，
+        // 直接以 IO 错误失败，让上层重开串口。
+        if (_desynced)
+            return OperationResult<byte[]>.Fail(
+                "上一次请求被中断，串口可能失步，需要重连", KernelErrorCode.TransportIoError);
+
+        bool requestSent = false;
         try
         {
             // 分支1：清空接收缓冲与上一帧残留，写入请求
@@ -285,10 +315,17 @@ public sealed class SerialPortTransportClient : ITransportClient
                 .ConfigureAwait(false);
             await _port.BaseStream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
+            // 从这一刻起，从站欠我们一个响应。中途退出即意味着失步
+            requestSent = true;
+
             // 分支2：按协议帧长读取恰好一帧
-            return await _frameReader
+            OperationResult<byte[]> frame = await _frameReader
                 .ReadFrameAsync(_port.BaseStream, tryGetFrameLength, cancellationToken)
                 .ConfigureAwait(false);
+
+            // 读到完整一帧才算把这次响应消费干净
+            if (frame.Success) requestSent = false;
+            return frame;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -300,6 +337,12 @@ public sealed class SerialPortTransportClient : ITransportClient
         {
             return OperationResult<byte[]>.Fail(
                 $"SerialPort SendAndReceive error: {ex.Message}", KernelErrorCode.TransportIoError);
+        }
+        finally
+        {
+            // 请求已发出但没读完响应：标记失步，下次收发直接要求重连。
+            // 放 finally 而非各 catch 分支：将来新增退出路径也不会漏。
+            if (requestSent) _desynced = true;
         }
     }
 
@@ -376,6 +419,10 @@ public sealed class SerialPortTransportClient : ITransportClient
             _port.Dispose();
             _port = null;
         }
+
+        // 失步标记随串口一起清掉：重开的串口上没有欠着的响应。
+        // 忘了清会让这条路由重连之后仍然每次失败，表现为设备再也连不上。
+        _desynced = false;
     }
 
     private void ThrowIfDisposed()

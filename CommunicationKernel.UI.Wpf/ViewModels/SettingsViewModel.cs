@@ -173,8 +173,13 @@ public sealed class SettingsViewModel : ViewModelBase {
             : _hostAddress.Trim();
 
         try {
-            // 建立临时 gRPC 客户端（不与注入的单例共享，以测试新地址）
-            HostingClient tempClient = new HostingClient(addr);
+            // 建立临时 gRPC 客户端（不与注入的单例共享，以测试新地址）。
+            //
+            // 必须 await using：HostingClient 持有一个 GrpcChannel，也就是一整个
+            // HTTP/2 连接池。不释放的话，每点一次「测试连接」就漏掉一个连接池
+            // 和它底下的 socket——测几次地址不明显，但这个按钮恰恰是连不上时
+            // 会被反复点的那个，越排查漏得越多。
+            await using HostingClient tempClient = new HostingClient(addr);
 
             using CancellationTokenSource cts =
                 new CancellationTokenSource(TimeSpan.FromSeconds(TestTimeoutSeconds));

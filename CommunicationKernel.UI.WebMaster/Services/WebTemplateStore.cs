@@ -203,17 +203,24 @@ public sealed class WebTemplateStore
         // 两种格式都解析成功但内容为空：正常的"还没建过模板"，不记错误
     }
 
+    /// <summary>
+    /// 写回磁盘。调用方必须已持有 <see cref="_lock"/>。
+    /// </summary>
+    /// <remarks>
+    /// 走 <see cref="JsonFileStore"/> 的原子写（临时文件 + 替换），与其它配置存储一致。
+    /// <para>
+    /// 此前是直接 <c>File.WriteAllText</c> 覆写：写到一半掉电或进程被强杀，
+    /// 磁盘上会留下一个被截断的 JSON。而 <see cref="Load"/> 解析失败时会
+    /// <b>静默回落成空模板库</b>——现场表现是「模板一个都没了」，
+    /// 既没有报错也没有线索，而模板往往是花时间一条条建起来的。
+    /// </para>
+    /// </remarks>
     private void Persist_NoLock()
     {
-        try
-        {
-            File.WriteAllText(WebPaths.TemplatesFile,
-                JsonSerializer.Serialize(new TemplatePack { Schema = "ck.device-template.v1", Templates = _items }, JsonOptions));
-        }
-        catch (Exception ex)
-        {
-            _log.Error("WebTemplateStore", "保存模板库失败: " + ex.Message);
-        }
+        TemplatePack pack = new() { Schema = "ck.device-template.v1", Templates = _items };
+
+        if (!JsonFileStore.SaveObject(WebPaths.TemplatesFile, pack, out string error))
+            _log.Error("WebTemplateStore", "保存模板库失败: " + error);
     }
 
     private static WebDeviceTemplate Clone(WebDeviceTemplate t) => new()
