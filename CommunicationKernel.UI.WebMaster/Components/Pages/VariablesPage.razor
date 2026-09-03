@@ -23,19 +23,19 @@
         <button class="btn ghost" type="button" @onclick="OpenAdd">添加变量</button>
         @* 换 PLC 型号时用：设备记录改协议，变量只需重写地址 *@
         <button class="btn ghost" type="button" @onclick="OpenRewrite"
-                disabled="@(_busy || Store.GetAll().Count == 0)">批量改地址</button>
+                disabled="@(_busy || Store.GetAll().Count == 0)">
+            批量改地址
+        </button>
         <button class="btn ghost" type="button" @onclick="Export">导出 JSON</button>
         <label class="btn ghost file-btn">
             导入
             <InputFile OnChange="OnImportFilePicked" accept=".json,application/json" />
         </label>
-        @if (!string.IsNullOrEmpty(_filterRoute))
-        {
+        @if (!string.IsNullOrEmpty(_filterRoute)) {
             <span class="toolbar-count">模板</span>
             <select class="toolbar-select" @bind="_bindTemplateId" @bind:after="ApplySelectedTemplate">
                 <option value="">（不使用模板）</option>
-                @foreach (WebDeviceTemplate t in Templates.GetAll())
-                {
+                @foreach (WebDeviceTemplate t in Templates.GetAll()) {
                     <option value="@t.Id">@t.Name</option>
                 }
             </select>
@@ -49,105 +49,99 @@
             </button>
         }
         <div class="toolbar-right">
-            @if (_busy) { <span class="busy-hint">处理中…</span> }
+            @if (_busy) {
+                <span class="busy-hint">处理中…</span>
+            }
             <span class="toolbar-count">@Visible.Count 个变量</span>
         </div>
     </div>
 
-    @if (!string.IsNullOrEmpty(_banner))
-    {
+    @if (!string.IsNullOrEmpty(_banner)) {
         @* 横幅在分栏之上通栏显示：分栏内部各自滚动，放进去会被滚走看不见 *@
         <div class="status-msg banner-strip @_bannerClass">@_banner</div>
     }
 
     <div class="page-body flush">
-    <div class="var-layout">
-        <aside class="device-panel">
-            <div class="panel-hd">设备 <span class="count">@RouteChoices.Count</span></div>
-            @* 用 string.Empty 而不是 ""：特性由双引号界定，参数里再写双引号
+        <div class="var-layout">
+            <aside class="device-panel">
+                <div class="panel-hd">设备 <span class="count">@RouteChoices.Count</span></div>
+                @* 用 string.Empty 而不是 ""：特性由双引号界定，参数里再写双引号
                会让 Razor 在第一个引号处截断特性值，解析成无参调用。 *@
-            <button class="dev-item @(_filterRoute.Length == 0 ? "active" : null)" type="button" @onclick="() => SelectRoute(string.Empty)">
-                <span class="n">全部</span>
-                <span class="sub">@Store.GetAll().Count 条变量</span>
-            </button>
-            @foreach (RouteChoice r in RouteChoices)
-            {
-                <button class="dev-item @(_filterRoute == r.RouteId ? "active" : null)" type="button" @onclick="() => SelectRoute(r.RouteId)">
-                    <span class="n">
-                        <span class="dot @(Session.IsRouteOnline(r.RouteId) ? "on" : "off")"></span>
-                        @r.Name
-                    </span>
-                    <span class="sub">@r.ProtocolId</span>
+                <button class="dev-item @(_filterRoute.Length == 0 ? "active" : null)" type="button" @onclick="() => SelectRoute(string.Empty)">
+                    <span class="n">全部</span>
+                    <span class="sub">@Store.GetAll().Count 条变量</span>
                 </button>
-            }
-        </aside>
+                @foreach (RouteChoice r in RouteChoices) {
+                    <button class="dev-item @(_filterRoute == r.RouteId ? "active" : null)" type="button" @onclick="() => SelectRoute(r.RouteId)">
+                        <span class="n">
+                            <span class="dot @(Session.IsRouteOnline(r.RouteId) ? "on" : "off")"></span>
+                            @r.Name
+                        </span>
+                        <span class="sub">@r.ProtocolId</span>
+                    </button>
+                }
+            </aside>
 
-        <section class="var-panel">
-            @if (Visible.Count == 0)
-            {
-                <div class="empty-state"><div class="empty-hint">没有变量。添加时请选择已注册的路由 ID。</div></div>
-            }
-            else
-            {
-                <table class="data-table var-table">
-                    <thead>
-                        <tr>
-                            <th>名称</th>
-                            <th>路由</th>
-                            <th>地址</th>
-                            <th>类型</th>
-                            <th>备注</th>
-                            <th>当前值</th>
-                            <th>写入</th>
-                            <th>轮询</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (WebVariable row in Visible)
-                        {
-                            <tr class="@(row.IsError ? "row-error" : null)">
-                                <td class="name" data-label="名称">@row.Name</td>
-                                <td class="addr" data-label="路由">@row.RouteId</td>
-                                <td class="mono" data-label="地址">@row.Address</td>
-                                <td data-label="类型"><span class="type-pill">@row.DataType</span></td>
-                                @* 不在这里标「模板」：行尾的「锁」按钮已经说明了来源，
-                                   备注列只放备注本身，否则真备注被后缀挤得读不出来。 *@
-                                <td data-label="备注" title="@row.Note">@(string.IsNullOrEmpty(row.Note) ? "—" : row.Note)</td>
-                                <td class="val-green mono" data-label="当前值" title="@row.LastUpdated">@row.DisplayValue</td>
-                                <td class="write-cell" data-label="写入">
-                                    <input class="write-input" @bind="row.WriteText" placeholder="值" />
-                                    <button class="btn-sm primary" type="button" @onclick="() => WriteAsync(row)" disabled="@(_busy || !Session.Online)">写</button>
-                                    <button class="btn-sm ghost" type="button" @onclick="() => ReadAsync(row)" disabled="@(_busy || !Session.Online)">读</button>
-                                </td>
-                                <td data-label="轮询">
-                                    <label class="poll-toggle">
-                                        <input type="checkbox" checked="@row.Polling" @onchange="e => TogglePoll(row, e)" />
-                                    </label>
-                                </td>
-                                <td class="row-btns" data-label="">
-                                    <button class="btn-sm ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
-                                    @if (row.FromTemplate)
-                                    {
-                                        <button class="btn-sm ghost" type="button" disabled
-                                                title="来自模板，不能单条删除（下次同步模板会把它加回来）。要去掉整套请把上方模板选成「（不使用模板）」">锁</button>
-                                    }
-                                    else
-                                    {
-                                        <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
-                                    }
-                                </td>
+            <section class="var-panel">
+                @if (Visible.Count == 0) {
+                    <div class="empty-state"><div class="empty-hint">没有变量。添加时请选择已注册的路由 ID。</div></div>
+                } else {
+                    <table class="data-table var-table">
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>路由</th>
+                                <th>地址</th>
+                                <th>类型</th>
+                                <th>备注</th>
+                                <th>当前值</th>
+                                <th>写入</th>
+                                <th>轮询</th>
+                                <th></th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-        </section>
-    </div>
+                        </thead>
+                        <tbody>
+                            @foreach (WebVariable row in Visible) {
+                                <tr class="@(row.IsError ? "row-error" : null)">
+                                    <td class="name" data-label="名称">@row.Name</td>
+                                    <td class="addr" data-label="路由">@row.RouteId</td>
+                                    <td class="mono" data-label="地址">@row.Address</td>
+                                    <td data-label="类型"><span class="type-pill">@row.DataType</span></td>
+                                    @* 不在这里标「模板」：行尾的「锁」按钮已经说明了来源，
+                                   备注列只放备注本身，否则真备注被后缀挤得读不出来。 *@
+                                    <td data-label="备注" title="@row.Note">@(string.IsNullOrEmpty(row.Note) ? "—" : row.Note)</td>
+                                    <td class="val-green mono" data-label="当前值" title="@row.LastUpdated">@row.DisplayValue</td>
+                                    <td class="write-cell" data-label="写入">
+                                        <input class="write-input" @bind="row.WriteText" placeholder="值" />
+                                        <button class="btn-sm primary" type="button" @onclick="() => WriteAsync(row)" disabled="@(_busy || !Session.Online)">写</button>
+                                        <button class="btn-sm ghost" type="button" @onclick="() => ReadAsync(row)" disabled="@(_busy || !Session.Online)">读</button>
+                                    </td>
+                                    <td data-label="轮询">
+                                        <label class="poll-toggle">
+                                            <input type="checkbox" checked="@row.Polling" @onchange="e => TogglePoll(row, e)" />
+                                        </label>
+                                    </td>
+                                    <td class="row-btns" data-label="">
+                                        <button class="btn-sm ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
+                                        @if (row.FromTemplate) {
+                                            <button class="btn-sm ghost" type="button" disabled
+                                                    title="来自模板，不能单条删除（下次同步模板会把它加回来）。要去掉整套请把上方模板选成「（不使用模板）」">
+                                                锁
+                                            </button>
+                                        } else {
+                                            <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </section>
+        </div>
     </div>
 
-    @if (_showForm)
-    {
+    @if (_showForm) {
         <div class="add-form-overlay" @onclick="CloseForm">
             <div class="add-form" @onclick:stopPropagation>
                 <div class="form-hd">
@@ -157,39 +151,32 @@
                 <label>名称 *</label>
                 <input @bind="_name" placeholder="传送带速度" />
                 <label>路由 ID *</label>
-                @if (RouteChoices.Count > 0)
-                {
+                @if (RouteChoices.Count > 0) {
                     <select @bind="_routeId">
-                        @foreach (RouteChoice r in RouteChoices)
-                        {
+                        @foreach (RouteChoice r in RouteChoices) {
                             <option value="@r.RouteId">@r.Name</option>
                         }
                     </select>
-                }
-                else
-                {
+                } else {
                     <input @bind="_routeId" placeholder="先到设备管理注册路由" />
                 }
                 <label>地址 *</label>
                 <input @bind="_address" placeholder="由协议插件解释，例如 40001 / DB1.DBW0" />
                 <label>数据类型</label>
                 <select @bind="_dataType" @bind:after="OnTypeChanged">
-                    @foreach (string t in DataTypes)
-                    {
+                    @foreach (string t in DataTypes) {
                         <option value="@t">@t — @TypeHint(t)</option>
                     }
                 </select>
 
                 <label>
                     读取字节数
-                    @if (!ValueCodec.IsVariableLength(_dataType))
-                    {
+                    @if (!ValueCodec.IsVariableLength(_dataType)) {
                         <span class="label-note">（由类型决定）</span>
                     }
                 </label>
                 <input type="number" @bind="_length" min="1" />
-                @if (ValueCodec.IsVariableLength(_dataType))
-                {
+                @if (ValueCodec.IsVariableLength(_dataType)) {
                     @* 只有 String / Hex 需要操作员自己定长度：
                        PLC 里那段文本区域多大，只有现场知道 *@
                     <p class="hint-line">
@@ -203,8 +190,7 @@
 
                 <label>
                     备注
-                    @if (_editingFromTemplate)
-                    {
+                    @if (_editingFromTemplate) {
                         <span class="label-note">（由模板维护）</span>
                     }
                 </label>
@@ -213,8 +199,7 @@
                 <input @bind="_note" placeholder="选填，例如 用途或量程"
                        readonly="@_editingFromTemplate"
                        title="@(_editingFromTemplate ? "该变量来自模板，备注请到「模板」页修改" : null)" />
-                @if (_editingFromTemplate)
-                {
+                @if (_editingFromTemplate) {
                     <p class="hint-line">
                         本行来自模板，名称/类型/长度/备注都由模板维护。
                         要改备注请到「模板」页改，再回本页点「重新同步模板」。
@@ -234,8 +219,7 @@
         </div>
     }
 
-    @if (!string.IsNullOrEmpty(_exportJson))
-    {
+    @if (!string.IsNullOrEmpty(_exportJson)) {
         <div class="add-form-overlay" @onclick="() => _exportJson = string.Empty">
             <div class="add-form wide" @onclick:stopPropagation>
                 <div class="form-hd">
@@ -247,8 +231,7 @@
         </div>
     }
 
-    @if (_pendingRemove is not null)
-    {
+    @if (_pendingRemove is not null) {
         <div class="add-form-overlay center" @onclick="() => _pendingRemove = null">
             <div class="add-form confirm-box" @onclick:stopPropagation>
                 <div class="form-hd">
@@ -265,8 +248,7 @@
     }
 
     @* ================= 解除模板确认 ================= *@
-    @if (_pendingDetach is not null)
-    {
+    @if (_pendingDetach is not null) {
         @* 点遮罩等同取消，同样要把下拉框拨回去，否则界面和数据对不上 *@
         <div class="add-form-overlay center" @onclick="CancelDetachTemplate">
             <div class="add-form confirm-box" @onclick:stopPropagation>
@@ -277,8 +259,7 @@
                 <p>
                     将删除本设备由模板生成的 <span class="mono">@_pendingDetach.Count</span> 条变量。
                 </p>
-                @if (_pendingDetach.WithAddress > 0)
-                {
+                @if (_pendingDetach.WithAddress > 0) {
                     @* 地址是本机独有信息，模板里没有，删了就找不回来——必须单独点出来 *@
                     <p class="status-msg status-warn">
                         其中 <span class="mono">@_pendingDetach.WithAddress</span> 条已经填了地址，
@@ -295,8 +276,7 @@
     }
 
     @* ================= 批量改地址 ================= *@
-    @if (_showRewrite)
-    {
+    @if (_showRewrite) {
         <div class="add-form-overlay" @onclick="CloseRewrite">
             <div class="add-form wide" @onclick:stopPropagation>
                 <div class="form-hd">
@@ -312,8 +292,7 @@
                 <label>作用范围</label>
                 <select @bind="_rewriteScope" @bind:after="RefreshRewritePreview">
                     <option value="">全部设备（@Store.GetAll().Count 条变量）</option>
-                    @foreach (RouteChoice r in RouteChoices)
-                    {
+                    @foreach (RouteChoice r in RouteChoices) {
                         <option value="@r.RouteId">@r.Name（@CountOf(r.RouteId) 条）</option>
                     }
                 </select>
@@ -332,18 +311,12 @@
                     使用正则表达式
                 </label>
 
-                @if (!string.IsNullOrEmpty(_rewriteError))
-                {
+                @if (!string.IsNullOrEmpty(_rewriteError)) {
                     <div class="status-msg status-error">@_rewriteError</div>
-                }
-                else if (_rewriteFind.Length > 0)
-                {
-                    @if (_rewritePreview.Count == 0)
-                    {
+                } else if (_rewriteFind.Length > 0) {
+                    @if (_rewritePreview.Count == 0) {
                         <div class="status-msg status-warn">没有匹配到任何地址。</div>
-                    }
-                    else
-                    {
+                    } else {
                         <div class="status-msg status-info">将改动 @_rewritePreview.Count 条：</div>
                         <div class="preview-box">
                             <table class="data-table">
@@ -353,8 +326,7 @@
                                 <tbody>
                                     @* 只渲染前 200 条：几千条变量时整表渲染会把线路撑爆，
                                        而预览的作用是让人确认规则对不对，看头几条就够 *@
-                                    @foreach (AddressRewrite c in _rewritePreview.Take(RewritePreviewLimit))
-                                    {
+                                    @foreach (AddressRewrite c in _rewritePreview.Take(RewritePreviewLimit)) {
                                         <tr>
                                             <td class="name">@c.Name</td>
                                             <td class="mono">@c.OldAddress</td>
@@ -363,8 +335,7 @@
                                     }
                                 </tbody>
                             </table>
-                            @if (_rewritePreview.Count > RewritePreviewLimit)
-                            {
+                            @if (_rewritePreview.Count > RewritePreviewLimit) {
                                 <p class="hint-line">另有 @(_rewritePreview.Count - RewritePreviewLimit) 条未列出，应用时一并生效。</p>
                             }
                         </div>
@@ -383,8 +354,7 @@
     }
 
     @* ================= 导入范围选择 ================= *@
-    @if (_pendingImportJson is not null)
-    {
+    @if (_pendingImportJson is not null) {
         <div class="add-form-overlay center" @onclick="CancelImport">
             <div class="add-form" @onclick:stopPropagation>
                 <div class="form-hd">
@@ -406,12 +376,9 @@
                            @onchange="() => _importMode = VariableImportMode.ReplaceRoute" />
                     <span>
                         <b>覆盖本设备</b>的变量
-                        @if (string.IsNullOrEmpty(_filterRoute))
-                        {
+                        @if (string.IsNullOrEmpty(_filterRoute)) {
                             <span class="label-note">（先在左侧选中一台设备）</span>
-                        }
-                        else
-                        {
+                        } else {
                             <span class="label-note">（@_filterRoute，现有 @CountOf(_filterRoute) 条将被删除）</span>
                         }
                     </span>
@@ -423,8 +390,7 @@
                     <span><b>清空整张表</b>后导入（现有 @Store.GetAll().Count 条全部删除）</span>
                 </label>
 
-                @if (_importMode != VariableImportMode.Append)
-                {
+                @if (_importMode != VariableImportMode.Append) {
                     <div class="status-msg status-warn">覆盖不可撤销。建议先「导出 JSON」留个底。</div>
                 }
 
@@ -458,18 +424,18 @@
     };
 
     /// <summary>各类型的一句话说明，挂在下拉项上避免操作员猜。</summary>
-    private static string TypeHint(string type) => type switch {
-        "Bool"   => "1 字节，非零为 ON",
-        "Int16"  => "16 位有符号",
+    private static string TypeHint (string type) => type switch {
+        "Bool" => "1 字节，非零为 ON",
+        "Int16" => "16 位有符号",
         "UInt16" => "16 位无符号",
-        "Int32"  => "32 位有符号（2 个寄存器）",
+        "Int32" => "32 位有符号（2 个寄存器）",
         "UInt32" => "32 位无符号（2 个寄存器）",
-        "Float"  => "32 位浮点（IEEE754）",
-        "Int64"  => "64 位有符号（4 个寄存器）",
+        "Float" => "32 位浮点（IEEE754）",
+        "Int64" => "64 位有符号（4 个寄存器）",
         "UInt64" => "64 位无符号（4 个寄存器）",
         "Double" => "64 位浮点（4 个寄存器）",
         "String" => "文本，按字节数读取、NUL 截断",
-        "Hex"    => "原样字节，十六进制显示",
+        "Hex" => "原样字节，十六进制显示",
         _ => "",
     };
 
@@ -577,8 +543,7 @@
     /// 「数据变了但界面不动」——而且只在特定操作路径下复现，很难查。
     /// 退订在 <see cref="Dispose"/> 里，漏退会让已销毁的组件继续收事件。
     /// </remarks>
-    protected override void OnInitialized()
-    {
+    protected override void OnInitialized () {
         Session.Changed += OnChanged;
         Store.Changed += OnChanged;
 
@@ -587,29 +552,23 @@
             _routeId = RouteChoices[0].RouteId;
 
         string tid = QueryValue("template");
-        if (!string.IsNullOrEmpty(tid))
-        {
+        if (!string.IsNullOrEmpty(tid)) {
             _bindTemplateId = tid;
             if (RouteChoices.Count > 0 && string.IsNullOrEmpty(_filterRoute))
                 _filterRoute = RouteChoices[0].RouteId;
             ApplySelectedTemplate();
-        }
-        else
-        {
+        } else {
             InferTemplateFromRows();
         }
     }
 
-    private void SelectRoute(string routeId)
-    {
+    private void SelectRoute (string routeId) {
         _filterRoute = routeId;
         InferTemplateFromRows();
     }
 
-    private void InferTemplateFromRows()
-    {
-        if (string.IsNullOrEmpty(_filterRoute))
-        {
+    private void InferTemplateFromRows () {
+        if (string.IsNullOrEmpty(_filterRoute)) {
             _bindTemplateId = string.Empty;
             return;
         }
@@ -634,16 +593,14 @@
     /// 地址不属于模板（同一功能在不同 PLC 上地址不同），因此一律保留。
     /// </para>
     /// </remarks>
-    private void ApplySelectedTemplate()
-    {
+    private void ApplySelectedTemplate () {
         if (string.IsNullOrEmpty(_filterRoute))
             return;
 
         // 选了「（不使用模板）」：这不是"什么都不做"，而是要把模板行清掉。
         // 此前这里直接 return，导致套过模板的设备再也去不掉那些行——
         // 行尾是「锁」删不掉，下拉切到不使用又没反应，是个死结。
-        if (string.IsNullOrEmpty(_bindTemplateId))
-        {
+        if (string.IsNullOrEmpty(_bindTemplateId)) {
             AskDetachTemplate();
             return;
         }
@@ -671,11 +628,9 @@
     /// 弹一个"确认删除 0 条"只会让人困惑。
     /// </para>
     /// </remarks>
-    private void AskDetachTemplate()
-    {
+    private void AskDetachTemplate () {
         TemplateRowSummary s = Store.SummarizeTemplateRows(_filterRoute);
-        if (s.Count == 0)
-        {
+        if (s.Count == 0) {
             // 已经是「不使用模板」的状态，目标已达成，静默即可
             _pendingDetach = null;
             return;
@@ -685,8 +640,7 @@
     }
 
     /// <summary>确认解除模板，删掉本设备全部模板行。</summary>
-    private void ConfirmDetachTemplate()
-    {
+    private void ConfirmDetachTemplate () {
         int n = Store.DetachTemplate(_filterRoute);
         _pendingDetach = null;
 
@@ -702,18 +656,15 @@
     /// 把 <see cref="_bindTemplateId"/> 写成空了，只关掉弹框的话，
     /// 界面显示「不使用模板」而行还在，两边对不上。
     /// </remarks>
-    private void CancelDetachTemplate()
-    {
+    private void CancelDetachTemplate () {
         _pendingDetach = null;
         InferTemplateFromRows();
     }
 
-    private string QueryValue(string key)
-    {
+    private string QueryValue (string key) {
         Uri uri = Nav.ToAbsoluteUri(Nav.Uri);
         string q = uri.Query.TrimStart('?');
-        foreach (string part in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
+        foreach (string part in q.Split('&', StringSplitOptions.RemoveEmptyEntries)) {
             int eq = part.IndexOf('=');
             if (eq <= 0) continue;
             if (!string.Equals(Uri.UnescapeDataString(part[..eq]), key, StringComparison.OrdinalIgnoreCase))
@@ -732,7 +683,7 @@
     /// 直接调 <c>StateHasChanged</c> 会抛线程异常。
     /// 弃元赋值是有意的：这里不需要等待重绘完成。
     /// </remarks>
-    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnChanged () => _ = InvokeAsync(StateHasChanged);
 
     /// <summary>
     /// 汇总三个来源，构造路由候选列表。
@@ -754,8 +705,7 @@
     /// 但显然应当算同一条路由。
     /// </para>
     /// </remarks>
-    private List<RouteChoice> BuildRouteChoices()
-    {
+    private List<RouteChoice> BuildRouteChoices () {
         Dictionary<string, RouteChoice> map = new(StringComparer.OrdinalIgnoreCase);
 
         // 来源一：宿主当前登记的路由，此时只有裸 RouteId 可用作显示名
@@ -763,8 +713,7 @@
             map[r.RouteId] = new RouteChoice(r.RouteId, r.RouteId, r.ProtocolId);
 
         // 来源二：本地设备配置，提供人类可读的名字；未连接的设备也在这里
-        foreach (WebDeviceRecord d in Devices.GetAll())
-        {
+        foreach (WebDeviceRecord d in Devices.GetAll()) {
             // 名字留空的设备回落到 RouteId，避免下拉框出现空白项
             string name = string.IsNullOrWhiteSpace(d.Name) ? d.RouteId : d.Name;
 
@@ -777,8 +726,7 @@
         }
 
         // 来源三：孤儿变量所引用的路由（设备配置已删但变量还在）
-        foreach (WebVariable v in Store.GetAll())
-        {
+        foreach (WebVariable v in Store.GetAll()) {
             if (map.ContainsKey(v.RouteId)) continue;
 
             // 协议未知，留空字符串；至少让这些变量在左侧有个可见的归属
@@ -803,8 +751,7 @@
     /// 只在 <c>_routeId</c> 为空时才补默认路由——操作员刚在左侧点了某台设备，
     /// 那个选择应当被继承下来，而不是被重置回第一条。
     /// </remarks>
-    private void OpenAdd()
-    {
+    private void OpenAdd () {
         ResetForm();
         _showForm = true;
 
@@ -813,21 +760,20 @@
     }
 
     /// <summary>打开编辑表单，用已存变量回填。</summary>
-    private void OpenEdit(WebVariable row)
-    {
+    private void OpenEdit (WebVariable row) {
         _editingId = row.Id;
-        _name      = row.Name;
-        _routeId   = row.RouteId;
-        _address   = row.Address;
-        _dataType  = row.DataType;
-        _length    = row.Length;
-        _scan      = row.ScanRateMs;
-        _note      = row.Note;
+        _name = row.Name;
+        _routeId = row.RouteId;
+        _address = row.Address;
+        _dataType = row.DataType;
+        _length = row.Length;
+        _scan = row.ScanRateMs;
+        _note = row.Note;
 
         // 记下来源：模板行的备注只读，见表单里的说明
         _editingFromTemplate = row.FromTemplate;
 
-        _showForm  = true;
+        _showForm = true;
     }
 
     /// <summary>把表单字段恢复为新增态的默认值。</summary>
@@ -835,22 +781,21 @@
     /// 刻意<b>不</b>重置 <c>_routeId</c>：连续录入同一台设备的多个变量是常态，
     /// 每次都清空会逼操作员反复重选。
     /// </remarks>
-    private void ResetForm()
-    {
+    private void ResetForm () {
         _editingId = string.Empty;
-        _name      = string.Empty;
-        _address   = string.Empty;
-        _dataType  = "Int16";
-        _length    = ValueCodec.DefaultLength("Int16");
-        _scan      = 1000;
-        _note      = string.Empty;
+        _name = string.Empty;
+        _address = string.Empty;
+        _dataType = "Int16";
+        _length = ValueCodec.DefaultLength("Int16");
+        _scan = 1000;
+        _note = string.Empty;
 
         // 新增态一律不是模板行；漏了这句会把上一次编辑模板行时的只读状态带过来
         _editingFromTemplate = false;
     }
 
     /// <summary>关闭表单浮层并清空字段，避免下次打开时残留上一次的输入。</summary>
-    private void CloseForm() {
+    private void CloseForm () {
         _showForm = false;
         ResetForm();
     }
@@ -862,7 +807,7 @@
     /// String 与 Hex 是变长的，<c>DefaultLength</c> 对它们返回一个起始值，
     /// 操作员仍需按现场那段区域的实际大小手工调整。
     /// </remarks>
-    private void OnTypeChanged() => _length = ValueCodec.DefaultLength(_dataType);
+    private void OnTypeChanged () => _length = ValueCodec.DefaultLength(_dataType);
 
     /// <summary>取某条变量所属设备的字节序；设备无配置时按大端。</summary>
     /// <remarks>
@@ -873,7 +818,7 @@
     /// 这里只剩表单提示文案需要它。
     /// </para>
     /// </remarks>
-    private ByteOrder OrderOf(string routeId) =>
+    private ByteOrder OrderOf (string routeId) =>
         Variables.OrderOf(routeId);
 
     /// <summary>表单里当前所选路由的字节序，用于提示文案。</summary>
@@ -886,23 +831,19 @@
     /// 变量只写本地，不触碰宿主——它是上位机的配置，不属于 Hosting.App。
     /// 因此本方法是同步的，也不要求 Host 在线。
     /// </remarks>
-    private void Save()
-    {
+    private void Save () {
         // 三个必填项：没有名字无法辨认，没有路由和地址则根本无法读写
-        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_routeId) || string.IsNullOrWhiteSpace(_address))
-        {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_routeId) || string.IsNullOrWhiteSpace(_address)) {
             _banner = "名称、路由、地址为必填";
             _bannerClass = "status-error";
             return;
         }
 
-        if (IsEditing)
-        {
+        if (IsEditing) {
             WebVariable? existing = Store.GetAll().FirstOrDefault(v => v.Id == _editingId);
 
             // 表单打开期间该变量可能已被另一处删除（同一浏览器多标签页）
-            if (existing is null)
-            {
+            if (existing is null) {
                 _banner = "该变量已被删除，无法保存";
                 _bannerClass = "status-error";
                 CloseForm();
@@ -910,14 +851,14 @@
             }
 
             // Trim：末尾空格会让 "PLC1" 与 "PLC1 " 被当成两条不同路由
-            existing.Name       = _name.Trim();
-            existing.RouteId    = _routeId.Trim();
-            existing.Address    = _address.Trim();
-            existing.DataType   = _dataType;
+            existing.Name = _name.Trim();
+            existing.RouteId = _routeId.Trim();
+            existing.Address = _address.Trim();
+            existing.DataType = _dataType;
 
             // 下限保护：长度 0 会被部分协议判为非法请求；
             // 扫描周期过小会让轮询挤占整条链路，200ms 是经验下限
-            existing.Length     = Math.Max(1, _length);
+            existing.Length = Math.Max(1, _length);
             existing.ScanRateMs = Math.Max(200, _scan);
 
             // 模板行的备注归模板所有，本页不写回——写了也会被下次同步覆盖
@@ -927,16 +868,13 @@
             // 地址/类型变了，旧的显示值就不再对应当前定义——
             // 留着会让人以为那是刚读回来的新值
             existing.DisplayValue = "--";
-            existing.IsError      = false;
+            existing.IsError = false;
 
             Store.Update(existing);
             _banner = "已更新 " + existing.Name;
             _bannerClass = "status-ok";
-        }
-        else
-        {
-            Store.Add(new WebVariable
-            {
+        } else {
+            Store.Add(new WebVariable {
                 Name = _name.Trim(),
                 RouteId = _routeId.Trim(),
                 Address = _address.Trim(),
@@ -960,8 +898,7 @@
     /// <c>e.Value</c> 是装箱的 object，用 <c>is true</c> 而非强转——
     /// 复选框在某些浏览器上可能回传 null。
     /// </remarks>
-    private void TogglePoll(WebVariable row, ChangeEventArgs e)
-    {
+    private void TogglePoll (WebVariable row, ChangeEventArgs e) {
         row.Polling = e.Value is true;
         Store.Update(row);
     }
@@ -972,19 +909,16 @@
     /// 表格那一格很窄，塞完整描述会被截断成看不懂的半句；
     /// 错误码短且可检索，完整描述在通讯日志里。
     /// </remarks>
-    private async Task ReadAsync(WebVariable row)
-    {
+    private async Task ReadAsync (WebVariable row) {
         _busy = true;
-        try
-        {
+        try {
             // 字节序由服务按设备配置取用，页面不再自行传参
             VariableReadOutcome r = await Variables.ReadAsync(row).ConfigureAwait(true);
             if (r.Success)
                 Store.ApplyRead(row.Id, r.DisplayValue, false);
             else
                 Store.ApplyRead(row.Id, r.ErrorCode, true);
-        }
-        finally { _busy = false; }
+        } finally { _busy = false; }
     }
 
     /// <summary>把行内输入框的文本写入 PLC。</summary>
@@ -992,26 +926,20 @@
     /// 写入成功要记日志：这是<b>会改变现场设备状态</b>的操作，
     /// 事后追查"谁在什么时候改了哪个值"全靠这条记录。读取则不记，否则日志会被轮询淹没。
     /// </remarks>
-    private async Task WriteAsync(WebVariable row)
-    {
+    private async Task WriteAsync (WebVariable row) {
         _busy = true;
-        try
-        {
+        try {
             // 编码失败不会发起 I/O，服务直接返回 PARSE_ERROR
             HostingOperationResult r = await Variables.WriteAsync(row).ConfigureAwait(true);
-            if (r.Success)
-            {
+            if (r.Success) {
                 _banner = "写入成功 " + row.Name;
                 _bannerClass = "status-ok";
                 Log.Info("Variables", "写入 " + row.RouteId + " " + row.Address);
-            }
-            else
-            {
+            } else {
                 _banner = "写入失败: [" + r.ErrorCode + "] " + r.ErrorMessage;
                 _bannerClass = "status-error";
             }
-        }
-        finally { _busy = false; }
+        } finally { _busy = false; }
     }
 
     /// <summary>批量读取当前可见的全部变量。</summary>
@@ -1020,32 +948,26 @@
     /// 而串口设备还有帧间静默要求，并发只会制造超时。
     /// 单条失败不中断整批——现场常有个别地址配错，不该因此读不到其余变量。
     /// </remarks>
-    private async Task ReadVisibleAsync()
-    {
+    private async Task ReadVisibleAsync () {
         _busy = true;
         int ok = 0;
-        try
-        {
+        try {
             IReadOnlyList<WebVariable> rows = Visible;
-            foreach (WebVariable row in rows)
-            {
+            foreach (WebVariable row in rows) {
                 VariableReadOutcome r = await Variables.ReadAsync(row).ConfigureAwait(true);
-                if (r.Success)
-                {
+                if (r.Success) {
                     Store.ApplyRead(row.Id, r.DisplayValue, false);
                     ok++;
-                }
-                else
+                } else
                     Store.ApplyRead(row.Id, r.ErrorCode, true);
             }
             _banner = "读取完成 " + ok + "/" + rows.Count;
             _bannerClass = ok == rows.Count ? "status-ok" : "status-warn";
-        }
-        finally { _busy = false; }
+        } finally { _busy = false; }
     }
 
     /// <summary>把变量表导出为 JSON 文本，显示在浮层里供复制。</summary>
-    private void Export() => _exportJson = Store.ExportJson();
+    private void Export () => _exportJson = Store.ExportJson();
 
     /// <summary>
     /// 从上传的 JSON 文件导入变量，<b>追加</b>而非替换现有表。
@@ -1085,10 +1007,8 @@
     /// 变量表是人工维护的配置，正常规模远小于此。
     /// </para>
     /// </remarks>
-    private async Task OnImportFilePicked(InputFileChangeEventArgs e)
-    {
-        try
-        {
+    private async Task OnImportFilePicked (InputFileChangeEventArgs e) {
+        try {
             await using Stream stream = e.File.OpenReadStream(512 * 1024);
             using StreamReader reader = new(stream);
             string json = await reader.ReadToEndAsync().ConfigureAwait(true);
@@ -1098,8 +1018,7 @@
                 System.Text.Json.JsonSerializer.Deserialize<List<WebVariable>>(
                     json, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-            if (probe is null || probe.Count == 0)
-            {
+            if (probe is null || probe.Count == 0) {
                 _banner = "文件里没有变量";
                 _bannerClass = "status-warn";
                 return;
@@ -1112,9 +1031,7 @@
             _importMode = string.IsNullOrEmpty(_filterRoute)
                 ? VariableImportMode.Append
                 : VariableImportMode.ReplaceRoute;
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             // 文件损坏、超限、JSON 语法错误对操作员是同一种处置：换个文件重试
             _banner = "读取失败: " + ex.Message;
             _bannerClass = "status-error";
@@ -1122,19 +1039,16 @@
     }
 
     /// <summary>放弃本次导入。</summary>
-    private void CancelImport()
-    {
+    private void CancelImport () {
         _pendingImportJson = null;
         _pendingImportCount = 0;
     }
 
     /// <summary>按所选范围执行导入。</summary>
-    private void ConfirmImport()
-    {
+    private void ConfirmImport () {
         if (_pendingImportJson is null) return;
 
-        try
-        {
+        try {
             VariableImportResult r = Store.ImportJson(
                 _pendingImportJson, _importMode,
                 _importMode == VariableImportMode.ReplaceRoute ? _filterRoute : null);
@@ -1148,14 +1062,10 @@
 
             _banner = msg;
             _bannerClass = r.Imported > 0 ? "status-ok" : "status-warn";
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             _banner = "导入失败: " + ex.Message;
             _bannerClass = "status-error";
-        }
-        finally
-        {
+        } finally {
             CancelImport();
         }
     }
@@ -1189,12 +1099,11 @@
     private string _rewriteError = string.Empty;
 
     /// <summary>统计某条路由下的变量数。</summary>
-    private int CountOf(string routeId) =>
+    private int CountOf (string routeId) =>
         Store.GetAll().Count(v => string.Equals(v.RouteId, routeId, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>打开批量改地址弹层，默认范围取当前左侧筛选。</summary>
-    private void OpenRewrite()
-    {
+    private void OpenRewrite () {
         _rewriteScope = _filterRoute;
         _rewriteFind = string.Empty;
         _rewriteTo = string.Empty;
@@ -1205,11 +1114,10 @@
     }
 
     /// <summary>关闭弹层。</summary>
-    private void CloseRewrite() => _showRewrite = false;
+    private void CloseRewrite () => _showRewrite = false;
 
     /// <summary>切换正则开关后要重算预览——同一份输入在两种模式下结果完全不同。</summary>
-    private void OnRewriteRegexToggled(ChangeEventArgs e)
-    {
+    private void OnRewriteRegexToggled (ChangeEventArgs e) {
         _rewriteRegex = e.Value is true;
         RefreshRewritePreview();
     }
@@ -1221,10 +1129,8 @@
     /// 计算委托给 <see cref="AddressRewriter"/>——它是纯函数且有测试覆盖，
     /// 正则超时、无效捕获组这类边角情况都在那里处理。本页只负责把结果画出来。
     /// </remarks>
-    private void RefreshRewritePreview()
-    {
-        if (string.IsNullOrEmpty(_rewriteFind))
-        {
+    private void RefreshRewritePreview () {
+        if (string.IsNullOrEmpty(_rewriteFind)) {
             _rewritePreview = Array.Empty<AddressRewrite>();
             _rewriteError = string.Empty;
             return;
@@ -1248,13 +1154,11 @@
     /// 一次锁、一次落盘、一次事件——逐条更新会在几百条时把界面刷到卡顿。
     /// 改完清空输入但<b>不关弹层</b>：换 PLC 时往往要连做几轮不同的替换规则。
     /// </remarks>
-    private void ApplyRewrite()
-    {
+    private void ApplyRewrite () {
         if (_rewritePreview.Count == 0) return;
 
         _busy = true;
-        try
-        {
+        try {
             int n = Store.ApplyAddressChanges(
                 _rewritePreview.ToDictionary(c => c.Id, c => c.NewAddress, StringComparer.Ordinal));
 
@@ -1266,15 +1170,12 @@
             _rewriteFind = string.Empty;
             _rewriteTo = string.Empty;
             _rewritePreview = Array.Empty<AddressRewrite>();
-        }
-        finally { _busy = false; }
+        } finally { _busy = false; }
     }
 
     /// <summary>请求删除某条变量。模板行直接拒绝。</summary>
-    private void AskRemove(WebVariable row)
-    {
-        if (row.FromTemplate)
-        {
+    private void AskRemove (WebVariable row) {
+        if (row.FromTemplate) {
             _banner = "「" + row.Name + "」来自模板，不能单条删除——下次同步模板还会加回来。"
                       + "要去掉整套，请把上方的模板选成「（不使用模板）」。";
             _bannerClass = "status-warn";
@@ -1288,8 +1189,7 @@
     /// 判空不是多余的：确认框弹出期间该变量可能已被另一处删除，
     /// 此时静默返回即可——目标状态（它不存在了）已经达成。
     /// </remarks>
-    private void ConfirmRemove()
-    {
+    private void ConfirmRemove () {
         if (_pendingRemove is null || _pendingRemove.FromTemplate) return;
 
         Store.Remove(_pendingRemove.Id);
@@ -1304,8 +1204,7 @@
     /// 漏退订会让已销毁的组件继续收到事件并调 <c>StateHasChanged</c>，
     /// 表现为控制台报错加内存泄漏——每次页面切换泄漏一个组件实例。
     /// </remarks>
-    public void Dispose()
-    {
+    public void Dispose () {
         Session.Changed -= OnChanged;
         Store.Changed -= OnChanged;
     }
@@ -1316,5 +1215,5 @@
     /// <param name="RouteId">路由 Id，作为去重键与提交值。</param>
     /// <param name="Name">显示名；无本地配置时回落为 RouteId。</param>
     /// <param name="ProtocolId">协议 Id，仅用于左侧列表的副标题；来源不明时为空。</param>
-    private sealed record RouteChoice(string RouteId, string Name, string ProtocolId);
+    private sealed record RouteChoice (string RouteId, string Name, string ProtocolId);
 }

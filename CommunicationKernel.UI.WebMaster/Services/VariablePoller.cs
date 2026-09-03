@@ -13,8 +13,7 @@ namespace CommunicationKernel.UI.WebMaster.Services;
 /// 轮询不依附任何页面：操作员切走页面甚至关掉浏览器，产线数据仍要继续采集，
 /// 因为 MES 监控页与变量页共用同一份读值。
 /// </remarks>
-public sealed class VariablePoller : IHostedService
-{
+public sealed class VariablePoller : IHostedService {
     /// <summary>会话，提供 Host 在线状态与各路由的实时状态。</summary>
     private readonly EngineSession _session;
 
@@ -43,8 +42,7 @@ public sealed class VariablePoller : IHostedService
     /// <param name="store">变量表。</param>
     /// <param name="variables">变量读写服务。</param>
     /// <param name="logger">框架日志器。</param>
-    public VariablePoller(EngineSession session, WebVariableStore store, IWebVariableService variables, ILogger<VariablePoller> logger)
-    {
+    public VariablePoller (EngineSession session, WebVariableStore store, IWebVariableService variables, ILogger<VariablePoller> logger) {
         _session = session;
         _store = store;
         _variables = variables;
@@ -60,8 +58,7 @@ public sealed class VariablePoller : IHostedService
     /// 在这里 await 循环会让 Web 服务器永远起不来。
     /// 令牌用 <c>CreateLinkedTokenSource</c> 串联，使框架关停与主动 Stop 都能生效。
     /// </remarks>
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
+    public Task StartAsync (CancellationToken cancellationToken) {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _ = Task.Run(() => LoopAsync(_cts.Token), _cts.Token);
 
@@ -73,8 +70,7 @@ public sealed class VariablePoller : IHostedService
     /// 只取消不等待：循环最多在下一个 200ms 节拍退出，
     /// 而应用关停不应为此多等一轮。
     /// </remarks>
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
+    public async Task StopAsync (CancellationToken cancellationToken) {
         if (_cts is not null)
             await _cts.CancelAsync().ConfigureAwait(false);
     }
@@ -97,23 +93,16 @@ public sealed class VariablePoller : IHostedService
     /// 让整个轮询器就此停摆会导致产线数据静默停止更新，且没有任何提示。
     /// </para>
     /// </remarks>
-    private async Task LoopAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
+    private async Task LoopAsync (CancellationToken ct) {
+        while (!ct.IsCancellationRequested) {
+            try {
                 if (_session.Online)
                     await TickAsync(ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { return; }
-            catch (Exception ex)
-            {
+            } catch (OperationCanceledException) { return; } catch (Exception ex) {
                 _logger.LogWarning(ex, "变量轮询异常");
             }
 
-            try { await Task.Delay(200, ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return; }
+            try { await Task.Delay(200, ct).ConfigureAwait(false); } catch (OperationCanceledException) { return; }
         }
     }
 
@@ -124,8 +113,7 @@ public sealed class VariablePoller : IHostedService
     /// 刻意<b>串行</b>读取：同一路由的并发读会被 Router 合并或排队，并发发起没有收益；
     /// 串口设备还有帧间静默要求，并发只会制造超时。
     /// </remarks>
-    private async Task TickAsync(CancellationToken ct)
-    {
+    private async Task TickAsync (CancellationToken ct) {
         DateTime now = DateTime.UtcNow;
         IReadOnlyList<WebVariable> all = _store.GetAll();
 
@@ -135,8 +123,7 @@ public sealed class VariablePoller : IHostedService
         foreach (string stale in _nextDue.Keys.Where(id => !liveIds.Contains(id)).ToArray())
             _nextDue.Remove(stale);
 
-        foreach (WebVariable v in all)
-        {
+        foreach (WebVariable v in all) {
             // 未勾选轮询，或定义不完整（无路由/无地址）的直接跳过
             if (!v.Polling) continue;
             if (string.IsNullOrWhiteSpace(v.RouteId) || string.IsNullOrWhiteSpace(v.Address)) continue;
@@ -145,8 +132,7 @@ public sealed class VariablePoller : IHostedService
             // 判断 DisplayValue 是为了避免每个节拍都触发 Changed 事件把界面刷爆——
             // 状态没变就不用通知
             RouteStatusDto? st = _session.GetStatus(v.RouteId);
-            if (st is { Online: false })
-            {
+            if (st is { Online: false }) {
                 if (v.DisplayValue != "OFFLINE" || !v.IsError)
                     _store.ApplyRead(v.Id, "OFFLINE", error: true);
                 continue;

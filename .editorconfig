@@ -19,6 +19,23 @@ indent_size = 4
 [*.{json,yml,yaml,xml,csproj,props,targets,slnx,proto}]
 indent_size = 2
 
+# ── 必须保持 LF 的文件 ──────────────────────────────────────────────────
+#
+# 这不是风格偏好，是功能要求：shell 脚本带 CRLF 传到 Linux 后，
+# shebang 会变成 "#!/bin/bash\r"，内核去找一个名叫 "bash\r" 的解释器，
+# 报 "bad interpreter: No such file or directory"。
+# scripts/ck-panel.sh 正是部署到树莓派上运行的。
+#
+# 上面的 [*] 段落规定了 end_of_line = crlf，会连 .sh 一起覆盖，
+# 因此必须在这里显式覆写。与 .gitattributes 里的同名规则配套，
+# 改动其中一处务必同步另一处——只改一边会出现"编辑器写 LF、git 检出 CRLF"
+# 的拉锯，文件每次切分支都变一次。
+[*.{sh,bash}]
+end_of_line = lf
+
+[*.{yml,yaml}]
+end_of_line = lf
+
 [*.md]
 trim_trailing_whitespace = false
 

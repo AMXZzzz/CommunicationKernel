@@ -1,0 +1,82 @@
+# ============================================================================
+# 行尾与文件类型的强制规范
+#
+# 为什么必须有这个文件：
+#   此前仓库里没有 .gitattributes，行尾完全由每台机器的 core.autocrlf 决定。
+#   实测结果是 90 多个受控文件行尾不一致，其中 .gitignore、Main.cs、
+#   RelayCommand.cs 三个文件<b>内部</b>就 CRLF 与 LF 混用。
+#
+#   后果有三层，按严重程度递增：
+#     1. diff 噪声——换一台机器 checkout，整个文件显示为全部改动，
+#        真正的改动被淹没，代码评审失效；
+#     2. 合并冲突——两侧行尾不同的同一行会被判为冲突，且冲突内容看起来完全一样；
+#     3. <b>脚本失效</b>——.sh 带 CRLF 传到 Linux，shebang 变成 "#!/bin/bash\r"，
+#        内核找不到名为 "bash\r" 的解释器，报 "bad interpreter: No such file"。
+#        本仓库的 scripts/ck-panel.sh 就是部署到树莓派上跑的。
+#
+#   .editorconfig 管的是"编辑器保存时怎么写"，只对装了插件的编辑器有效；
+#   .gitattributes 管的是"入库和检出时怎么转"，对所有人无条件生效。
+#   两者必须一致，本文件与 .editorconfig 的 end_of_line 段是配套的。
+# ============================================================================
+
+# ── 默认规则 ──────────────────────────────────────────────────────────────
+# text=auto  由 git 判定文本/二进制，文本一律以 LF 存入仓库（跨平台的唯一正解）
+# eol=crlf   检出到工作区时转 CRLF；本项目是 Windows 开发（WPF / Inno Setup /
+#            PowerShell），与 .editorconfig 的 end_of_line = crlf 保持一致
+* text=auto eol=crlf
+
+# ── 必须保持 LF 的：会被 Linux 当作可执行文件读取 ────────────────────────
+# 这几条<b>不是</b>风格偏好，是功能要求。改成 crlf 会让脚本在目标机器上无法执行。
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
+*.dockerfile text eol=lf
+.gitattributes text eol=lf
+
+# CI 跑在 Linux runner 上；YAML 对行尾不敏感，但与执行环境保持一致更省事
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# API 基线是机器生成的：PublicApiSurfaceTests 以 string.Join("\n", …) 写出，
+# 固定 LF 且不随平台变化（见该文件 RenderPublicSurface）。
+# 若在这里要求 CRLF，每次 UPDATE_API_BASELINE=1 重生成都会把它翻回 LF，
+# 于是文件在两种行尾之间反复横跳——正是本文件要消除的那种噪声。
+# 比对侧本就做行尾归一化，因此这条例外不影响测试结果。
+CommunicationKernel.Tests/ApiBaselines/*.txt text eol=lf
+
+# ── 明确声明为二进制：禁止任何行尾转换与编码猜测 ─────────────────────────
+# 不声明的话依赖 git 的启发式判定，一旦误判为文本，行尾转换会直接损坏文件内容。
+*.ico       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.pdf       binary
+*.zip       binary
+*.7z        binary
+*.exe       binary
+*.dll       binary
+*.pdb       binary
+*.snk       binary
+*.ttf       binary
+*.woff      binary
+*.woff2     binary
+
+# ── 明确声明为文本：这几类含大量非 ASCII 中文，避免被启发式误判为二进制 ──
+*.cs        text
+*.razor     text
+*.xaml      text
+*.md        text
+*.iss       text
+*.ps1       text
+*.resx      text
+*.svg       text
+
+# ── diff 呈现 ────────────────────────────────────────────────────────────
+# 让 git diff 能识别 C# 的函数边界，在 hunk 头上显示所属方法名
+*.cs        diff=csharp
+
+# 生成物不参与 diff 与语言统计（GitHub 语言比例会被 protobuf 生成代码带偏）
+*.Designer.cs   linguist-generated=true
+**/obj/**       linguist-generated=true
+**/bin/**       linguist-generated=true

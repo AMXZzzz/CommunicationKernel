@@ -236,6 +236,13 @@ namespace CommunicationKernel.UI.Wpf.Services
                                     SerialPort    = r.SerialPort,
                                     BaudRate      = r.BaudRate,
                                     TransportKind = r.TransportKind,
+
+                                    // 从本地记录取，不从 RouteDto 取：路由模型里没有这一项。
+                                    // 漏了这一行的后果是隐性的——卡片建出来时是 0，
+                                    // 操作员随便改个名字触发 Update，就把现场调好的
+                                    // 帧间静默悄悄写回 0 了。
+                                    MinIoIntervalMs = meta?.MinIoIntervalMs ?? 0,
+
                                     StatusType    = DeviceStatusType.Offline,
                                     IsConnected   = false,
                                 });
@@ -328,6 +335,10 @@ namespace CommunicationKernel.UI.Wpf.Services
                 : (info.StationNo > 0 ? info.StationNo.ToString() : string.Empty);
 
             // 向 Hosting.App 注册路由（协议、介质、地址、站号、串口参数）
+            //
+            // minIoIntervalMs 必须显式传：省略会落到 SDK 签名上的默认值 100，
+            // 而引擎只要收到正数就原样采用，TCP 路由也会被塞进 100ms 帧间静默，
+            // 把链路限死在 10 次 I/O／秒。传 0 才是"按介质取引擎默认"。
             (bool success, string code, string msg, string _) =
                 await _client.RegisterRouteAsync(
                     routeId,
@@ -337,7 +348,8 @@ namespace CommunicationKernel.UI.Wpf.Services
                     info.Port,
                     station,
                     info.SerialPort ?? string.Empty,
-                    info.BaudRate
+                    info.BaudRate,
+                    info.MinIoIntervalMs
                 ).ConfigureAwait(false);
 
             if (!success)
@@ -468,7 +480,13 @@ namespace CommunicationKernel.UI.Wpf.Services
                     ? record.Station.Trim()
                     : (record.StationNo > 0 ? record.StationNo.ToString() : string.Empty);
 
-                // 用本地留存的连接参数重新 RegisterRoute
+                // 用本地留存的连接参数重新 RegisterRoute。
+                //
+                // ct 必须传到底：注册会真的去建连接，串口打不开或 TCP 握手超时
+                // 时这一步能耗掉数秒。不传的话，应用退出或对账被取消时这里
+                // 仍在阻塞，关停要多等一条路由的建连超时——几十台设备就是几十倍。
+                //
+                // minIoIntervalMs 不传会落到 SDK 默认 100，理由同 RegisterAsync。
                 (bool success, string code, string msg, string _) =
                     await _client.RegisterRouteAsync(
                         routeId,
@@ -478,7 +496,9 @@ namespace CommunicationKernel.UI.Wpf.Services
                         record.Port,
                         station,
                         record.SerialPort ?? string.Empty,
-                        record.BaudRate
+                        record.BaudRate,
+                        record.MinIoIntervalMs,
+                        ct
                     ).ConfigureAwait(false);
 
                 if (!success)

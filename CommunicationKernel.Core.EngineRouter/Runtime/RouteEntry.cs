@@ -1,7 +1,21 @@
 // -----------------------------------------------------------------------------
 // 文件: RouteEntry.cs
-// 层级: Core.EngineRouter / Abstractions
+// 层级: Core.EngineRouter / Runtime
 // 作用: 路由条目，持有传输客户端、协议驱动，以及读写共用的独占 I/O 门控。
+//
+// 为什么在 Runtime/ 而不是 Abstractions/：
+//   本类不是契约，是<b>有状态的实现</b>——持有 SemaphoreSlim 门控、
+//   记录上次 I/O 完成时刻、实现 IAsyncDisposable 管理连接生命周期。
+//   Abstractions/ 只放不含状态与实现的契约（三个 I 开头的接口）。
+//
+//   命名空间取根 CommunicationKernel.Core.EngineRouter，与同目录的
+//   ConnectionRouter / ReadCoordinator / RouterOrchestrator 一致：
+//   本项目的约定是 Abstractions/ → .Abstractions，Models/ → .Models，
+//   Runtime/ 不加后缀。
+//
+//   代价是 Abstractions 里的两个接口需要 using 根命名空间——
+//   这无法避免：IConnectionRouter 的方法签名本就以 RouteEntry 为参数，
+//   契约天然依赖这个类型，搬到哪个命名空间都一样。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -11,12 +25,12 @@ using CommunicationKernel.Core.Protocol.Abstractions;
 using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.EngineRouter.Models;
 
-namespace CommunicationKernel.Core.EngineRouter.Abstractions;
+namespace CommunicationKernel.Core.EngineRouter;
 
 /// <summary>
 /// -----------------------------------------------------------------------------
 /// 文件: RouteEntry.cs
-/// 层级: Core.EngineRouter / Abstractions
+/// 层级: Core.EngineRouter / Runtime
 /// 作用: 路由条目，持有特定路由的传输客户端、协议驱动与独占 I/O 门控。
 /// 说明:
 /// - 实现 IAsyncDisposable：路由注销时必须调用 DisposeAsync 释放 TransportClient，
@@ -36,9 +50,9 @@ public sealed class RouteEntry : IAsyncDisposable {
     /// 会同时在同一个流上读写：请求字节交织、响应被别的调用方读走。
     /// </para>
     /// <para>
-    /// 历史实现只在写路径串行化（WriteScheduler），读路径仅做「同键合并」，
-    /// 不同地址的读之间毫无互斥——多变量轮询下几乎必然串数据。
-    /// 现统一由本门控覆盖读写两条路径。
+    /// 早期实现只在写路径串行化，读路径仅做「同键合并」，不同地址的读之间
+    /// 毫无互斥——多变量轮询下几乎必然串数据。现统一由本门控覆盖读写两条路径，
+    /// 当时那个只管写的调度器已随之删除（代码里搜不到它，这里只作沿革说明）。
     /// </para>
     /// <para>
     /// 该信号量随 RouteEntry 生命周期存在，不单独释放：

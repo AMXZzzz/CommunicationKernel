@@ -4,7 +4,6 @@
 // 作用: 持久化设备注册参数。Hosting.App 路由是内存态，重启即丢，必须由上位机留底。
 // -----------------------------------------------------------------------------
 
-using System.Text.Json;
 
 using CommunicationKernel.Hosting.Sdk;
 
@@ -81,19 +80,6 @@ public sealed class WebDeviceRecord
 /// </remarks>
 public sealed class WebDeviceStore
 {
-    /// <summary>
-    /// 序列化选项。
-    /// </summary>
-    /// <remarks>
-    /// 仅供 <c>Clone</c> 使用；落盘的选项在 <see cref="JsonFileStore"/> 里统一定义。
-    /// <c>PropertyNameCaseInsensitive</c> 让手工编辑过的配置文件也能读回来。
-    /// </remarks>
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true,
-    };
-
     /// <summary>保护 <see cref="_records"/> 与落盘动作的互斥锁。</summary>
     private readonly object _lock = new();
 

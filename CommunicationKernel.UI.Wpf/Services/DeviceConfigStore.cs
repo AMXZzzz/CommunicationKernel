@@ -92,6 +92,18 @@ namespace CommunicationKernel.UI.Wpf.Services
             /// <summary>波特率，TCP 路由为 0。</summary>
             public int    BaudRate      { get; set; }
 
+            /// <summary>
+            /// 最小 I/O 间隔（毫秒）。0 表示交由引擎按介质取默认值，见
+            /// <see cref="DeviceInfo.MinIoIntervalMs"/>。
+            /// </summary>
+            /// <remarks>
+            /// 界面目前不暴露此项，正常写入的都是 0。留字段是为了两件事：
+            /// 一是长线缆／变频器旁的 RS-485 现场可以手工改 devices.json 加大静默；
+            /// 二是与 WebMaster 的 WebDeviceRecord 保持同形，避免两个上位机
+            /// 对同一条串口路由算出不同的帧间静默。
+            /// </remarks>
+            public int    MinIoIntervalMs { get; set; }
+
             // gRPC 路由模型里没有、必须本地留存的展示元数据
 
             /// <summary>设备显示名。宿主只认路由 ID，这个名字只存在于本地。</summary>
@@ -175,6 +187,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                     StationNo         = info.StationNo,
                     SerialPort        = info.SerialPort,
                     BaudRate          = info.BaudRate,
+                    MinIoIntervalMs   = info.MinIoIntervalMs,
                     Name              = info.Name,
                     Model             = info.Model,
                     IsDualLane        = info.IsDualLane,

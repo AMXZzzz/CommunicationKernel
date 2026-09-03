@@ -55,18 +55,17 @@ public sealed class FrameReader {
     /// <summary><see cref="_residual"/> 中的有效字节数。</summary>
     private int _residualLength;
 
-    /// <param name="maxResponseBytes">单帧上限（字节），超出视为协议错误。</param>
-    /// <param name="firstByteTimeoutMs">等待响应首字节的超时（毫秒）。</param>
-    /// <param name="subsequentByteTimeoutMs">
-    /// 帧已开始接收后等待后续字节的超时（毫秒）。
-    /// 这是"帧不完整"的兜底阈值，<b>不是</b>"帧已结束"的判定。
-    /// </param>
-    /// <param name="mediumName">出现在错误信息里的介质名，如 "TCP"、"串口"。</param>
-    public FrameReader(
-        int maxResponseBytes,
-        int firstByteTimeoutMs,
-        int subsequentByteTimeoutMs,
-        string mediumName) {
+
+
+    /// <summary>
+    /// 构造函数。冻结分帧参数：单帧上限、两级超时、介质名（写入错误文案以便区分 TCP / 串口）。
+    /// </summary>
+    public FrameReader (
+        int maxResponseBytes,                       //! 单帧上限（字节），超出视为协议错误
+        int firstByteTimeoutMs,                     //! 等待响应首字节的超时（毫秒）
+        int subsequentByteTimeoutMs,                //! 帧已开始接收后等待后续字节的超时（毫秒）
+        string mediumName                           //! 出现在错误信息里的介质名，如 "TCP"、"串口"
+        ) {
 
         // 冻结分帧参数：单帧上限、两级超时、介质名（写入错误文案以便区分 TCP / 串口）
         _maxResponseBytes        = maxResponseBytes;
@@ -100,9 +99,6 @@ public sealed class FrameReader {
     /// <summary>
     /// 从 <paramref name="stream"/> 读取恰好一个完整帧。
     /// </summary>
-    /// <param name="stream">已连接的数据流。</param>
-    /// <param name="tryGetFrameLength">协议提供的帧长判定回调。</param>
-    /// <param name="cancellationToken">外部取消令牌。</param>
     /// <returns>
     /// 成功时返回恰好一帧的字节；超出本帧的字节留在内部供下次调用消费。
     /// 失败时错误码区分 <see cref="KernelErrorCode.Cancelled"/>（外部取消）、
@@ -111,11 +107,16 @@ public sealed class FrameReader {
     /// <see cref="KernelErrorCode.TransportIoError"/>（远端关闭）。
     /// </returns>
     public async Task<OperationResult<byte[]>> ReadFrameAsync(
-        Stream stream, TryGetFrameLength tryGetFrameLength, CancellationToken cancellationToken) {
+        Stream stream,                                          //! 已连接的数据流句柄 
+        TryGetFrameLength tryGetFrameLength,                    //! 协议的帧长判定回调函数
+        CancellationToken cancellationToken                     //! 外部取消令牌
+        ) {
 
         // 从共享池租一块上限大小的缓冲，避免每次读帧 new byte[]
         byte[] buffer = ArrayPool<byte>.Shared.Rent(_maxResponseBytes);
-        int    total  = 0;
+
+        //! 帧长度
+        int    total  = 0;                                                 
 
         try {
             // 先消费上一次多读到的残留字节

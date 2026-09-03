@@ -151,7 +151,9 @@ public sealed class PluginRouteAssemblyService : IRouteAssemblyService {
                     continue;
                 }
 
-                // 协议工厂：Modbus / S7 / Mewtocol 等驱动入口，供 UI 协议清单与装配使用
+                // 协议工厂：驱动入口，供 UI 协议清单与装配使用。
+                // 这里刻意不举协议名为例——本层按接口收集，对具体协议一无所知，
+                // 注释里写死协议名会让人误以为加新协议要来改这里。
                 if (isProtocol && instance is IProtocolDriverFactory pf) {
                     protocolFactories.Add(pf);
                 }

@@ -25,21 +25,20 @@ using Microsoft.Extensions.Logging;
 namespace CommunicationKernel.Hosting.App;
 
 /// <summary>引擎 + gRPC 的共享装配。两份宿主入口都只调这里，禁止各写一套 DI。</summary>
-public static class HostingComposition
-{
-    /// <summary>进程互斥量。WebMaster 内嵌宿主时也要拿，避免再开一份 Hosting.App.exe。</summary>
+public static class HostingComposition {
+    /// <summary>进
+    /// 程互斥量。WebMaster 内嵌宿主时也要拿，避免再开一份 Hosting.App.exe。
+    /// </summary>
     public const string InstanceMutexName = @"Local\CommunicationKernel.Hosting.App";
 
     /// <summary>gRPC 默认端口。WPF 出厂地址与此一致。</summary>
     public const int DefaultGrpcPort = 5000;
 
     /// <summary>注册路由装配、引擎、gRPC。调用方再 MapEndpoints。</summary>
-    public static void AddServices(IServiceCollection services, IConfiguration configuration)
-    {
+    public static void AddServices (IServiceCollection services, IConfiguration configuration) {
         services.AddGrpc();
 
-        services.AddSingleton<IRouteAssemblyService>(sp =>
-        {
+        services.AddSingleton<IRouteAssemblyService>(sp => {
             string pluginDirectorySetting = configuration["EngineRuntime:PluginDirectory"] ?? "plugins";
             int defaultSerialIntervalMs = int.TryParse(
                     configuration["EngineRuntime:DefaultSerialMinIoIntervalMs"], out int value)
@@ -62,25 +61,23 @@ public static class HostingComposition
     }
 
     /// <summary>把 gRPC 口绑成明文 HTTP/2。不能 Http1AndHttp2，否则 gRPC 全被拒。</summary>
-    public static void ListenGrpc(ListenOptions options) =>
+    public static void ListenGrpc (ListenOptions options) =>
         options.Protocols = HttpProtocols.Http2;
 
     /// <summary>映射 HostingApi。WebMaster 的 / 仍归 Blazor，不要在这里 MapGet。</summary>
-    public static void MapEndpoints(WebApplication app) =>
+    public static void MapEndpoints (WebApplication app) =>
         app.MapGrpcService<HostingGrpcService>();
 
     /// <summary>
     /// 立刻构造引擎并预热插件。返回已加载的协议 ID。
     /// 不预热的话，插件要等到第一笔 gRPC 才加载，无人值守现场会「服务在跑、一个协议都没有」。
     /// </summary>
-    public static IReadOnlyList<string> Warmup(WebApplication app)
-    {
+    public static IReadOnlyList<string> Warmup (WebApplication app) {
         _ = app.Services.GetRequiredService<EngineRuntime>();
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Hosting.App.Startup");
         var assemblyService = app.Services.GetRequiredService<IRouteAssemblyService>();
         var protocols = assemblyService.GetAvailableProtocols();
-        if (protocols.Count == 0)
-        {
+        if (protocols.Count == 0) {
             logger.LogError(
                 "未加载到任何协议插件。请检查插件目录是否存在、其中是否有插件 DLL，" +
                 "以及共享契约是否误被复制进插件目录（那会让所有工厂静默注册不上）。");

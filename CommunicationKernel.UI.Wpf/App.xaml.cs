@@ -240,10 +240,10 @@ public partial class App : Application {
             new DataMonitorViewModel(sp.GetRequiredService<IDeviceService>()));
 
         // 地址配置、连接测试、设置持久化
+        // 不注入 HostingClient：测试连接要验的是输入框里的新地址，
+        // 由 ViewModel 现场建临时客户端，见 SettingsViewModel.ExecuteTestAsync。
         services.AddSingleton<SettingsViewModel>(sp =>
-            new SettingsViewModel(
-                sp.GetRequiredService<HostingClient>(),
-                sp.GetRequiredService<IConfiguration>()));
+            new SettingsViewModel(sp.GetRequiredService<IConfiguration>()));
 
         // =====================================================================
         // 页面（Transient：每次导航新建，避免 Frame 缓存）

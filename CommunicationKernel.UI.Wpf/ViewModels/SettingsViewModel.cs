@@ -41,8 +41,10 @@ public sealed class SettingsViewModel : ViewModelBase {
     // 私有字段
     // ============================================================================
 
-    /// <summary>gRPC 客户端，用于测试连接（HealthAsync）。</summary>
-    private readonly HostingClient _client;
+    // 这里刻意不持有注入的 HostingClient：注入的那个指向<b>当前生效</b>的地址，
+    // 而「测试连接」要验的是操作员刚在输入框里改出来的<b>新</b>地址。
+    // 用注入的实例测，永远只能测出旧地址通不通，改错了也发现不了。
+    // 因此 ExecuteTestAsync 里现场建一个临时客户端，用完即 await using 释放。
 
     /// <summary>本项目 appsettings.json，出厂默认地址从这里读。</summary>
     private readonly IConfiguration _config;
@@ -132,11 +134,8 @@ public sealed class SettingsViewModel : ViewModelBase {
     // 构造函数
     // ============================================================================
 
-    /// <param name="client">gRPC 客户端，用于测试连接，必须非 null。</param>
     /// <param name="config">本项目 appsettings.json，提供出厂 Host 地址。</param>
-    public SettingsViewModel(HostingClient client, IConfiguration config) {
-        // 保存 gRPC 客户端引用
-        _client = client ?? throw new ArgumentNullException(nameof(client));
+    public SettingsViewModel(IConfiguration config) {
         _config = config ?? throw new ArgumentNullException(nameof(config));
 
         // config 已保存的优先，否则用 appsettings.json
@@ -212,24 +211,22 @@ public sealed class SettingsViewModel : ViewModelBase {
 
         HostAddress = addr;
 
-        try {
-            // 确保目录存在
-            string dir = Path.GetDirectoryName(SettingsPath);
-            if (!string.IsNullOrEmpty(dir))
-                Directory.CreateDirectory(dir);
-
-            // 序列化为 JSON 并写入文件
-            string json = JsonSerializer.Serialize(
-                new AppSettings { HostAddress = addr },
-                new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(SettingsPath, json);
-
+        // 经 JsonFileStore 落盘，而不是 File.WriteAllText。
+        //
+        // WriteAllText 先把文件截断为 0 再写内容，两步之间断电或崩溃会留下一个
+        // 空的（或半截的）settings.json。下次启动读不出地址，上位机连不上宿主，
+        // 而界面上只显示"连接失败"，看不出根因是配置文件被写坏了。
+        // JsonFileStore 先写临时文件再原子替换，任何时刻磁盘上都是一份完整的旧或新。
+        //
+        // 目录创建也交给它，这里不再重复。
+        if (JsonFileStore.SaveObject(
+                SettingsPath, new AppSettings { HostAddress = addr }, out string error)) {
             // 提示用户重启后生效（App 启动时才读取该文件）
             SaveConfirmText = "✔ 已保存，重启应用后生效";
             TestResultText  = string.Empty;
-        } catch (Exception ex) {
+        } else {
             // 写入失败时通过 SaveConfirmText 显示错误
-            SaveConfirmText = "✘ 保存失败: " + ex.Message;
+            SaveConfirmText = "✘ 保存失败: " + error;
         }
     }
 

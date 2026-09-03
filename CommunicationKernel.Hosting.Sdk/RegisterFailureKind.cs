@@ -70,6 +70,16 @@ namespace CommunicationKernel.Hosting.Sdk
                 case "TIMEOUT":
                     return RegisterFailureKind.Unreachable;
 
+                // 找不到传输插件：宿主侧部署不全（插件 DLL 没拷进 plugins/），
+                // 操作员填的参数一个字都没错。删配置等于让操作员为部署问题买单——
+                // 装好插件重启后设备已经不见了，只能凭记忆重录。
+                //
+                // 引擎自己也把这个码当作可恢复的：EngineRuntime.ShouldAttemptReconnect
+                // 里 TransportUnavailable 是要重连的。两层对同一个码给出相反判断，
+                // 结果就是引擎准备重试、UI 已经把配置删了。
+                case "TransportUnavailable":
+                    return RegisterFailureKind.Unreachable;
+
                 default:
                     return RegisterFailureKind.BadConfiguration;
             }

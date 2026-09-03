@@ -12,8 +12,7 @@ using CommunicationKernel.Hosting.Sdk;
 namespace CommunicationKernel.UI.WebMaster.Services;
 
 /// <summary>Web UI 对内嵌 Hosting.App 的会话门面。经 HostingClient 连本进程 gRPC。</summary>
-public sealed class EngineSession : IHostedService, IAsyncDisposable
-{
+public sealed class EngineSession : IHostedService, IAsyncDisposable {
     /// <summary>框架日志器，记录会话循环自身的异常。</summary>
     private readonly ILogger<EngineSession> _logger;
 
@@ -62,13 +61,12 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// <param name="logger">框架日志器。</param>
     /// <param name="devices">本地设备配置库。</param>
     /// <param name="log">操作员日志。</param>
-    public EngineSession(
+    public EngineSession (
         IHostingClient client,
         ILogger<EngineSession> logger,
         WebDeviceStore devices,
         AppLogStore log,
-        IConfiguration config)
-    {
+        IConfiguration config) {
         _client = client;
         _logger = logger;
         _devices = devices;
@@ -95,8 +93,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     public string LastError { get; private set; } = string.Empty;
 
     /// <summary>最近一次从宿主拉到的路由清单。Host 离线时保留快照，卡片仍能画出来。</summary>
-    public IReadOnlyList<RouteDto> Routes
-    {
+    public IReadOnlyList<RouteDto> Routes {
         get { lock (_routesGate) return _routes; }
     }
 
@@ -111,11 +108,11 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 反过来（未知按在线）会让刚添加、还没建连接的设备显示成绿灯，
     /// 操作员据此以为可以读写。
     /// </remarks>
-    public bool IsRouteOnline(string routeId) =>
+    public bool IsRouteOnline (string routeId) =>
         _status.TryGetValue(routeId, out RouteStatusDto? dto) && dto.Online;
 
     /// <summary>取某条路由的完整状态；未知时返回 null（注意与「已知离线」的区别）。</summary>
-    public RouteStatusDto? GetStatus(string routeId) =>
+    public RouteStatusDto? GetStatus (string routeId) =>
         _status.TryGetValue(routeId, out RouteStatusDto? dto) ? dto : null;
 
     /// <summary>取全部路由状态的快照副本，供页面一次性渲染。</summary>
@@ -123,7 +120,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 返回副本而非底层字典：渲染期间状态流仍在写入，
     /// 直接交出并发字典会让同一次渲染里前后两行读到不同代的数据。
     /// </remarks>
-    public IReadOnlyDictionary<string, RouteStatusDto> StatusSnapshot() =>
+    public IReadOnlyDictionary<string, RouteStatusDto> StatusSnapshot () =>
         new Dictionary<string, RouteStatusDto>(_status, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -143,8 +140,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 不释放旧的会在每次切换地址时泄漏一个 <see cref="CancellationTokenSource"/>。
     /// </para>
     /// </remarks>
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
+    public Task StartAsync (CancellationToken cancellationToken) {
         CancellationTokenSource previous = _loopCts;
         _loopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         previous.Dispose();
@@ -158,14 +154,12 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     }
 
     /// <summary>停止两个后台循环。</summary>
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
+    public async Task StopAsync (CancellationToken cancellationToken) {
         await CancelLoopsAsync().ConfigureAwait(false);
     }
 
     /// <summary>取消循环并释放 gRPC 客户端。幂等。</summary>
-    public async ValueTask DisposeAsync()
-    {
+    public async ValueTask DisposeAsync () {
         // 必须幂等——本实例在容器里被登记了两次：
         //   AddSingleton<EngineSession>()                           ← 捕获一次待释放
         //   AddHostedService(sp => sp.GetRequiredService<...>())  ← 工厂返回同一实例，再捕获一次
@@ -189,14 +183,10 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// StopAsync 与 DisposeAsync 都会走到这里，而宿主关站时两者都会被调用，
     /// 顺序与次数由框架决定——这里不能假设自己是第一个。
     /// </remarks>
-    private async Task CancelLoopsAsync()
-    {
-        try
-        {
+    private async Task CancelLoopsAsync () {
+        try {
             await _loopCts.CancelAsync().ConfigureAwait(false);
-        }
-        catch (ObjectDisposedException)
-        {
+        } catch (ObjectDisposedException) {
             // 已释放：循环早已随之结束，没有需要取消的东西
         }
     }
@@ -216,8 +206,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 界面上表现为宿主状态灯长时间不更新。
     /// </para>
     /// </remarks>
-    public async Task ProbeAsync(CancellationToken ct = default)
-    {
+    public async Task ProbeAsync (CancellationToken ct = default) {
         IHostingClient client = Client;
         var (ok, version, count) = await client.HealthAsync(ct).ConfigureAwait(false);
 
@@ -242,14 +231,11 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     }
 
     /// <summary>从宿主重新拉取路由清单。注册 / 注销后由页面显式调用。</summary>
-    public async Task RefreshRoutesAsync(CancellationToken ct = default)
-    {
-        try
-        {
+    public async Task RefreshRoutesAsync (CancellationToken ct = default) {
+        try {
             IReadOnlyList<RouteDto> live = await Client.QueryRoutesAsync(ct: ct).ConfigureAwait(false);
             bool changed;
-            lock (_routesGate)
-            {
+            lock (_routesGate) {
                 changed = !SameRoutes(_routes, live);
                 if (changed)
                     _routes = live.ToList();
@@ -257,16 +243,13 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
             RouteCount = live.Count;
             if (changed)
                 RaiseChanged();
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
+        } catch (OperationCanceledException) { throw; } catch (Exception ex) {
             _logger.LogWarning(ex, "刷新路由清单失败");
         }
     }
 
     /// <summary>操作员手动触发对账（Host 已在线但部分本地设备未上线路由）。</summary>
-    public Task ReconcileNowAsync(CancellationToken ct = default) => ReconcileAsync(ct);
+    public Task ReconcileNowAsync (CancellationToken ct = default) => ReconcileAsync(ct);
 
     /// <summary>
     /// 健康探测循环，5 秒一次。
@@ -276,28 +259,20 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 任何异常都不退出循环——宿主可能稍后恢复，
     /// 循环一旦停摆，界面会永久停在最后那一刻的状态且没有任何提示。
     /// </remarks>
-    private async Task HealthLoopAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
+    private async Task HealthLoopAsync (CancellationToken ct) {
+        while (!ct.IsCancellationRequested) {
+            try {
                 await ProbeAsync(ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { return; }
+            } catch (OperationCanceledException) { return; }
             // 关站途中 _loopCts 已被释放：属于正常收尾，不是故障。
             // 若按普通异常记警告并继续，循环会在下一轮 Task.Delay 上再炸一次。
-            catch (ObjectDisposedException) { return; }
-            catch (Exception ex)
-            {
+            catch (ObjectDisposedException) { return; } catch (Exception ex) {
                 _logger.LogWarning(ex, "健康检查循环异常");
             }
 
             // Task.Delay 会在令牌上注册回调，CTS 已释放时抛 ObjectDisposedException——
             // 只捕获 OperationCanceledException 的话，这个异常会逃成未观测任务异常
-            try { await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return; }
-            catch (ObjectDisposedException) { return; }
+            try { await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); } catch (OperationCanceledException) { return; } catch (ObjectDisposedException) { return; }
         }
     }
 
@@ -309,61 +284,46 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 断线只会让其中一条察觉，其余仍停在最后收到的「在线」状态并把卡片钉死在绿灯上。
     /// 单条流集中维护 <see cref="_status"/>，所有页面读同一份，状态不可能分叉。
     /// </remarks>
-    private async Task WatchLoopAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
+    private async Task WatchLoopAsync (CancellationToken ct) {
+        while (!ct.IsCancellationRequested) {
             IHostingClient client = Client;
-            try
-            {
+            try {
                 // 空 routeId = 订阅全部路由，全站共用一条流
                 await client.WatchRouteStatusAsync(
                     routeId: string.Empty,
-                    onStatus: dto =>
-                    {
+                    onStatus: dto => {
                         _status[dto.RouteId] = dto;
                         RaiseChanged();
                         return Task.CompletedTask;
                     },
-                    onDisconnected: () =>
-                    {
+                    onDisconnected: () => {
                         MarkAllOffline();
                         RaiseChanged();
                         return Task.CompletedTask;
                     },
                     ct: ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { return; }
-            catch (ObjectDisposedException)
-            {
+            } catch (OperationCanceledException) { return; } catch (ObjectDisposedException) {
                 // 两种来源都会走到这里：
                 //   · 切换地址时旧客户端被释放 —— 应当继续，下一轮用新客户端；
                 //   · 关站时 _loopCts 被释放 —— 应当退出。
                 // 用取消状态区分：已请求取消就收尾，否则重试。
                 if (ct.IsCancellationRequested) return;
-            }
-            catch (Exception ex)
-            {
+            } catch (Exception ex) {
                 _logger.LogWarning(ex, "状态流循环异常");
             }
 
-            try { await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return; }
-            catch (ObjectDisposedException) { return; }
+            try { await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); } catch (OperationCanceledException) { return; } catch (ObjectDisposedException) { return; }
         }
     }
 
     /// <summary>宿主从离线恢复：把本地配置里尚未在 Host 上的路由重新注册。</summary>
-    private async Task ReconcileAsync(CancellationToken ct)
-    {
+    private async Task ReconcileAsync (CancellationToken ct) {
         if (Interlocked.CompareExchange(ref _reconcileGate, 1, 0) != 0)
             return;
-        try
-        {
+        try {
             IReadOnlyList<RouteDto> live = await Client.QueryRoutesAsync(ct: ct).ConfigureAwait(false);
             HashSet<string> present = new(live.Select(r => r.RouteId), StringComparer.OrdinalIgnoreCase);
-            foreach (WebDeviceRecord rec in _devices.GetAll())
-            {
+            foreach (WebDeviceRecord rec in _devices.GetAll()) {
                 if (string.IsNullOrWhiteSpace(rec.RouteId)) continue;
                 if (present.Contains(rec.RouteId)) continue;
                 var (ok, code, msg, _) = await Client.RegisterRouteAsync(
@@ -383,14 +343,9 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
                     _log.Warn("Reconcile", rec.RouteId + " 恢复失败: [" + code + "] " + msg);
             }
             await RefreshRoutesAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
+        } catch (OperationCanceledException) { throw; } catch (Exception ex) {
             _log.Warn("Reconcile", "对账失败: " + ex.Message);
-        }
-        finally
-        {
+        } finally {
             Interlocked.Exchange(ref _reconcileGate, 0);
             RaiseChanged();
         }
@@ -401,12 +356,11 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 宿主不可达时调用。逐条改写而非清空字典：清空会让 <see cref="IsRouteOnline"/>
     /// 返回"未知"，页面上那些设备卡片会整个消失，而操作员需要看到它们仍在、只是断了。
     /// </remarks>
-    private void MarkAllOffline()
-    {
-        foreach (string key in _status.Keys.ToArray())
-        {
-            if (_status.TryGetValue(key, out RouteStatusDto? prev))
+    private void MarkAllOffline () {
+        foreach (string key in _status.Keys.ToArray()) {
+            if (_status.TryGetValue(key, out RouteStatusDto? prev)) {
                 _status[key] = prev with { Online = false, ErrorCode = "DISCONNECTED", ErrorMessage = "状态流中断" };
+            }
         }
     }
 
@@ -418,16 +372,15 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 每次都触发 <see cref="Changed"/> 会让所有页面持续重绘。
     /// 只比较影响显示的字段，逐项按序比对——宿主返回的顺序是稳定的。
     /// </remarks>
-    private static bool SameRoutes(IReadOnlyList<RouteDto> left, IReadOnlyList<RouteDto> right)
-    {
+    private static bool SameRoutes (IReadOnlyList<RouteDto> left, IReadOnlyList<RouteDto> right) {
         if (left.Count != right.Count) return false;
         Dictionary<string, RouteDto> map = new(StringComparer.OrdinalIgnoreCase);
         foreach (RouteDto item in left)
             map[item.RouteId] = item;
-        foreach (RouteDto item in right)
-        {
-            if (!map.TryGetValue(item.RouteId, out RouteDto? prev) || prev != item)
+        foreach (RouteDto item in right) {
+            if (!map.TryGetValue(item.RouteId, out RouteDto? prev) || prev != item) {
                 return false;
+            }
         }
         return true;
     }
@@ -437,9 +390,7 @@ public sealed class EngineSession : IHostedService, IAsyncDisposable
     /// 在<b>后台线程</b>上触发，订阅方负责切回 UI 线程。
     /// 本类刻意不引用 Blazor 的渲染上下文——那会让它无法在测试或其他宿主里复用。
     /// </remarks>
-    private void RaiseChanged()
-    {
-        try { Changed?.Invoke(); }
-        catch (Exception ex) { _logger.LogError(ex, "EngineSession.Changed 订阅方异常，已隔离"); }
+    private void RaiseChanged () {
+        try { Changed?.Invoke(); } catch (Exception ex) { _logger.LogError(ex, "EngineSession.Changed 订阅方异常，已隔离"); }
     }
 }

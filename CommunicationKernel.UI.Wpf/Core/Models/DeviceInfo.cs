@@ -81,6 +81,8 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         private string _serialPort     = string.Empty;
         /// <summary><see cref="BaudRate"/> 的后备字段。</summary>
         private int    _baudRate;
+        /// <summary><see cref="MinIoIntervalMs"/> 的后备字段。</summary>
+        private int    _minIoIntervalMs;
         /// <summary><see cref="ExtraSettingsJson"/> 的后备字段。默认空对象而非 null。</summary>
         private string _extraSettingsJson = "{}";
         /// <summary><see cref="IsConnected"/> 的后备字段。</summary>
@@ -209,6 +211,25 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         {
             get => _baudRate;
             set => SetField(ref _baudRate, value);
+        }
+
+        /// <summary>
+        /// 最小 I/O 间隔（毫秒），对应注册路由时的 min_io_interval_ms。
+        /// </summary>
+        /// <remarks>
+        /// <b>0 是有含义的取值，不是"未设置"</b>：引擎只在收到正数时才采用它，
+        /// 收到 0 则按介质取默认——串口用 appsettings 的
+        /// <c>EngineRuntime:DefaultSerialMinIoIntervalMs</c>（出厂 15ms），TCP 不节流。
+        /// <para>
+        /// 因此这里默认 0，把决定权交回引擎。曾经不传此参数，于是落到 SDK 的
+        /// 默认值 100——对引擎而言 100 是正数，会被原样采用，连 TCP 路由都被
+        /// 塞进 100ms 帧间静默，等于把每条链路限死在 10 次 I/O／秒。
+        /// </para>
+        /// </remarks>
+        public int MinIoIntervalMs
+        {
+            get => _minIoIntervalMs;
+            set => SetField(ref _minIoIntervalMs, value < 0 ? 0 : value);
         }
 
         /// <summary>

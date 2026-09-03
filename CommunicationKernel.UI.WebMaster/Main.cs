@@ -246,8 +246,7 @@ try {
     //
     // 不启用时一行中间件都不装——本机与局域网直连场景没有代理，
     // 装上反而会因为信任了不存在的转发头而带来被伪造的风险。
-    if (proxySettings.Enabled)
-    {
+    if (proxySettings.Enabled) {
         ForwardedHeadersOptions fho = new()
         {
             // 只认这两个：协议决定 Blazor 的 WebSocket 用 ws 还是 wss，
@@ -260,18 +259,14 @@ try {
         fho.KnownNetworks.Clear();
         fho.KnownProxies.Clear();
 
-        if (proxySettings.TrustedProxies.Count > 0)
-        {
-            foreach (string ip in proxySettings.TrustedProxies)
-            {
+        if (proxySettings.TrustedProxies.Count > 0) {
+            foreach (string ip in proxySettings.TrustedProxies) {
                 if (System.Net.IPAddress.TryParse(ip, out System.Net.IPAddress? parsed))
                     fho.KnownProxies.Add(parsed);
                 else
                     logStore.Warn("Proxy", "可信代理地址无法解析，已忽略: " + ip);
             }
-        }
-        else
-        {
+        } else {
             // 未指定可信代理时，KnownProxies 为空即表示不校验来源。
             // 这是有意的取舍：现场往往拿不到隧道出口的固定 IP。
             // 代价是任何能直连本端口的人都能伪造协议头——所以这个端口
@@ -280,6 +275,7 @@ try {
                 "未配置可信代理 IP：将接受任意来源的转发头。请确保 Web 端口只对反向代理开放。");
         }
 
+        //! 
         app.UseForwardedHeaders(fho);
 
         // ----------------------------------------------------------------
@@ -293,8 +289,7 @@ try {
         // 证书在公网机上，本进程只监听明文 http：
         // 用户 --https--> 反代（终止 TLS）--http+XFP:https--> 本进程
         // 因此这里判定 IsHttps=true，不会再重定向；只有用户直接敲 http:// 时才跳。
-        if (proxySettings.HttpsRedirectActive)
-        {
+        if (proxySettings.HttpsRedirectActive) {
             // HSTS：告诉浏览器今后一律用 https，连第一次的明文跳转都省掉。
             // 30 天而非常见的 1 年，也不带 includeSubDomains / preload——
             // 这三项都会被浏览器缓存且<b>无法远程撤销</b>，
@@ -337,8 +332,7 @@ try {
     //
     // 必须排在 UseStaticFiles 之后：登录页要用 theme.css，
     // 排在前面会让样式表也需要登录才能取，登录页于是变成一片白。
-    if (authEnabled)
-    {
+    if (authEnabled) {
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapAuthEndpoints();

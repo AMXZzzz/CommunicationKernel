@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using CommunicationKernel.Core.Protocol.Abstractions;
 using CommunicationKernel.Core.Transport.Abstractions;
 using CommunicationKernel.Core.Abstractions.Results;
+using CommunicationKernel.Core.EngineRouter;
 using CommunicationKernel.Core.EngineRouter.Abstractions;
 using CommunicationKernel.Core.EngineRouter.Models;
 
