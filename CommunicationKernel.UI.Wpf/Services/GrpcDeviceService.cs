@@ -4,15 +4,22 @@
 // 文件: Services/GrpcDeviceService.cs
 // 层级: UI 层 — WPF 服务实现
 // 作用: IDeviceService 的 gRPC 实现，封装路由注册/查询/状态流，并作为 IRouteReconciler 恢复丢失路由。
+//
+// 本文件<b>不引用 System.Windows</b>，也不持有任何界面集合。
+//   此前它持有 ObservableCollection<DeviceInfo>，并在 9 处用
+//   Application.Current.Dispatcher.InvokeAsync 切回 UI 线程改集合与改属性。
+//   现在改为：只产出数据、发事件，切线程由订阅方（ViewModels/DeviceListModel）负责。
+//
+//   除了分层洁癖，这样做还修掉一个真实故障：Application.Current 在应用退出途中
+//   会变成 null，那几处 InvokeAsync 会被整段跳过且不留任何日志——
+//   表现是关闭过程中最后一批状态更新静默丢失。
 // -----------------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Logging;
@@ -79,16 +86,17 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <inheritdoc />
         public event Action<string> OperationFailed;
 
-        // ============================================================================
-        // 公开属性
-        // ============================================================================
+        /// <inheritdoc />
+        public event Action<IReadOnlyList<DeviceListItem>> DevicesChanged;
 
-        /// <summary>
-        /// 当前设备列表，ObservableCollection 自动通知 WPF 列表控件刷新。
-        /// 所有修改操作均通过 UI 线程 Dispatcher 执行。
-        /// </summary>
-        public ObservableCollection<DeviceInfo> Devices { get; }
-            = new ObservableCollection<DeviceInfo>();
+        /// <inheritdoc />
+        public event Action<DeviceListItem> DeviceUpserted;
+
+        /// <inheritdoc />
+        public event Action<string> DeviceRemoved;
+
+        /// <inheritdoc />
+        public event Action<DeviceStatusUpdate> DeviceStatusChanged;
 
         // ============================================================================
         // 构造函数
@@ -105,15 +113,21 @@ namespace CommunicationKernel.UI.Wpf.Services
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _log    = log;
             _config = new DeviceConfigStore(log);
-
-            // 先用本地配置把设备列表填满，再由 Load() 与服务端对账。
-            //
-            // 顺序很重要：宿主没起来时 QueryRoutes 会失败，若等它返回再填列表，
-            // 界面就会是空的，操作员看不出「设备还在、只是宿主连不上」。
-            // 此处构造发生在 DI 建容器时（UI 线程），可直接操作 ObservableCollection。
-            foreach (DeviceConfigStore.DeviceRecord record in _config.GetAll())
-                Devices.Add(ToDeviceInfo(record));
         }
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// 未与宿主对账过，因此一律按「宿主侧没有」给出：订阅方据此把设备显示为离线。
+        /// 订阅方应当先取本快照做初始填充，再订阅事件——
+        /// 宿主没起来时 <see cref="Load"/> 会失败，若等它返回才填列表，
+        /// 界面就是空的，操作员看不出「设备还在、只是宿主连不上」。
+        /// </remarks>
+        public IReadOnlyList<DeviceListItem> Snapshot()
+            => _config.GetAll()
+                .Select(record => new DeviceListItem {
+                    Device = ToDeviceInfo(record), PresentOnHost = false,
+                })
+                .ToList();
 
         /// <summary>把持久化记录还原成界面用的设备对象（状态一律从离线起步）。</summary>
         private static DeviceInfo ToDeviceInfo(DeviceConfigStore.DeviceRecord record)
@@ -136,6 +150,10 @@ namespace CommunicationKernel.UI.Wpf.Services
                 TransportKind     = record.TransportKind ?? string.Empty,
                 ExtraSettingsJson = record.ExtraSettingsJson ?? string.Empty,
 
+                // 漏掉这一行的后果是隐性的：卡片建出来时是 0，操作员改个名字触发
+                // Update，就把现场调好的帧间静默悄悄写回 0 了，且不报任何错
+                MinIoIntervalMs   = record.MinIoIntervalMs,
+
                 // 运行期状态不持久化：显示一个从未验证过的连接状态比不显示更糟
                 StatusType        = DeviceStatusType.Offline,
                 IsConnected       = false
@@ -147,13 +165,13 @@ namespace CommunicationKernel.UI.Wpf.Services
         // ============================================================================
 
         /// <summary>
-        /// 从 gRPC 后端加载路由列表并合并到本地 Devices 集合。
-        /// 合并策略：
-        ///   • 已有且服务端仍存在的路由 → 更新元数据（IP/Port 等），保留连接状态；
-        ///   • 服务端新增的路由 → 追加为 Offline；
-        ///   • 本地有但服务端已删除的路由 → 从本地移除。
-        /// 合并完成后已连接设备的 WatchRouteStatus 流不受影响。
+        /// 从 gRPC 后端拉取路由列表，与本地配置合并后经 <see cref="DevicesChanged"/> 发布。
         /// </summary>
+        /// <remarks>
+        /// 立即返回，实际工作在后台线程；事件也在该后台线程触发。
+        /// 宿主不可达时只记日志、不发事件——保留界面上的现有列表，
+        /// 清空它会让操作员以为设备丢了。
+        /// </remarks>
         public void Load()
         {
             // 后台拉取，避免 QueryRoutes 阻塞设备页
@@ -166,89 +184,8 @@ namespace CommunicationKernel.UI.Wpf.Services
                         .QueryRoutesAsync()
                         .ConfigureAwait(false);
 
-                    // 切回 UI 线程执行集合合并（ObservableCollection 要求 UI 线程访问）
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        // 建立服务端路由 ID 集合，用于 O(1) 查找
-                        var serverIds = new HashSet<string>(
-                            routes.Select(r => r.RouteId),
-                            StringComparer.OrdinalIgnoreCase);
-
-                        // 1. 处理本地有、服务端没有的路由。
-                        //
-                        //    只有「本地也没有持久化配置」的条目才真正删除——
-                        //    那是上一轮从服务端同步来的临时条目，服务端删了就该消失。
-                        //
-                        //    若本地存有配置，说明这是操作员配置过的设备，宿主重启
-                        //    丢了自己的内存路由而已。此前这里一律删除，导致宿主一重启
-                        //    界面上的设备就全部消失，只能手工重录。现在保留并标记离线，
-                        //    等下一次读写触发 EnsureRouteAsync 自动重新注册。
-                        for (int i = Devices.Count - 1; i >= 0; i--)
-                        {
-                            DeviceInfo local = Devices[i];
-                            // 服务端仍有此路由：保留，后面再更新元数据
-                            if (serverIds.Contains(local.Id)) continue;
-
-                            // 本地也无配置：属于临时同步条目，删除
-                            if (_config.Get(local.Id) == null)
-                            {
-                                Devices.RemoveAt(i);
-                                continue;
-                            }
-
-                            // 操作员配置过的设备：宿主丢了路由，保留卡片并标离线
-                            local.IsConnected = false;
-                            local.StatusType  = DeviceStatusType.Offline;
-                        }
-
-                        // 2. 对每条服务端路由执行更新或新增
-                        foreach (RouteDto r in routes)
-                        {
-                            DeviceInfo existing = FindDevice(r.RouteId);
-                            if (existing != null)
-                            {
-                                // 已有：仅更新可变元数据，保留 IsConnected / StatusType 不变
-                                existing.Protocol      = r.ProtocolId;
-                                existing.Ip            = r.Address;
-                                existing.Port          = r.Port;
-                                existing.Station       = r.Station;
-                                existing.SerialPort    = r.SerialPort;
-                                existing.BaudRate      = r.BaudRate;
-                                existing.TransportKind = r.TransportKind;
-                            }
-                            else
-                            {
-                                // 新增：从服务端同步过来的路由默认为离线。
-                                // 名称等本地元数据优先取本地留存值，避免被 RouteId 覆盖。
-                                DeviceConfigStore.DeviceRecord meta = _config.Get(r.RouteId);
-
-                                Devices.Add(new DeviceInfo {
-                                    Id            = r.RouteId,
-                                    Name          = meta != null && !string.IsNullOrWhiteSpace(meta.Name)
-                                        ? meta.Name
-                                        : r.RouteId,
-                                    Model         = meta != null ? (meta.Model ?? "") : "",
-                                    IsDualLane    = meta != null && meta.IsDualLane,
-                                    Protocol      = r.ProtocolId,
-                                    Ip            = r.Address,
-                                    Port          = r.Port,
-                                    Station       = r.Station,
-                                    SerialPort    = r.SerialPort,
-                                    BaudRate      = r.BaudRate,
-                                    TransportKind = r.TransportKind,
-
-                                    // 从本地记录取，不从 RouteDto 取：路由模型里没有这一项。
-                                    // 漏了这一行的后果是隐性的——卡片建出来时是 0，
-                                    // 操作员随便改个名字触发 Update，就把现场调好的
-                                    // 帧间静默悄悄写回 0 了。
-                                    MinIoIntervalMs = meta?.MinIoIntervalMs ?? 0,
-
-                                    StatusType    = DeviceStatusType.Offline,
-                                    IsConnected   = false,
-                                });
-                            }
-                        }
-                    });
+                    // 合并成纯数据快照后发事件；落到界面集合是订阅方的事
+                    DevicesChanged?.Invoke(BuildSnapshot(routes));
                 }
                 catch (Exception ex)
                 {
@@ -256,6 +193,82 @@ namespace CommunicationKernel.UI.Wpf.Services
                     _log?.Error("Device", "加载设备列表失败", ex);
                 }
             });
+        }
+
+        /// <summary>
+        /// 把「宿主侧路由」与「本地配置」合并成当前应有的设备集合。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// 结果 = 宿主侧路由 ∪ 本地配置。两个来源都要保留，理由不同：
+        /// </para>
+        /// <list type="bullet">
+        ///   <item>
+        ///     只在宿主侧的路由：别的上位机注册的，或本机配置被手工删过。
+        ///     显示出来才能让操作员看到"这条链路确实存在"。
+        ///   </item>
+        ///   <item>
+        ///     只在本地配置的设备：宿主重启丢了内存路由。此前的实现直接删掉，
+        ///     导致宿主一重启界面上的设备全部消失、只能手工重录。
+        ///     现在保留并标 PresentOnHost=false，等下一次读写触发对账自动补注册。
+        ///   </item>
+        /// </list>
+        /// <para>
+        /// 两边都没有的条目自然不在结果里，订阅方据此移除——
+        /// 那是上一轮从宿主同步来的临时条目，宿主删了就该消失。
+        /// </para>
+        /// </remarks>
+        private List<DeviceListItem> BuildSnapshot(IReadOnlyList<RouteDto> routes)
+        {
+            var result = new List<DeviceListItem>();
+            var seen   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // 1. 宿主侧路由：元数据以宿主为准，名称等本地专有字段从配置补
+            foreach (RouteDto r in routes)
+            {
+                DeviceConfigStore.DeviceRecord meta = _config.Get(r.RouteId);
+
+                result.Add(new DeviceListItem {
+                    PresentOnHost = true,
+                    Device = new DeviceInfo {
+                        Id            = r.RouteId,
+                        Name          = meta != null && !string.IsNullOrWhiteSpace(meta.Name)
+                            ? meta.Name
+                            : r.RouteId,
+                        Model         = meta != null ? (meta.Model ?? string.Empty) : string.Empty,
+                        IsDualLane    = meta != null && meta.IsDualLane,
+                        Protocol      = r.ProtocolId,
+                        Ip            = r.Address,
+                        Port          = r.Port,
+                        Station       = r.Station,
+                        SerialPort    = r.SerialPort,
+                        BaudRate      = r.BaudRate,
+                        TransportKind = r.TransportKind,
+
+                        // 从本地记录取，不从 RouteDto 取：gRPC 的路由模型里没有这一项。
+                        // 漏了会把现场调好的帧间静默在下次 Update 时悄悄写回 0
+                        MinIoIntervalMs = meta != null ? meta.MinIoIntervalMs : 0,
+
+                        // 状态一律从离线起步；真实状态只由 WatchRouteStatus 流推送。
+                        // 订阅方对已存在的条目会保留其当前状态，不会被这里覆盖
+                        StatusType    = DeviceStatusType.Offline,
+                        IsConnected   = false,
+                    },
+                });
+                seen.Add(r.RouteId);
+            }
+
+            // 2. 仅存在于本地配置的设备：宿主重启丢了路由，保留并标为不在宿主侧
+            foreach (DeviceConfigStore.DeviceRecord record in _config.GetAll())
+            {
+                if (record.Id == null || seen.Contains(record.Id)) continue;
+
+                result.Add(new DeviceListItem {
+                    Device = ToDeviceInfo(record), PresentOnHost = false,
+                });
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -402,33 +415,26 @@ namespace CommunicationKernel.UI.Wpf.Services
             DeviceConfigStore.DeviceRecord record = _config.Get(routeId);
             if (record == null) return;
 
-            Application app = Application.Current;
-            if (app == null) return;
-
-            app.Dispatcher.InvokeAsync(() =>
-            {
-                DeviceInfo existing = FindDevice(routeId);
-                if (existing == null)
-                {
-                    Devices.Add(ToDeviceInfo(record));
-                    return;
-                }
-
-                existing.IsConnected = false;
-                existing.StatusType  = DeviceStatusType.Offline;
+            // PresentOnHost=false：宿主侧注册没成功，订阅方据此把它显示为离线。
+            // 幂等由订阅方保证——它按 Id 决定是新增还是就地更新
+            DeviceUpserted?.Invoke(new DeviceListItem {
+                Device = ToDeviceInfo(record), PresentOnHost = false,
             });
         }
 
-        /// <summary>切回 UI 线程触发 <see cref="OperationFailed"/>，供界面弹出提示。</summary>
-        private void RaiseFailure(string message)
-        {
-            // 应用正在退出时 Dispatcher 可能已空
-            Application app = Application.Current;
-            if (app == null) return;
+        /// <summary>发布一条面向操作员的失败描述。</summary>
+        /// <remarks>
+        /// 在当前（后台）线程直接触发，不做线程切换——切回 UI 线程是订阅方的责任。
+        /// 此前这里用 Application.Current.Dispatcher 转发，且在 Application.Current
+        /// 为 null（应用退出途中）时直接 return，导致最后一批错误提示被静默吞掉。
+        /// </remarks>
+        private void RaiseFailure(string message) => OperationFailed?.Invoke(message);
 
-            // 切回 UI 线程，订阅方（设备页）可直接弹框
-            app.Dispatcher.InvokeAsync(() => OperationFailed?.Invoke(message));
-        }
+        /// <summary>发布一台设备的连接状态变化。</summary>
+        private void RaiseStatus(string routeId, bool connected, DeviceStatusType status)
+            => DeviceStatusChanged?.Invoke(new DeviceStatusUpdate {
+                RouteId = routeId, IsConnected = connected, Status = status,
+            });
 
         /// <summary>
         /// 把设备配置写入本地持久化存储。
@@ -562,17 +568,15 @@ namespace CommunicationKernel.UI.Wpf.Services
                     return;
                 }
 
-                // 3. 服务端已注销，切回 UI 线程移除本地条目
-                await Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    DeviceInfo target = FindDevice(id);
-                    if (target != null)
-                        Devices.Remove(target);
-                });
-
-                // 配置随设备一并清除：既避免同 RouteId 复用时残留旧名称，
-                // 也确保 EnsureRouteAsync 不会把操作员刚删掉的设备又注册回去
+                // 3. 配置随设备一并清除：既避免同 RouteId 复用时残留旧名称，
+                //    也确保 EnsureRouteAsync 不会把操作员刚删掉的设备又注册回去。
+                //
+                //    必须排在发事件之前：订阅方收到 DeviceRemoved 后可能立刻
+                //    重新取快照，那时配置若还在，删掉的设备会当场复活
                 _config.Delete(id);
+
+                // 4. 通知订阅方移除界面条目
+                DeviceRemoved?.Invoke(id);
             });
         }
 
@@ -583,9 +587,14 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// </summary>
         /// <param name="id">目标路由 ID。</param>
         /// <param name="ct">外部取消令牌，取消后停止监听。</param>
-        public async Task ConnectAsync(string id, CancellationToken ct)
+        /// <remarks>
+        /// 同步完成：本方法只负责挂起状态流并发一条「连接中」，不等待任何 I/O。
+        /// 去掉 Dispatcher 之后这里已无 await，保留 async 只会得到 CS1998。
+        /// 真正的连接结果由 <see cref="DeviceStatusChanged"/> 异步推送。
+        /// </remarks>
+        public Task ConnectAsync(string id, CancellationToken ct)
         {
-            // 若该路由已有状态流，先取消旧的，避免双流争写同一 DeviceInfo
+            // 若该路由已有状态流，先取消旧的，避免两条流争相推送同一设备的状态
             CancellationTokenSource oldCts = null;
             lock (_watchLock)
             {
@@ -605,59 +614,36 @@ namespace CommunicationKernel.UI.Wpf.Services
             }
 
             // 卡片先显示「连接中」，真正结果由状态流推送
-            await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                DeviceInfo dev = FindDevice(id);
-                if (dev != null)
-                {
-                    dev.StatusType  = DeviceStatusType.Connecting;
-                    dev.IsConnected = false;
-                }
-            });
+            RaiseStatus(id, connected: false, DeviceStatusType.Connecting);
 
             // 后台消费 WatchRouteStatus 流
             _ = Task.Run(async () =>
             {
-                await _client.WatchRouteStatusAsync(id, async dto =>
+                await _client.WatchRouteStatusAsync(id, dto =>
                 {
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        DeviceInfo dev = FindDevice(dto.RouteId);
-                        // 设备可能已被删除
-                        if (dev == null) return;
-
-                        if (dto.Online)
-                        {
-                            // 在线：绿灯
-                            dev.IsConnected = true;
-                            dev.StatusType  = DeviceStatusType.Success;
-                        }
-                        else
-                        {
-                            // 离线：无错误码视为正常断开，有错误码标红
-                            dev.IsConnected = false;
-                            dev.StatusType  = string.IsNullOrEmpty(dto.ErrorCode)
+                    // 在线绿灯；离线时无错误码视为正常断开，有错误码标红
+                    RaiseStatus(
+                        dto.RouteId,
+                        dto.Online,
+                        dto.Online
+                            ? DeviceStatusType.Success
+                            : string.IsNullOrEmpty(dto.ErrorCode)
                                 ? DeviceStatusType.Offline
-                                : DeviceStatusType.Error;
-                        }
-                    });
+                                : DeviceStatusType.Error);
+
+                    return Task.CompletedTask;
                 },
                 // 流中断回调：立刻把设备置为错误态，避免界面残留虚假的"已连接"绿灯。
                 // 客户端会自动退避重连，恢复后状态流会推来真实状态。
-                onDisconnected: async () =>
+                onDisconnected: () =>
                 {
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
-                    {
-                        DeviceInfo dev = FindDevice(id);
-                        if (dev == null) return;
-
-                        // 流中断：标红，等待客户端重连后再推真实状态
-                        dev.IsConnected = false;
-                        dev.StatusType  = DeviceStatusType.Error;
-                    });
+                    RaiseStatus(id, connected: false, DeviceStatusType.Error);
+                    return Task.CompletedTask;
                 },
                 ct: cts.Token).ConfigureAwait(false);
             }, cts.Token);
+
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -681,36 +667,8 @@ namespace CommunicationKernel.UI.Wpf.Services
                 cts.Dispose();
             }
 
-            // 切回 UI 线程把卡片置为离线
-            Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                DeviceInfo dev = FindDevice(id);
-                if (dev != null)
-                {
-                    dev.IsConnected = false;
-                    dev.StatusType  = DeviceStatusType.Offline;
-                }
-            });
-        }
-
-        // ============================================================================
-        // 私有辅助方法
-        // ============================================================================
-
-        /// <summary>
-        /// 在 Devices 集合中查找指定 ID 的设备。
-        /// 必须在 UI 线程上调用。
-        /// </summary>
-        private DeviceInfo FindDevice(string id)
-        {
-            foreach (DeviceInfo d in Devices)
-            {
-                // RouteId 精确匹配
-                if (d.Id == id)
-                    return d;
-            }
-            // 未找到（可能刚被删除）
-            return null;
+            // 发布离线状态；落到卡片上由订阅方在 UI 线程完成
+            RaiseStatus(id, connected: false, DeviceStatusType.Offline);
         }
     }
 }

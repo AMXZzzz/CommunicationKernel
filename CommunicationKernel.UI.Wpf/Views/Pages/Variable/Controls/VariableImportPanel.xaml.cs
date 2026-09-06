@@ -25,6 +25,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
+using CommunicationKernel.UI.Wpf.ViewModels;
 using CommunicationKernel.UI.Wpf.Core.Models;
 using Microsoft.Win32;
 
@@ -44,8 +45,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         /// <summary>变量管理服务，由 VariableConfigPage 在初始化后注入。</summary>
         public IVariableService VariableService { get; set; }
 
-        /// <summary>设备管理服务，由 VariableConfigPage 在初始化后注入，供全局范围导入时验证 DeviceId。</summary>
-        public IDeviceService DeviceService { get; set; }
+        /// <summary>设备列表，由 VariableConfigPage 在初始化后注入，供全局范围导入时验证 DeviceId。</summary>
+        public DeviceListModel DeviceList { get; set; }
 
         // -------------------------------------------------------------------------
         // 事件回调（委托给父页面处理 UI 层弹窗）
@@ -341,8 +342,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
                 // 全局模式：从 JSON 读 deviceId 并验证存在
                 deviceId = (r.DeviceId ?? "").Trim();
                 if (string.IsNullOrEmpty(deviceId) ||
-                    DeviceService == null ||
-                    DeviceService.Devices.All(d => d == null || d.Id != deviceId)) {
+                    DeviceList == null ||
+                    DeviceList.Devices.All(d => d == null || d.Id != deviceId)) {
                     fail = "deviceId";
                     return false;
                 }

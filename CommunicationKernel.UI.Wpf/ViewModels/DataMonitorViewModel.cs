@@ -3,9 +3,9 @@
 // -----------------------------------------------------------------------------
 // 文件: ViewModels/DataMonitorViewModel.cs
 // 层级: UI 层 — WPF MES 监控页 ViewModel
-// 作用: 从 IDeviceService.Devices 同步设备列表，供 DataMonitorPage 动态生成 MesDeviceCard。
+// 作用: 从 DeviceListModel.Devices 同步设备列表，供 DataMonitorPage 动态生成 MesDeviceCard。
 // 调用链:
-//   IDeviceService.Devices（ObservableCollection）
+//   DeviceListModel.Devices（ObservableCollection）
 //     → CollectionChanged 事件
 //       → DataMonitorViewModel.RebuildMonitoredDevices()
 //         → MonitoredDevices → DataMonitorPage ItemsControl → MesDeviceCard
@@ -22,7 +22,7 @@ namespace CommunicationKernel.UI.Wpf.ViewModels;
 
 /// <summary>
 /// MES 数据监控页（DataMonitorPage）的 ViewModel。
-/// 监听 <see cref="IDeviceService.Devices"/> 集合变化，
+/// 监听 <see cref="DeviceListModel.Devices"/> 集合变化，
 /// 同步维护供 UI 绑定的 <see cref="MonitoredDevices"/> 集合。
 /// </summary>
 public sealed class DataMonitorViewModel : ViewModelBase {
@@ -31,8 +31,11 @@ public sealed class DataMonitorViewModel : ViewModelBase {
     // 私有字段
     // ============================================================================
 
-    /// <summary>设备管理服务，提供实时的 Devices 集合。</summary>
+    /// <summary>设备管理服务，本页只用它触发一次重新加载。</summary>
     private readonly IDeviceService _deviceService;
+
+    /// <summary>界面绑定的设备集合来源，已在 UI 线程上维护。</summary>
+    private readonly DeviceListModel _list;
 
     // ============================================================================
     // 公开属性
@@ -40,7 +43,7 @@ public sealed class DataMonitorViewModel : ViewModelBase {
 
     /// <summary>
     /// 供 DataMonitorPage 的 ItemsControl 绑定的设备列表。
-    /// 内容来自 <see cref="IDeviceService.Devices"/>，在 UI 线程同步更新。
+    /// 内容来自 <see cref="DeviceListModel.Devices"/>，在 UI 线程同步更新。
     /// </summary>
     public ObservableCollection<DeviceInfo> MonitoredDevices { get; }
         = new ObservableCollection<DeviceInfo>();
@@ -57,13 +60,16 @@ public sealed class DataMonitorViewModel : ViewModelBase {
     // ============================================================================
 
     /// <param name="deviceService">设备管理服务，必须非 null。</param>
-    public DataMonitorViewModel(IDeviceService deviceService) {
+    /// <param name="list">界面绑定的设备集合模型，必须非 null。</param>
+    public DataMonitorViewModel(IDeviceService deviceService, DeviceListModel list) {
         // 保存服务引用并校验非空
         _deviceService = deviceService
             ?? throw new ArgumentNullException(nameof(deviceService));
+        _list = list ?? throw new ArgumentNullException(nameof(list));
 
-        // 订阅设备集合变化，任意线程均可触发，内部切回 UI 线程
-        _deviceService.Devices.CollectionChanged += (_, __) => RebuildMonitoredDevices();
+        // 订阅设备集合变化。DeviceListModel 只在 UI 线程上改这个集合，
+        // 因此本回调必定在 UI 线程执行，可直接改 MonitoredDevices
+        _list.Devices.CollectionChanged += (_, __) => RebuildMonitoredDevices();
 
         // 绑定刷新命令：触发 gRPC 重新加载路由
         RefreshCommand = new RelayCommand(() => _deviceService.Load());
@@ -77,7 +83,7 @@ public sealed class DataMonitorViewModel : ViewModelBase {
     // ============================================================================
 
     /// <summary>
-    /// 将 <see cref="IDeviceService.Devices"/> 的当前快照同步到 <see cref="MonitoredDevices"/>。
+    /// 将 <see cref="DeviceListModel.Devices"/> 的当前快照同步到 <see cref="MonitoredDevices"/>。
     /// 使用增量对比（移除已删除、追加新增）以减少 UI 刷新量。
     /// 若当前不在 UI 线程，使用 Dispatcher.InvokeAsync 切换。
     /// </summary>
@@ -99,7 +105,7 @@ public sealed class DataMonitorViewModel : ViewModelBase {
     private void DoRebuild() {
         // 快照当前服务中的设备 ID，用于差量对比
         var sourceIds = new System.Collections.Generic.HashSet<string>();
-        foreach (DeviceInfo d in _deviceService.Devices) {
+        foreach (DeviceInfo d in _list.Devices) {
             if (d != null && !string.IsNullOrEmpty(d.Id))
                 sourceIds.Add(d.Id);
         }
@@ -121,7 +127,7 @@ public sealed class DataMonitorViewModel : ViewModelBase {
         }
 
         // 追加服务中新增但尚未显示的设备
-        foreach (DeviceInfo d in _deviceService.Devices) {
+        foreach (DeviceInfo d in _list.Devices) {
             if (d == null || string.IsNullOrEmpty(d.Id))
                 continue;
 

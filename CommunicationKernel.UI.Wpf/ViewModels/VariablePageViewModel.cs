@@ -37,7 +37,14 @@ public sealed class VariablePageViewModel : ViewModelBase {
     /// <summary>变量服务，变量的增删改查都经它。</summary>
     private readonly IVariableService _variables;
     /// <summary>设备服务，用于取当前设备信息与校验选中。</summary>
-    private readonly IDeviceService   _devices;
+    /// <summary>
+    /// 界面绑定的设备集合。
+    /// </summary>
+    /// <remarks>
+    /// 本页只读设备列表（选设备、查字节序），不做任何增删连断，
+    /// 因此持有列表模型而非 <c>IDeviceService</c>——少一条依赖就少一处能误用的入口。
+    /// </remarks>
+    private readonly DeviceListModel _devices;
     /// <summary>应用日志记录器，可为 null（此时不记录日志）。</summary>
     private readonly IAppLogger       _log;
 
@@ -51,8 +58,8 @@ public sealed class VariablePageViewModel : ViewModelBase {
     /// <summary>供页面给子控件属性注入。</summary>
     public IVariableService VariableService => _variables;
 
-    /// <summary>供页面给子控件属性注入。</summary>
-    public IDeviceService DeviceService => _devices;
+    /// <summary>供页面给子控件属性注入（子控件只读设备列表）。</summary>
+    public DeviceListModel DeviceList => _devices;
 
     /// <summary>左侧当前选中的设备 Id。</summary>
     public string SelectedDeviceId {
@@ -75,13 +82,13 @@ public sealed class VariablePageViewModel : ViewModelBase {
     // ============================================================================
 
     /// <param name="variables">变量管理服务（必须非 null）。</param>
-    /// <param name="devices">设备管理服务（必须非 null）。</param>
+    /// <param name="devices">界面绑定的设备集合模型（必须非 null）。</param>
     /// <param name="logger">可选日志记录器，为 null 时不记录日志。</param>
     public VariablePageViewModel(
         IVariableService variables,
-        IDeviceService   devices,
+        DeviceListModel  devices,
         IAppLogger       logger = null) {
-        // 变量与设备服务必填；日志器可空
+        // 变量服务与设备列表必填；日志器可空
         _variables = variables ?? throw new ArgumentNullException(nameof(variables));
         _devices   = devices   ?? throw new ArgumentNullException(nameof(devices));
         _log       = logger;

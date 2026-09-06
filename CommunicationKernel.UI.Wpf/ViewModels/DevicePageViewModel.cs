@@ -36,9 +36,17 @@ public sealed class DevicePageViewModel : ViewModelBase {
     // 私有字段
     // ============================================================================
 
-    /// <summary>设备管理服务，封装 gRPC 路由管理操作。</summary>
     /// <summary>设备服务，所有设备增删连断都经它。</summary>
     private readonly IDeviceService _devices;
+
+    /// <summary>
+    /// 供界面绑定的设备集合。
+    /// </summary>
+    /// <remarks>
+    /// 集合与失败提示都从这里取，不从 <see cref="_devices"/> 取：
+    /// 服务在后台线程发事件，由本模型统一切回 UI 线程。
+    /// </remarks>
+    private readonly DeviceListModel _list;
 
     /// <summary>应用日志记录器，可为 null（此时不记录日志）。</summary>
     private readonly IAppLogger _log;
@@ -125,10 +133,12 @@ public sealed class DevicePageViewModel : ViewModelBase {
     // ============================================================================
 
     /// <param name="devices">设备管理服务（必须非 null）。</param>
+    /// <param name="list">界面绑定的设备集合模型（必须非 null）。</param>
     /// <param name="logger">可选日志记录器，为 null 时不记录日志。</param>
-    public DevicePageViewModel(IDeviceService devices, IAppLogger logger = null) {
-        // 设备服务必填，日志器可空
+    public DevicePageViewModel(IDeviceService devices, DeviceListModel list, IAppLogger logger = null) {
+        // 设备服务与列表模型必填，日志器可空
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
+        _list    = list    ?? throw new ArgumentNullException(nameof(list));
         _log     = logger;
 
         // 绑定工具栏命令：全部连接走 async，Task 被 RelayCommand 忽略属预期
@@ -148,10 +158,14 @@ public sealed class DevicePageViewModel : ViewModelBase {
         DisconnectDevice = id => _devices.Disconnect(id);
 
         // 设备集合变化时重建展示列表（含末尾「添加」占位卡）
-        _devices.Devices.CollectionChanged += (_, __) => RebuildDisplayList();
+        _list.Devices.CollectionChanged += (_, __) => RebuildDisplayList();
 
-        // Add / Update 是即发即忘，失败只能通过此事件让用户看到原因
-        _devices.OperationFailed += msg => {
+        // Add / Update 是即发即忘，失败只能通过此事件让用户看到原因。
+        //
+        // 订阅 _list 而不是 _devices：服务在后台线程发事件，_list 已经替我们
+        // 切回了 UI 线程。直接订服务的话，RequestShowError 会在后台线程弹框，
+        // WPF 会当场抛线程异常，而且是在事件处理器里抛——没人接得住。
+        _list.OperationFailed += msg => {
             _log?.Error("Device", msg);
             RequestShowError?.Invoke(msg);
         };
@@ -223,7 +237,7 @@ public sealed class DevicePageViewModel : ViewModelBase {
     /// <summary>连接所有未连接设备（串行）。</summary>
     private async Task ConnectAllAsync() {
         // 快照未连接设备，避免迭代中集合变化
-        List<DeviceInfo> list = _devices.Devices
+        List<DeviceInfo> list = _list.Devices
             .Where(d => d != null && !d.IsConnected)
             .ToList();
 
@@ -259,7 +273,7 @@ public sealed class DevicePageViewModel : ViewModelBase {
 
     /// <summary>断开所有已连接设备。</summary>
     private void DisconnectAll() {
-        foreach (DeviceInfo d in _devices.Devices.ToList()) {
+        foreach (DeviceInfo d in _list.Devices.ToList()) {
             if (d == null || string.IsNullOrEmpty(d.Id)) continue;
             // 取消 WatchRouteStatus 并把状态置为离线
             _devices.Disconnect(d.Id);
@@ -304,11 +318,11 @@ public sealed class DevicePageViewModel : ViewModelBase {
     private void RebuildDisplayList() {
         // 清空后按当前 Devices 重建，末尾固定放「添加设备」卡
         DisplayList.Clear();
-        foreach (DeviceInfo d in _devices.Devices)
+        foreach (DeviceInfo d in _list.Devices)
             DisplayList.Add(d);
 
         // 末尾添加「添加设备」占位符卡片
         DisplayList.Add(AddDeviceMarker.Instance);
-        DeviceCount = _devices.Devices.Count;
+        DeviceCount = _list.Devices.Count;
     }
 }

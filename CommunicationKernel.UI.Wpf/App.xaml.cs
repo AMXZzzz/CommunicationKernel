@@ -87,6 +87,13 @@ public partial class App : Application {
         await _host.StartAsync().ConfigureAwait(true);
 
         // 3. 预加载设备列表：后台 QueryRoutes，完成后刷新 DevicePage / DataMonitorPage
+        //
+        //    必须先把 DeviceListModel 建出来再调 Load()，顺序不能反。
+        //    Load 是即发即忘的：它在后台线程拿到路由后<b>发一次事件就结束</b>，
+        //    不缓存结果。此刻若订阅者还没实例化（DeviceListModel 要等第 6 步
+        //    建主窗口时才被 DI 顺带解析），这次刷新就静默丢失——
+        //    界面上只剩本地配置，全部显示离线，要等操作员手动点一次「刷新」才对账。
+        _ = _host.Services.GetRequiredService<DeviceListModel>();
         _host.Services.GetRequiredService<IDeviceService>().Load();
 
         // 4. 启动变量轮询：对 IsPollingEnabled=true 的变量按 ScanRateMs 周期 ReadAsync
@@ -194,6 +201,13 @@ public partial class App : Application {
         services.AddSingleton<IRouteReconciler>(sp =>
             (IRouteReconciler)sp.GetRequiredService<IDeviceService>());
 
+        // 供界面绑定的设备集合：订阅 IDeviceService 的事件并切回 UI 线程。
+        //
+        // 必须是单例——设备页、MES 监控页、变量页共享同一份列表。
+        // 各自建一份的话，同一台设备会在三个页面上显示成三种状态。
+        services.AddSingleton<DeviceListModel>(sp =>
+            new DeviceListModel(sp.GetRequiredService<IDeviceService>()));
+
         // 内存变量表；写入走 gRPC WriteAsync
         services.AddSingleton<IVariableService>(sp =>
             new LocalVariableStore(sp.GetRequiredService<HostingClient>()));
@@ -222,6 +236,7 @@ public partial class App : Application {
         services.AddSingleton<DevicePageViewModel>(sp =>
             new DevicePageViewModel(
                 sp.GetRequiredService<IDeviceService>(),
+                sp.GetRequiredService<DeviceListModel>(),
                 sp.GetRequiredService<IAppLogger>()));
 
         // 日志过滤与清空
@@ -232,12 +247,14 @@ public partial class App : Application {
         services.AddSingleton<VariablePageViewModel>(sp =>
             new VariablePageViewModel(
                 sp.GetRequiredService<IVariableService>(),
-                sp.GetRequiredService<IDeviceService>(),
+                sp.GetRequiredService<DeviceListModel>(),
                 sp.GetRequiredService<IAppLogger>()));
 
-        // MES 监控卡片：从 IDeviceService.Devices 同步
+        // MES 监控卡片：从 DeviceListModel.Devices 同步
         services.AddSingleton<DataMonitorViewModel>(sp =>
-            new DataMonitorViewModel(sp.GetRequiredService<IDeviceService>()));
+            new DataMonitorViewModel(
+                sp.GetRequiredService<IDeviceService>(),
+                sp.GetRequiredService<DeviceListModel>()));
 
         // 地址配置、连接测试、设置持久化
         // 不注入 HostingClient：测试连接要验的是输入框里的新地址，

@@ -12,12 +12,13 @@ using System.Windows;
 using System.Windows.Controls;
 using CommunicationKernel.UI.Wpf.Core.Models;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
+using CommunicationKernel.UI.Wpf.ViewModels;
 
 namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
     /// <summary>右侧当前设备标题与操作按钮。</summary>
     public partial class VariableDeviceHeader : UserControl {
-        /// <summary>由页面注入。</summary>
-        public IDeviceService DeviceService { get; set; }
+        /// <summary>由页面注入。本控件只读设备列表，因此拿列表模型而非设备服务。</summary>
+        public DeviceListModel DeviceList { get; set; }
 
         /// <summary>「添加变量」被点击。</summary>
         public event Action AddClicked;
@@ -42,13 +43,13 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
         /// </param>
         public void Show (string deviceId) {
             // 未选设备或服务未注入：回到占位文案
-            if (string.IsNullOrEmpty(deviceId) || DeviceService == null) {
+            if (string.IsNullOrEmpty(deviceId) || DeviceList == null) {
                 txtTitle.Text = "请选择设备";
                 txtMeta.Text = "";
                 return;
             }
 
-            DeviceInfo d = DeviceService.Devices.FirstOrDefault(x => x != null && x.Id == deviceId);
+            DeviceInfo d = DeviceList.Devices.FirstOrDefault(x => x != null && x.Id == deviceId);
             if (d == null) {
                 txtTitle.Text = "请选择设备";
                 txtMeta.Text = "";

@@ -90,20 +90,20 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable {
 
             // 左侧列表同时要设备清单和变量计数
             if (deviceList != null) {
-                deviceList.DeviceService = _vm.DeviceService;
+                deviceList.DeviceList = _vm.DeviceList;
                 deviceList.VariableService = _vm.VariableService;
             }
 
             if (deviceHeader != null)
-                deviceHeader.DeviceService = _vm.DeviceService;
+                deviceHeader.DeviceList = _vm.DeviceList;
 
             if (exportPanel != null)
                 exportPanel.VariableService = _vm.VariableService;
 
-            // 导入要校验 DeviceId，设备服务一并注入
+            // 导入要校验 DeviceId，设备列表一并注入
             if (importPanel != null) {
                 importPanel.VariableService = _vm.VariableService;
-                importPanel.DeviceService = _vm.DeviceService;
+                importPanel.DeviceList = _vm.DeviceList;
             }
         }
 

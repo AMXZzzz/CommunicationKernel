@@ -15,12 +15,13 @@ using System.Windows.Media;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Models;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
+using CommunicationKernel.UI.Wpf.ViewModels;
 
 namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
     /// <summary>左侧设备列表。选中时触发 <see cref="DeviceSelected"/>。</summary>
     public partial class VariableDeviceList : UserControl {
-        /// <summary>由页面注入。</summary>
-        public IDeviceService DeviceService { get; set; }
+        /// <summary>由页面注入。本控件只读设备列表，因此拿列表模型而非设备服务。</summary>
+        public DeviceListModel DeviceList { get; set; }
         /// <summary>由页面注入。</summary>
         public IVariableService VariableService { get; set; }
 
@@ -54,8 +55,8 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Variable.Controls {
             string keep = _selectedId;
             _items.Clear();
 
-            if (DeviceService != null) {
-                foreach (DeviceInfo d in DeviceService.Devices) {
+            if (DeviceList != null) {
+                foreach (DeviceInfo d in DeviceList.Devices) {
                     if (d == null) continue;
                     _items.Add(Row.From(d, CountVars(d.Id), BrushOf));
                 }
