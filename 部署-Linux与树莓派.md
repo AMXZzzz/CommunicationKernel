@@ -49,6 +49,7 @@
   - [界面](#界面)
   - [几个值得先用的](#几个值得先用的)
   - [两条设计约定](#两条设计约定)
+- [从 Windows 传文件到 Linux：行尾](#从-windows-传文件到-linux行尾)
 - [排障速查](#排障速查)
 
 ---
@@ -980,6 +981,52 @@ sudo ck
 每次改配置前自动备份为 `appsettings.json.bak.<时间戳>`,`(14)` 可随时回退。
 
 
+## 从 Windows 传文件到 Linux：行尾
+
+仓库里的 `scripts/ck-panel.sh` 等 shell 脚本**必须是 LF 行尾**，这是功能要求不是风格偏好。
+
+带 CRLF 的脚本传到树莓派上会这样失败：
+
+```
+$ ./ck-panel.sh
+-bash: ./ck-panel.sh: /usr/bin/env^M: bad interpreter: No such file or directory
+```
+
+原因是 shebang 那一行的结尾多了 `\r`，内核拿到的解释器名字变成 `env\r`（或 `bash\r`），
+系统里当然没有这个程序。**报错说的是"找不到"，但文件明明就在那里**——这一点让它格外难查。
+
+本仓库已由 `.gitattributes` 强制：
+
+```gitattributes
+*.sh   text eol=lf
+*.bash text eol=lf
+```
+
+正常 `git clone` 出来的脚本一定是对的。会出问题的是这几种绕过 git 的传法：
+
+- 在 Windows 记事本里打开脚本改一行再保存（记事本会按原样保留，但很多编辑器会转成 CRLF）；
+- 从网页或聊天工具复制脚本内容，粘贴进 Windows 编辑器另存；
+- 用某些 FTP 客户端的「ASCII 模式」传输（它会主动转换行尾）。
+
+传输一律用二进制模式（`scp` / `rsync` 默认就是）。已经传坏的可以就地修：
+
+```bash
+sed -i 's/\r$//' ck-panel.sh
+```
+
+或者先确认是不是这个问题：
+
+```bash
+head -c 40 ck-panel.sh | od -c | head -2
+```
+
+输出里出现 `\r  \n` 就是 CRLF，只有 `\n` 才是对的。
+
+> `appsettings.json` 等配置文件不受影响——JSON 解析器不在乎行尾。
+> 只有被当作**可执行文件**读取的脚本才会因此失效。
+
+---
+
 ## 排障速查
 
 启动日志里必然有这一行，先看它：
@@ -995,6 +1042,7 @@ info: Hosting.App.Startup[0]
 | 现象 | 原因 |
 |---|---|
 | 协议列表是空的，无任何报错 | 共享契约泄漏进了 `plugins/`，插件静默注册不上 |
+| 脚本报 `bad interpreter: No such file or directory` | **行尾是 CRLF**，见下节。文件明明存在，报的却是"找不到" |
 | gRPC 调用报 `HTTP_1_1_REQUIRED` | 端点 `Protocols` 不是 `Http2` |
 | `Access to the port is denied` | 用户不在 `dialout` 组，或改完组没重新登录 |
 | 串口打开就抛 `PlatformNotSupportedException` | `libSystem.IO.Ports.Native.so` 没随行 |

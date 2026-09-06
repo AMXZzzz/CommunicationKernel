@@ -209,9 +209,24 @@ installer/
 └── output/                     产物，未纳入版本控制
 ```
 
-两个脚本都是 **UTF-8 带 BOM**。别存成不带 BOM 的：
-Windows PowerShell 5.1 会把无 BOM 的 UTF-8 当 ANSI 读，
-中文注释被打散成乱码字符，报出一串跟真实原因毫无关系的语法错。
+两个脚本都是 **UTF-8 带 BOM，CRLF 行尾**。
+
+- **BOM 不能去掉**：Windows PowerShell 5.1 会把无 BOM 的 UTF-8 当 ANSI 读，
+  中文注释被打散成乱码字符，报出一串跟真实原因毫无关系的语法错。
+- **行尾是 CRLF**：由 `.gitattributes` 的默认规则保证（`*.sh` 才是 LF）。
+  这两个文件只在 Windows 上执行，不受 LF 例外影响。
+
+改完脚本可以这样自查，不必真跑一遍打包：
+
+```powershell
+# 前 3 字节应为 239 187 191（EF BB BF）
+Get-Content installer\build-installer.ps1 -Encoding Byte -TotalCount 3
+```
+
+```powershell
+# 语法检查：不执行脚本，只解析
+$e=$null; [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path installer\build-installer.ps1), [ref]$null, [ref]$e); $e
+```
 
 安装包**不含**以下内容，都是刻意的：
 
@@ -224,11 +239,54 @@ Windows PowerShell 5.1 会把无 BOM 的 UTF-8 当 ANSI 读，
 
 ---
 
+## 发布阶段的两个 SDK 错误
+
+这两个只在 **`dotnet publish` 自包含** 时出现，普通 `build` 一路绿灯，因此很容易在打包当天才第一次遇到。
+两者的修复都已经写进 `CommunicationKernel.UI.WebMaster.csproj`，此处记录**为什么**，以免后来者当成冗余配置删掉。
+
+### `NETSDK1150`：自包含项目引用了非自包含的可执行项目
+
+WebMaster 自包含发布时会引用 `Hosting.App`（一个框架依赖的 exe 项目），SDK 直接拒绝。
+
+在 Visual Studio 的发布界面里，这个错误**不会**显示成 `NETSDK1150`，而是显示成
+「**未能找到元数据文件 …\Hosting.App.dll**」——一条指向完全错误方向的提示。
+按字面去查"文件为什么没生成"会白费很多时间；真正的原因在输出窗口更靠上的位置。
+
+```xml
+<!-- 我们只需要 Hosting.App 的托管 dll，不需要它的 apphost。
+     两者自包含性不一致是设计如此，不是配置疏漏。 -->
+<ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+```
+
+### `NETSDK1152`：发布输出里出现重复文件
+
+放开上一条之后，`Hosting.App` 会把自己的 `appsettings.json` 和 apphost 也带进发布目录，
+与 WebMaster 自己的同名文件撞车。
+
+**不要用 `ErrorOnDuplicatePublishOutputFiles=false` 把它关掉**——那是把检查整个关闭，
+以后任何真正的重复（比如两个插件带了同名依赖）都不会再报，而重复文件谁覆盖谁是不确定的。
+正确做法是精确移除那几项：
+
+```xml
+<Target Name="RemoveReferencedAppHostFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+  <ItemGroup>
+    <!-- 只删来自 Hosting.App 的 apphost 与 appsettings，别的重复照旧报错 -->
+    <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                           Condition="…" />
+  </ItemGroup>
+</Target>
+```
+
+以 csproj 里的实际内容为准，这里只说明取舍。
+
+---
+
 ## 排障
 
 | 现象 | 原因 |
 |---|---|
 | `未找到 Inno Setup 6` | 没装，或装在别处。`winget install JRSoftware.InnoSetup` |
+| VS 报`未能找到元数据文件 Hosting.App.dll` | 实为 `NETSDK1150`，见上一节。别去找那个 dll |
 | `Unknown value "x64compatible"` | Inno Setup 版本低于 6.3，升级即可 |
 | `Unknown filename or [Languages] error` | 装 Inno Setup 时没勾简体中文语言包 |
 | 打出的包只有 2–3 MB | 自包含没生效。脚本已有体积校验会拦下，若手工调 ISCC 则不会 |
