@@ -8,6 +8,7 @@
 @inject WebTemplateStore Templates
 @inject NavigationManager Nav
 @inject AppLogStore Log
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>寄存器模板 — CommunicationKernel</PageTitle>
@@ -15,8 +16,10 @@
 <div class="page page-var">
     <div class="toolbar">
         <h2 class="page-title">寄存器模板</h2>
+        @* 工具栏只放页面级操作。「+ 功能」改的是当前选中的模板，
+           已移进右侧「模板组成 · 自有」那一行——放在它真正影响的地方，
+           作用对象才不用猜。 *@
         <button class="btn ghost" type="button" @onclick="AddTemplate">添加模板</button>
-        <button class="btn ghost" type="button" @onclick="AddSlot" disabled="@(_current is null)">+ 功能</button>
         <button class="btn ghost" type="button" @onclick="Export">导出 JSON</button>
         <label class="btn ghost file-btn">
             导入
@@ -60,21 +63,17 @@
                         <button class="btn-sm danger" type="button" @onclick="AskRemoveTpl">删除模板</button>
                     </div>
 
-                    @* 引用其它模板：「启停」这类每台设备都有的功能只需维护一份，
-                       改一次所有引用它的模板跟着变。复制过去做不到这一点。 *@
-                    <div class="tpl-includes">
-                        <div class="tpl-includes-hd">
-                            <span>引用模板</span>
-                            <span class="hint">引用来的功能排在自有功能之前；同名功能以先出现的为准</span>
-                        </div>
+                    @* 模板组成。
+                       上一版把「引用模板 / 同步后共 N 项 / 自有功能」摞成三条灰字，
+                       字重与颜色都一样，一眼看不出这块在讲什么。
+                       改成左侧固定标签列的「组成表」：引用多少 + 自有多少 = 合计多少，
+                       是一道算式，扫一眼就知道这个模板由什么拼成。 *@
+                    <div class="tpl-compose">
+                        <div class="tpl-compose-hd">模板组成</div>
 
-                        @if (_current.Includes.Count == 0)
-                        {
-                            <span class="tpl-none">未引用其它模板</span>
-                        }
-                        else
-                        {
-                            <div class="tpl-chips">
+                        <div class="tpl-row">
+                            <span class="tpl-row-k">引用</span>
+                            <div class="tpl-row-v">
                                 @foreach (string incId in _current.Includes)
                                 {
                                     <span class="tpl-chip">
@@ -85,39 +84,67 @@
                                                 @onclick="() => RemoveInclude(incId)">×</button>
                                     </span>
                                 }
-                            </div>
-                        }
 
-                        @* 只列出「加进来不会成环」的候选。让不能选的当场不出现，
-                           好过选完再弹一句「不允许」。 *@
-                        @if (Candidates.Count > 0)
-                        {
-                            <select class="toolbar-select" value=""
-                                    @onchange="e => AddInclude(e.Value?.ToString())">
-                                <option value="">+ 引用一个模板…</option>
-                                @foreach (WebDeviceTemplate c in Candidates)
+                                @* 引用数量不设上限，可叠多个（启停 + 报警 + 计数…）。
+                                   下拉只列「加进来不会成环」的候选：让不能选的当场不出现，
+                                   好过选完再弹一句「不允许」。
+                                   候选为空时必须说明原因，否则看起来像"只能引用一个"。 *@
+                                @if (Candidates.Count > 0)
                                 {
-                                    <option value="@c.Id">@c.Name（@Templates.ResolveSlots(c.Id).Count 项）</option>
+                                    <select class="tpl-add-sel" value=""
+                                            @onchange="e => AddInclude(e.Value?.ToString())">
+                                        <option value="">+ 引用模板</option>
+                                        @foreach (WebDeviceTemplate c in Candidates)
+                                        {
+                                            <option value="@c.Id">@c.Name（@Templates.ResolveSlots(c.Id).Count 项）</option>
+                                        }
+                                    </select>
                                 }
-                            </select>
+                                else
+                                {
+                                    <span class="tpl-none">@NoCandidateReason</span>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="tpl-row">
+                            <span class="tpl-row-k">自有</span>
+                            <div class="tpl-row-v">
+                                <span class="tpl-count">@_current.Slots.Count 项</span>
+                                @* 「+ 功能」原先在页面工具栏。它改的是当前模板，
+                                   却和「添加模板」「导入导出」这些页面级操作并排，
+                                   看不出作用对象。移到它真正影响的那一行里。 *@
+                                <button class="btn-sm primary" type="button" @onclick="AddSlot">+ 添加功能</button>
+                                <span class="tpl-none">在下表编辑</span>
+                            </div>
+                        </div>
+
+                        <div class="tpl-row tpl-row-total">
+                            <span class="tpl-row-k">合计</span>
+                            <div class="tpl-row-v">
+                                <span class="tpl-count strong">@Resolved.Count 项</span>
+                                <span class="tpl-none">同步到设备后生成：</span>
+                                @foreach (WebDeviceTemplateSlot s in Resolved)
+                                {
+                                    <span class="tpl-slot @(IsOwn(s.Name) ? "own" : "inherited")"
+                                          title="@(IsOwn(s.Name) ? "本模板自有，可在下表改" : "引用而来，需到来源模板里改")">@s.Name</span>
+                                }
+                            </div>
+                        </div>
+
+                        @if (_current.Includes.Count > 0)
+                        {
+                            @* 颜色是唯一区分「哪些能在下表改」的线索，必须给图例。
+                               不给的话，操作员会去下表找那个蓝色的功能名而找不到。 *@
+                            <div class="tpl-legend">
+                                <span class="tpl-slot own">自有</span>可在下表编辑
+                                <span class="tpl-slot inherited">引用</span>需到来源模板里改
+                                <span class="tpl-none">· 同名功能以先出现的为准</span>
+                            </div>
                         }
                     </div>
 
-                    @if (_current.Includes.Count > 0)
-                    {
-                        @* 展开预览：下面那张表只能编辑自有功能，
-                           不给预览的话，操作员看不出这个模板同步下去到底会生成哪些变量。 *@
-                        <div class="tpl-resolved">
-                            <span class="tpl-resolved-hd">同步后共 @Resolved.Count 项：</span>
-                            @foreach (WebDeviceTemplateSlot s in Resolved)
-                            {
-                                <span class="tpl-slot @(IsOwn(s.Name) ? "own" : "inherited")"
-                                      title="@(IsOwn(s.Name) ? "本模板自有" : "引用而来")">@s.Name</span>
-                            }
-                        </div>
-                    }
-
-                    <div class="tpl-own-hd">自有功能（引用来的不在此表，需到来源模板里改）</div>
+                    <div class="tpl-own-hd">自有功能</div>
                     <table class="data-table var-table">
                         <thead>
                             <tr>
@@ -152,7 +179,10 @@
                             }
                         </tbody>
                     </table>
-                    <p class="empty-hint tpl-hint">Bool=1，Int16=2，Int32/Float=4。地址不在这里填。</p>
+                    @* 原来这里有一行「Bool=1，Int16=2…地址不在这里填」。去掉了：
+                       字节数就在上面「字节」列里逐行显示，重复一遍是噪声；
+                       而「地址不在这里填」是在解释一个本来就不存在的输入框，
+                       表里根本没有地址列，这句话反倒让人去找。 *@
                 }
             </section>
         </div>
@@ -167,6 +197,11 @@
                     <button class="close-btn" type="button" @onclick="() => _exportJson = string.Empty">×</button>
                 </div>
                 <textarea class="export-box" readonly>@_exportJson</textarea>
+                <div class="form-ft">
+                    <span class="form-ft-hint">@_exportJson.Length 个字符</span>
+                    <button class="btn ghost" type="button" @onclick="CopyExportAsync">复制</button>
+                    <button class="btn primary" type="button" @onclick="DownloadExportAsync">下载文件</button>
+                </div>
             </div>
         </div>
     }
@@ -287,6 +322,31 @@
                   && !Templates.WouldCreateCycle(_current.Id, t.Id))
               .ToList();
 
+    /// <summary>
+    /// 没有可选候选时的说明文字。
+    /// </summary>
+    /// <remarks>
+    /// <b>引用数量本身不设上限</b>，可以同时引用启停、报警、计数等多个模板。
+    /// 候选为空只会有两种原因，都要讲清楚——不说的话，操作员看到下拉消失
+    /// 会以为"只能引用一个"，从而回去重复抄槽位，正是本功能要消除的做法。
+    /// </remarks>
+    private string NoCandidateReason
+    {
+        get
+        {
+            if (_current is null) return string.Empty;
+
+            // 只有自己一个模板
+            if (List.Count <= 1) return "没有其它模板可引用，先「添加模板」";
+
+            // 剩下的都被过滤掉了：要么已引用，要么引用后会成环
+            int others = List.Count - 1;
+            return _current.Includes.Count >= others
+                ? "已引用全部其它模板"
+                : "其余模板引用了本模板，再引用回去会形成循环";
+        }
+    }
+
     /// <summary>左侧列表的副标题：展开后的功能名，过长时截断。</summary>
     private string SubtitleOf(WebDeviceTemplate t)
     {
@@ -358,6 +418,26 @@
     }
 
     private void Export() => _exportJson = Templates.ExportJson();
+
+    /// <summary>把模板库存成文件。文件名带日期，便于区分多次备份。</summary>
+    private async Task DownloadExportAsync()
+    {
+        string name = "ck-templates-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json";
+        await JS.InvokeVoidAsync("ck.downloadText", name, _exportJson).ConfigureAwait(true);
+
+        _banner = "已导出 " + name;
+        _bannerClass = "status-ok";
+        _exportJson = string.Empty;
+    }
+
+    /// <summary>复制到剪贴板；非安全上下文下由 JS 侧 execCommand 兜底。</summary>
+    private async Task CopyExportAsync()
+    {
+        bool ok = await JS.InvokeAsync<bool>("ck.copyText", _exportJson).ConfigureAwait(true);
+
+        _banner = ok ? "已复制到剪贴板" : "复制失败，请改用「下载文件」";
+        _bannerClass = ok ? "status-ok" : "status-warn";
+    }
 
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {

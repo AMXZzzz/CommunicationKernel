@@ -12,6 +12,7 @@
 @inject IWebVariableService Variables
 @inject WebTemplateStore Templates
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>变量配置 — CommunicationKernel</PageTitle>
@@ -227,6 +228,13 @@
                     <button class="close-btn" type="button" @onclick="() => _exportJson = string.Empty">×</button>
                 </div>
                 <textarea class="export-box" readonly>@_exportJson</textarea>
+                @* 文本框只解决「看一眼」。真要留底得存成文件——
+                   几百个变量靠鼠标框选复制既容易漏选，也丢了文件名和日期。 *@
+                <div class="form-ft">
+                    <span class="form-ft-hint">@_exportJson.Length 个字符</span>
+                    <button class="btn ghost" type="button" @onclick="CopyExportAsync">复制</button>
+                    <button class="btn primary" type="button" @onclick="DownloadExportAsync">下载文件</button>
+                </div>
             </div>
         </div>
     }
@@ -968,8 +976,39 @@
         } finally { _busy = false; }
     }
 
-    /// <summary>把变量表导出为 JSON 文本，显示在浮层里供复制。</summary>
+    /// <summary>把变量表导出为 JSON 文本，显示在浮层里供查看。</summary>
     private void Export () => _exportJson = Store.ExportJson();
+
+    /// <summary>
+    /// 把导出内容存成文件。
+    /// </summary>
+    /// <remarks>
+    /// 文件名带日期时间：现场经常在改配置前先导一份，全叫同一个名字的话
+    /// 下载目录里几份备份分不出先后，恢复时只能靠猜。
+    /// </remarks>
+    private async Task DownloadExportAsync ()
+    {
+        string name = "ck-variables-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".json";
+        await JS.InvokeVoidAsync("ck.downloadText", name, _exportJson).ConfigureAwait(true);
+
+        _banner = "已导出 " + name;
+        _bannerClass = "status-ok";
+        _exportJson = string.Empty;
+    }
+
+    /// <summary>复制导出内容到剪贴板。</summary>
+    /// <remarks>
+    /// 车间多为 http://内网IP 访问，属于非安全上下文，
+    /// navigator.clipboard 不存在——JS 侧已有 execCommand 兜底，
+    /// 这里据其返回值给出真实结果，不能一律报成功。
+    /// </remarks>
+    private async Task CopyExportAsync ()
+    {
+        bool ok = await JS.InvokeAsync<bool>("ck.copyText", _exportJson).ConfigureAwait(true);
+
+        _banner = ok ? "已复制到剪贴板" : "复制失败，请改用「下载文件」";
+        _bannerClass = ok ? "status-ok" : "status-warn";
+    }
 
     /// <summary>
     /// 从上传的 JSON 文件导入变量，<b>追加</b>而非替换现有表。

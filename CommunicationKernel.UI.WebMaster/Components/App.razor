@@ -46,15 +46,50 @@
     <link rel="stylesheet" href="CommunicationKernel.UI.WebMaster.styles.css" />
     @* 改动 theme.css 必须同时 +1 这个版本号，否则老浏览器会拿缓存里的旧样式：
        新加的类不生效，表现是"某个元素颜色不对"，而查代码看不出任何问题。 *@
-    <link rel="stylesheet" href="css/theme.css?v=10" />
+    <link rel="stylesheet" href="css/theme.css?v=11" />
     <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
 </head>
 
 <body>
     @* 整树交互：布局标题栏 / 侧栏才能跟随 Host 在线状态刷新 *@
     <Routes @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
+
+    @*
+        自带断线重连提示。
+
+        页面里出现 id="components-reconnect-modal" 时，blazor.server.js 就用这份
+        标记，不再注入它自己那套（含一个用 ::before 画的转圈）。
+        上一版只给框架的默认元素套了 flex 布局，结果把那个转圈拉成了椭圆——
+        它是伪元素，做了 flex 项就被拉伸填充。自己出标记才能彻底控制外观。
+
+        框架只做一件事：在这个元素上切 components-reconnect-* 类。
+        三种状态各自的文案由下面的 CSS 用 display 切换，Razor 不参与。
+    *@
+    <div id="components-reconnect-modal">
+        <div class="ck-reconnect-box">
+            <div class="ck-reconnect-spin" aria-hidden="true"></div>
+
+            <div class="ck-reconnect-rejoining">
+                <strong>与服务器的连接已断开</strong>
+                <p>正在重连，界面暂停刷新。<b>当前显示的是断开前的数据，不代表现场实际状态。</b></p>
+            </div>
+
+            <div class="ck-reconnect-failed">
+                <strong>重连失败</strong>
+                <p>已达最大重试次数。请检查网络后刷新页面。</p>
+                <button type="button" class="btn primary" onclick="location.reload()">刷新页面</button>
+            </div>
+
+            <div class="ck-reconnect-refused">
+                <strong>会话已失效</strong>
+                <p>服务器已重启或会话被回收，必须刷新页面重新开始。</p>
+                <button type="button" class="btn primary" onclick="location.reload()">刷新页面</button>
+            </div>
+        </div>
+    </div>
+
     <script src="_framework/blazor.server.js"></script>
-    <script src="js/app.js?v=5"></script>
+    <script src="js/app.js?v=6"></script>
     <div id="blazor-error-ui">
         界面循环出现未处理异常，请刷新页面。
         <a href="" class="reload">刷新</a>

@@ -300,7 +300,6 @@ button:disabled { cursor: not-allowed; }
 }
 .tpl-meta label { color: var(--text-muted); }
 .tpl-meta input { max-width: 240px; }
-.tpl-hint { padding: 10px 12px; }
 
 /* 实时脉冲徽标 */
 .live {
@@ -1131,83 +1130,138 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     opacity: .5;
     cursor: not-allowed;
 }
-
 /* ============================================================================
    Blazor Server 断线重连提示
    ============================================================================
-   默认样式把它贴在页面最顶端，只有一条窄横幅，在 1080p 工位屏上极容易被
-   当成浏览器自己的提示条而略过——而这条提示的含义是「界面已经不再刷新，
-   你现在看到的全是旧数据」，是操作员最需要立刻知道的事。
-   改为居中遮罩：挡住内容，逼人看见。
+   标记由 App.razor 自己出（id="components-reconnect-modal"），框架因此不再
+   注入它默认那套——默认那套的转圈是个 ::before 伪元素，一旦给容器套 flex
+   就会被拉成椭圆。自己出标记才控制得住。
 
-   注意选择器名由 Blazor 框架规定，不能改；结构是
-     #components-reconnect-modal > (rejoining / failed / refused 三种状态)
+   框架只负责在这个元素上切类：
+     components-reconnect-show     正在重试（可见）
+     components-reconnect-hide     已恢复（隐藏）
+     components-reconnect-failed   重试用尽
+     components-reconnect-refused  会话失效，必须刷新
+   下面用 display 决定显示哪一段文案，Razor 不参与状态判断。
    ---------------------------------------------------------------------------- */
-#components-reconnect-modal {
+
+/* 默认隐藏：没有任何状态类时不能占位，否则整块遮罩会吃掉所有点击 */
+#components-reconnect-modal { display: none; }
+
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-refused {
+    display: flex;
     position: fixed;
     inset: 0;
     z-index: 2000;
-    display: flex;
     align-items: center;
     justify-content: center;
-    /* 半透明而非全遮：让操作员仍看得见后面是哪个页面，
-       否则重连成功后会不知道自己刚才在哪 */
-    background: rgba(0, 0, 0, .68);
-    color: var(--text);
-    font-family: var(--font);
-    text-align: center;
     padding: 24px;
+    /* 半透明而非全遮：让操作员仍看得见后面是哪个页面，
+       否则恢复之后不知道自己刚才在哪 */
+    background: rgba(0, 0, 0, .68);
 }
 
-/* 框架用 display 控制显隐，未显示时必须彻底不占位，
-   否则整块透明遮罩会盖住页面让所有点击失效 */
-#components-reconnect-modal:not([style*="display: block"]):not([style*="display:block"]) {
-    display: none;
-}
-
-#components-reconnect-modal > div {
+.ck-reconnect-box {
     background: var(--surface);
     border: 1px solid var(--border);
+    border-left: 3px solid var(--warning);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow);
-    padding: 22px 28px;
-    min-width: 260px;
-    max-width: 420px;
-    font-size: 14px;
+    padding: 20px 24px;
+    max-width: 440px;
+    color: var(--text);
+    font-size: 13px;
     line-height: 1.7;
 }
+.ck-reconnect-box strong { display: block; font-size: 14.5px; margin-bottom: 4px; }
+.ck-reconnect-box p { color: var(--text-muted); margin: 0 0 12px; }
+.ck-reconnect-box b { color: var(--warning-ink); font-weight: 600; }
 
-/* 正在重试：琥珀色，含义是"等一下"，不是故障 */
-#components-reconnect-modal .components-reconnect-rejoining {
-    border-color: var(--warning);
-    color: var(--warning-ink);
+/* 转圈：固定尺寸 + aspect-ratio，任何父级布局都不会把它拉变形 */
+.ck-reconnect-spin {
+    width: 20px;
+    aspect-ratio: 1;
+    margin-bottom: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: ck-spin .8s linear infinite;
 }
+@keyframes ck-spin { to { transform: rotate(360deg); } }
 
-/* 重试用尽 / 被拒：红色，必须手动刷新才能恢复 */
-#components-reconnect-modal .components-reconnect-failed,
-#components-reconnect-modal .components-reconnect-refused {
-    border-color: var(--danger);
-    color: var(--danger-ink);
+/* 三段文案按状态切换；默认都不显示，由下面的状态类点亮其一 */
+.ck-reconnect-rejoining,
+.ck-reconnect-failed,
+.ck-reconnect-refused { display: none; }
+
+.components-reconnect-show .ck-reconnect-rejoining { display: block; }
+.components-reconnect-failed .ck-reconnect-failed { display: block; }
+.components-reconnect-refused .ck-reconnect-refused { display: block; }
+
+/* 已经不再重试了，转圈还在转是假信号 */
+.components-reconnect-failed .ck-reconnect-spin,
+.components-reconnect-refused .ck-reconnect-spin { display: none; }
+
+/* 失败与会话失效是终态，必须换成红色：琥珀色的含义是"等一下就好" */
+.components-reconnect-failed .ck-reconnect-box,
+.components-reconnect-refused .ck-reconnect-box { border-left-color: var(--danger); }
+
+/* 系统开了「减弱动态效果」时停下转圈，与全局约定一致 */
+@media (prefers-reduced-motion: reduce) {
+    .ck-reconnect-spin { animation: none; border-top-color: var(--border); }
 }
 
 /* ============================================================================
-   模板引用（寄存器模板页）
+   模板组成（寄存器模板页）
+   ============================================================================
+   左侧固定宽度的标签列 + 右侧内容，三行读下来是一道算式：
+     引用 N 项 + 自有 M 项 = 合计 K 项
+   上一版是三条同字重的灰字堆叠，扫一眼分不出层次，也看不出这块在讲什么。
    ---------------------------------------------------------------------------- */
-.tpl-includes {
+.tpl-compose {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
 }
 
-.tpl-includes-hd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.tpl-includes-hd > span:first-child { font-size: 12.5px; font-weight: 650; }
-.tpl-includes-hd .hint { font-size: 11px; color: var(--text-dim); }
+.tpl-compose-hd {
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--text-muted);
+    letter-spacing: .04em;
+}
+
+/* 标签列定宽：三行的「引用 / 自有 / 合计」必须对齐，
+   对齐本身就是"这三行是一组"的视觉信号 */
+.tpl-row { display: flex; align-items: flex-start; gap: 12px; }
+.tpl-row-k {
+    flex: 0 0 40px;
+    padding-top: 4px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+}
+.tpl-row-v {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 合计行是结论，用上边框与前两行分开 */
+.tpl-row-total { border-top: 1px dashed var(--border); padding-top: 8px; }
+
+.tpl-count { font-size: 12.5px; color: var(--text); font-variant-numeric: tabular-nums; }
+.tpl-count.strong { font-weight: 650; color: var(--accent-ink); }
 .tpl-none { font-size: 12px; color: var(--text-dim); }
 
-.tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-
+/* 被引用的模板：做成可摘除的标签，一眼看出是"一整块引进来的东西" */
 .tpl-chip {
     display: inline-flex;
     align-items: center;
@@ -1221,7 +1275,7 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 }
 .tpl-chip-n { color: var(--text-dim); font-size: 11px; }
 
-/* 32px 触控下限：车间戴手套或用触摸屏一体机时，小于这个尺寸点不准 */
+/* 24px 是这一行里能给出的最大值；再小车间戴手套点不准 */
 .tpl-chip-x {
     min-width: 24px;
     min-height: 24px;
@@ -1234,29 +1288,58 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 }
 .tpl-chip-x:hover { background: var(--danger-bg); color: var(--danger-ink); }
 
-.tpl-resolved {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
+.tpl-add-sel {
+    min-height: 26px;
+    background: var(--bg);
+    color: var(--accent-ink);
+    border: 1px dashed var(--accent-dim);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font: inherit;
+    font-size: 12px;
 }
-.tpl-resolved-hd { font-size: 12px; color: var(--text-dim); }
 
+/* 合计行里的功能名。颜色是"能不能在下表改"的唯一线索，
+   因此下面必须配图例，否则蓝色那些会被拿去下表里找。 */
 .tpl-slot {
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 12px;
     border: 1px solid var(--border);
 }
-/* 自有与引用来的必须一眼分得开：引用来的改不了，操作员点开表格找不到它时
-   会以为是界面出问题。颜色差异就是"为什么这一项不在下面表里"的答案。 */
 .tpl-slot.own { background: var(--surface3); color: var(--text); }
 .tpl-slot.inherited { background: transparent; color: var(--accent-ink); border-color: var(--accent-dim); }
 
-.tpl-own-hd {
-    padding: 10px 12px 6px;
-    font-size: 12px;
+.tpl-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
     color: var(--text-dim);
+}
+
+.tpl-own-hd {
+    padding: 10px 14px 6px;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--text-muted);
+}
+
+/* 浮层底部操作条。按钮靠右、说明靠左，与浮层其它内边距对齐。
+   不给样式的话按钮会紧贴文本框挤成一团，看不出是一组操作。 */
+.form-ft {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--border-soft);
+    margin-top: 12px;
+}
+/* 靠 margin-left:auto 把按钮推到右侧，比给每个按钮加 margin 更稳 */
+.form-ft-hint {
+    margin-right: auto;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
 }
