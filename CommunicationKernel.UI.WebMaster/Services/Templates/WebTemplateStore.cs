@@ -34,7 +34,24 @@ public sealed class WebDeviceTemplate
     /// <summary>显示名，例如「变频器」。</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>必须具备的功能槽。</summary>
+    /// <summary>
+    /// 引用的其它模板 Id，按顺序在本模板自有槽位<b>之前</b>展开。
+    /// </summary>
+    /// <remarks>
+    /// 「启停」这类功能几乎每台设备都有，逐个模板重抄一遍既费事又会写岔。
+    /// 引用而非复制，是为了让「启停」改一次、所有引用它的模板跟着变——
+    /// 复制过来的副本做不到这一点，而现场恰恰会在投产后调整这类公共功能。
+    /// <para>
+    /// 只存 Id 不存名字：模板改名后引用仍然有效。
+    /// </para>
+    /// </remarks>
+    public List<string> Includes { get; set; } = new();
+
+    /// <summary>本模板<b>自有</b>的功能槽，不含引用来的。</summary>
+    /// <remarks>
+    /// 展开后的完整清单要用 <see cref="WebTemplateStore.ResolveSlots(string)"/> 取，
+    /// 直接读本属性会漏掉所有引用进来的槽位。
+    /// </remarks>
     public List<WebDeviceTemplateSlot> Slots { get; set; } = new();
 }
 
@@ -105,9 +122,117 @@ public sealed class WebTemplateStore
         lock (_lock)
         {
             _items.RemoveAll(t => t.Id == id);
+
+            // 顺带摘掉别人对它的引用。留着的话展开时会遇到一个查不到的 Id：
+            // 静默跳过等于模板悄悄少了几个槽位，报错又会让整个模板不可用。
+            // 两种都不好，不如在删除时就把引用清干净。
+            foreach (WebDeviceTemplate t in _items)
+                t.Includes.RemoveAll(x => string.Equals(x, id, StringComparison.OrdinalIgnoreCase));
+
             Persist_NoLock();
         }
         Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// 展开一个模板的完整功能槽清单：先按顺序展开引用，再接自有槽位。
+    /// </summary>
+    /// <param name="id">模板 Id。</param>
+    /// <returns>去重后的槽位清单；模板不存在时返回空表。</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>同名槽位只保留先出现的那个。</b>「启停」里已有「启动」，引用它的模板
+    /// 又自己写了「启动」时，取先出现的——也就是被引用的那个。
+    /// 这样同一个功能名在整条产线上只有一种类型与长度，变量表按名字对齐才不会错位。
+    /// </para>
+    /// <para>
+    /// <b>环引用会被截断而不是抛异常。</b> A 引用 B、B 又引用 A 时，
+    /// 第二次遇到已在展开路径上的模板就停下并记一条警告。
+    /// 抛异常会让整个模板页打不开——配置写坏不该导致界面不可用。
+    /// 正常情况下写不出环（<see cref="WouldCreateCycle"/> 在保存前就挡住了），
+    /// 这里防的是手工编辑 JSON 或导入外部文件。
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<WebDeviceTemplateSlot> ResolveSlots(string id)
+    {
+        lock (_lock)
+        {
+            var result = new List<WebDeviceTemplateSlot>();
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            Expand_NoLock(id, result, seenNames, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            return result;
+        }
+    }
+
+    /// <summary>递归展开。调用方须持有 <see cref="_lock"/>。</summary>
+    /// <param name="path">当前展开路径上的模板 Id，用于识别环。</param>
+    private void Expand_NoLock(
+        string id,
+        List<WebDeviceTemplateSlot> into,
+        HashSet<string> seenNames,
+        HashSet<string> path)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+
+        // 已在当前路径上 → 成环，截断
+        if (!path.Add(id))
+        {
+            _log.Warn("Templates", "模板引用成环，已截断：" + id);
+            return;
+        }
+
+        WebDeviceTemplate? t = _items.FirstOrDefault(x => x.Id == id);
+        if (t is null) { path.Remove(id); return; }
+
+        // 先引用、后自有：公共功能排在前面，卡片与变量表的顺序才稳定
+        foreach (string child in t.Includes)
+            Expand_NoLock(child, into, seenNames, path);
+
+        foreach (WebDeviceTemplateSlot s in t.Slots)
+        {
+            string name = s.Name.Trim();
+            if (name.Length == 0) continue;
+            if (!seenNames.Add(name)) continue;   // 同名先到先得
+            into.Add(CloneSlot(s));
+        }
+
+        // 退出本层：兄弟分支各自引用同一个模板是合法的（菱形），不算环
+        path.Remove(id);
+    }
+
+    /// <summary>
+    /// 判断把 <paramref name="candidateInclude"/> 加进 <paramref name="templateId"/> 是否会成环。
+    /// </summary>
+    /// <remarks>
+    /// 在界面上「添加引用」之前调用。让操作员当场看到"不能选这个"，
+    /// 比事后在展开时静默截断要好得多——后者的表现是模板莫名少了几个槽位。
+    /// </remarks>
+    public bool WouldCreateCycle(string templateId, string candidateInclude)
+    {
+        if (string.IsNullOrWhiteSpace(templateId) || string.IsNullOrWhiteSpace(candidateInclude))
+            return false;
+
+        // 自引用是最直接的环
+        if (string.Equals(templateId, candidateInclude, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        lock (_lock)
+        {
+            // 候选者（或它引用的任何一层）已经引用了本模板 → 加进来就成环
+            return Reaches_NoLock(candidateInclude, templateId, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>from 沿引用链能否到达 target。调用方须持有 <see cref="_lock"/>。</summary>
+    private bool Reaches_NoLock(string from, string target, HashSet<string> visited)
+    {
+        if (!visited.Add(from)) return false;
+        if (string.Equals(from, target, StringComparison.OrdinalIgnoreCase)) return true;
+
+        WebDeviceTemplate? t = _items.FirstOrDefault(x => x.Id == from);
+        if (t is null) return false;
+
+        return t.Includes.Any(child => Reaches_NoLock(child, target, visited));
     }
 
     public string ExportJson()
@@ -223,17 +348,29 @@ public sealed class WebTemplateStore
             _log.Error("WebTemplateStore", "保存模板库失败: " + error);
     }
 
+    /// <summary>深拷贝一个模板。</summary>
+    /// <remarks>
+    /// 新增字段务必同步加到这里：本方法是模板进出存储的唯一通道，
+    /// 漏一个字段的表现是「界面上改了、点保存也没报错，一刷新又回到原样」。
+    /// <c>Includes</c> 必须 <c>ToList()</c> 复制而不是直接赋引用——
+    /// 共享同一个 List 会让"编辑中的副本"和"已保存的记录"一起变，
+    /// 取消编辑也退不回去。
+    /// </remarks>
     private static WebDeviceTemplate Clone(WebDeviceTemplate t) => new()
     {
         Id = t.Id,
         Name = t.Name,
-        Slots = t.Slots.Select(s => new WebDeviceTemplateSlot
-        {
-            Name = s.Name,
-            DataType = s.DataType,
-            Note = s.Note ?? string.Empty,
-            Length = s.Length
-        }).ToList()
+        Includes = t.Includes.ToList(),
+        Slots = t.Slots.Select(CloneSlot).ToList()
+    };
+
+    /// <summary>深拷贝一条功能槽。</summary>
+    private static WebDeviceTemplateSlot CloneSlot(WebDeviceTemplateSlot s) => new()
+    {
+        Name = s.Name,
+        DataType = s.DataType,
+        Note = s.Note ?? string.Empty,
+        Length = s.Length
     };
 
     private sealed class TemplatePack

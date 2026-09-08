@@ -243,19 +243,33 @@ public sealed class WebVariableStore
     /// 本路由上来自任意模板、名称已不在当前模板里的行删掉。
     /// 无 TemplateId 的本机变量一律保留，地址不覆盖。
     /// </summary>
-    public int ApplyTemplate(string routeId, WebDeviceTemplate template)
+    /// <param name="slots">
+    /// <b>展开后</b>的功能槽清单，由 <see cref="WebTemplateStore.ResolveSlots"/> 给出。
+    /// </param>
+    /// <remarks>
+    /// 槽位由调用方传入而不是从 <c>template.Slots</c> 直接读：模板可以引用其它模板，
+    /// <c>Slots</c> 只有自有的那部分，直接读会漏掉所有引用进来的功能——
+    /// 而且是静默漏，同步完看起来"成功了"，只是少了几个变量。
+    /// <para>
+    /// 做成必传参数而非带默认值的可选参数，就是为了让每个调用点都必须
+    /// 显式决定用哪份清单；给默认值等于给了一条会安静出错的路。
+    /// </para>
+    /// </remarks>
+    public int ApplyTemplate(
+        string routeId, WebDeviceTemplate template, IReadOnlyList<WebDeviceTemplateSlot> slots)
     {
         ArgumentNullException.ThrowIfNull(template);
+        ArgumentNullException.ThrowIfNull(slots);
         if (string.IsNullOrWhiteSpace(routeId)) return 0;
 
         int changed = 0;
         lock (_lock)
         {
             var names = new HashSet<string>(
-                template.Slots.Select(s => s.Name.Trim()).Where(n => n.Length > 0),
+                slots.Select(s => s.Name.Trim()).Where(n => n.Length > 0),
                 StringComparer.OrdinalIgnoreCase);
 
-            foreach (WebDeviceTemplateSlot slot in template.Slots)
+            foreach (WebDeviceTemplateSlot slot in slots)
             {
                 string name = slot.Name.Trim();
                 if (name.Length == 0) continue;
