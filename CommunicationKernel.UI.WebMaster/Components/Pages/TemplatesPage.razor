@@ -82,6 +82,16 @@
                         <div><div class="k">引用模板</div><div class="v">@_current.Includes.Count</div></div>
                     </div>
 
+                    @if (UsedByDeviceCount > 0)
+                    {
+                        @* 讲的是这个模板的现状，属于顶部的事实区。
+                           原来摆在最底下、紧贴「添加功能」按钮——一条警告压在
+                           主操作下面，读起来像是在警告那个按钮。 *@
+                        <div class="tpl-warn">
+                            ⚠ 该模板已被 @UsedByDeviceCount 台设备引用；删除功能不会移除已生成的变量。
+                        </div>
+                    }
+
                     <div class="tpl-includes-bar">
                         <span class="src">引用：</span>
                         @foreach (string incId in _current.Includes)
@@ -113,13 +123,20 @@
 
                     <div class="tpl-table-wrap">
                         <table class="tpl-table">
+                            @* 定宽列：不写死的话，一进入编辑态单元格换成输入框，
+                               各列宽度会按新内容重新分配，整张表跳一下 *@
+                            <colgroup>
+                                <col style="width:52px" /><col style="width:24%" /><col style="width:13%" />
+                                <col style="width:64px" /><col style="width:88px" /><col style="width:24%" />
+                                <col style="width:14%" /><col style="width:126px" />
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th class="idx">#</th>
                                     <th>名称</th>
                                     <th>类型</th>
                                     <th class="num">字节</th>
-                                    <th class="ro">只读</th>
+                                    <th class="ro">读写</th>
                                     <th>备注</th>
                                     <th>来源</th>
                                     <th></th>
@@ -152,8 +169,13 @@
                                             </td>
                                             <td class="num mono">@SlotLength(r.Slot)</td>
                                             <td class="ro">
-                                                <input type="checkbox" checked="@r.Slot.ReadOnly"
-                                                       @onchange="e => SetSlot(ownIdx, readOnly: e.Value is true)" />
+                                                <select class="cell" value="@r.Slot.Access"
+                                                        @onchange="e => SetSlot(ownIdx, access: e.Value?.ToString())">
+                                                    @foreach (VariableAccess a in VariableAccessInfo.All)
+                                                    {
+                                                        <option value="@a">@VariableAccessInfo.Label(a)</option>
+                                                    }
+                                                </select>
                                             </td>
                                             <td><input class="cell" value="@r.Slot.Note" placeholder="说明"
                                                        @onchange="e => SetSlot(ownIdx, note: e.Value?.ToString())" /></td>
@@ -168,9 +190,9 @@
                                             <td>@r.Slot.Name</td>
                                             <td><span class="type @TypeClass(r.Slot.DataType)">@r.Slot.DataType</span></td>
                                             <td class="num mono">@SlotLength(r.Slot)</td>
-                                            @* 只读是设备的固有属性，标在模板上随同步下发，
+                                            @* 读写方向是设备的固有属性，标在模板上随同步下发，
                                                操作员不必逐台逐条重标一遍 *@
-                                            <td class="ro">@(r.Slot.ReadOnly ? "只读" : "")</td>
+                                            <td class="ro">@VariableAccessInfo.Label(r.Slot.Access)</td>
                                             <td class="note">@r.Slot.Note</td>
                                             <td class="src">@(r.IsOwn ? "自有" : "↳ " + r.SourceTemplateName)</td>
                                             <td class="ops">
@@ -196,14 +218,6 @@
                         <button class="btn primary" type="button" @onclick="AddSlot">＋ 添加功能</button>
                     </div>
 
-                    @if (UsedByDeviceCount > 0)
-                    {
-                        @* 删除功能不会回收已生成的变量——不说清楚的话，操作员会以为
-                           删掉模板项、设备上那条变量也跟着消失了。 *@
-                        <div class="tpl-warn">
-                            ⚠ 该模板已被 @UsedByDeviceCount 台设备引用，删除功能不会移除已生成的变量。
-                        </div>
-                    }
                 }
             </section>
         </div>
@@ -309,14 +323,15 @@
     }
 
     private void SetSlot(
-        int i, string? name = null, string? type = null, string? note = null, bool? readOnly = null)
+        int i, string? name = null, string? type = null, string? note = null, string? access = null)
     {
         if (_current is null || i < 0 || i >= _current.Slots.Count) return;
         WebDeviceTemplateSlot s = _current.Slots[i];
         if (name is not null) s.Name = name.Trim();
         if (type is not null) s.DataType = type;
         if (note is not null) s.Note = note;
-        if (readOnly is not null) s.ReadOnly = readOnly.Value;
+        // 下拉给回的是枚举名字符串；解析失败保持原值，不静默改成可读写
+        if (access is not null && Enum.TryParse(access, out VariableAccess parsed)) s.Access = parsed;
         Persist();
     }
 

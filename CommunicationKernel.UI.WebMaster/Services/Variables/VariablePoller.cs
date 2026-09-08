@@ -128,6 +128,11 @@ public sealed class VariablePoller : IHostedService {
             if (!v.Polling) continue;
             if (string.IsNullOrWhiteSpace(v.RouteId) || string.IsNullOrWhiteSpace(v.Address)) continue;
 
+            // 只写点位不读：PLC 收到脉冲就动作并自行清零，回读恒为 0。
+            // 界面已经禁用了它的轮询开关，但历史配置里可能残留 Polling=true，
+            // 那种情况下会平白往链路上压一批必然无意义的读——几十台设备时不是小数目。
+            if (!v.CanRead) continue;
+
             // 路由已知离线：标记一次 OFFLINE 就不再发起 I/O。
             // 判断 DisplayValue 是为了避免每个节拍都触发 Changed 事件把界面刷爆——
             // 状态没变就不用通知

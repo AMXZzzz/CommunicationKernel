@@ -24,19 +24,24 @@ public sealed class WebDeviceTemplateSlot
     /// <summary>仅 String / Hex 使用；其它类型套用时按类型重算。</summary>
     public int Length { get; set; }
 
+    /// <summary>读写方向，随同步下发到变量。详见 <see cref="VariableAccess"/>。</summary>
+    public VariableAccess Access { get; set; } = VariableAccess.ReadWrite;
+
     /// <summary>
-    /// 该功能是否只读（例如「输出频率」「输出电流」这类测量值）。
+    /// 兼容上一版的布尔字段，只用于读入旧配置。
     /// </summary>
     /// <remarks>
-    /// 标在模板上而不是逐台设备标：一台变频器有哪些是测量值、哪些是给定值，
-    /// 是这类设备的固有属性，不会因为装在哪条线上而不同。
-    /// 十几个槽位、几台设备，逐条手工标一遍既费事又必然漏。
+    /// 只有 setter：System.Text.Json 反序列化时会用它，序列化时因无 getter 而跳过，
+    /// 于是旧文件读得进来、新文件不再写出这个字段，一次读写即完成迁移。
     /// <para>
-    /// 只读只拦<b>界面上的写入</b>——真正的读写权限在 PLC 侧，
-    /// 这里防的是操作员手滑往测量值里写数，而不是安全边界。
+    /// 不做这层兼容的话，上一版勾过的「只读」会在升级后<b>静默</b>变回可读写——
+    /// 测量值又能写了，而没有任何提示。
     /// </para>
     /// </remarks>
-    public bool ReadOnly { get; set; }
+    public bool ReadOnly
+    {
+        set { if (value) Access = VariableAccess.ReadOnly; }
+    }
 }
 
 /// <summary>一类设备的功能模板。</summary>
@@ -445,7 +450,7 @@ public sealed class WebTemplateStore
         Length = s.Length,
         // 新增字段务必加到这里：CloneSlot 是槽位进出存储的唯一通道，
         // 漏一个的表现是「改了能保存、一刷新又变回默认」，且不报错
-        ReadOnly = s.ReadOnly
+        Access = s.Access
     };
 
     private sealed class TemplatePack
