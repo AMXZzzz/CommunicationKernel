@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 @inject AppLogStore Log
 @inject IJSRuntime JS
+@inject WebVariableStore Variables
 @implements IDisposable
 
 <PageTitle>寄存器模板 — CommunicationKernel</PageTitle>
@@ -50,139 +51,151 @@
                     </button>
                 }
             </aside>
-            <section class="var-panel">
+            <section class="var-panel tpl-detail">
                 @if (_current is null)
                 {
                     <div class="empty-state"><div class="empty-hint">添加一个模板，只填功能名称和类型。地址到变量页按设备填。</div></div>
                 }
                 else
                 {
-                    <div class="tpl-meta">
-                        <label>模板名</label>
-                        <input value="@_current.Name" @onchange="e => Rename(e.Value?.ToString())" />
+                    @* 模板详情。单表 + 来源列：继承与自有排在同一张表里按最终顺序呈现，
+                       那正是「同步到设备后会生成什么」的样子。
+                       分成两块（自有表 + 合计预览）时，操作员得自己在脑子里合并。 *@
+                    <div class="tpl-hd">
+                        <input class="tpl-name" value="@_current.Name"
+                               @onchange="e => Rename(e.Value?.ToString())" />
+                        <span class="tpl-id mono">@ShortId(_current.Id)</span>
+                        <span class="tpl-usage">@UsageText</span>
                         <button class="btn-sm danger" type="button" @onclick="AskRemoveTpl">删除模板</button>
                     </div>
 
-                    @* 模板组成。
-                       上一版把「引用模板 / 同步后共 N 项 / 自有功能」摞成三条灰字，
-                       字重与颜色都一样，一眼看不出这块在讲什么。
-                       改成左侧固定标签列的「组成表」：引用多少 + 自有多少 = 合计多少，
-                       是一道算式，扫一眼就知道这个模板由什么拼成。 *@
-                    <div class="tpl-compose">
-                        <div class="tpl-compose-hd">模板组成</div>
+                    @* 四个数字是这个模板的「体检指标」。合计字节尤其重要：
+                       它决定同步下去要占多少寄存器，配地址前必须心里有数。 *@
+                    @* 自有字节与合计字节分开列：
+                       改本模板只影响自有那部分，而配地址要按合计留空间。
+                       只给一个合计的话，看不出「这次改动会让占用增加多少」。 *@
+                    <div class="kv-strip">
+                        <div><div class="k">自有功能</div><div class="v">@_current.Slots.Count</div></div>
+                        <div><div class="k">继承功能</div><div class="v">@InheritedCount</div></div>
+                        <div><div class="k">自有字节</div><div class="v">@OwnBytes</div></div>
+                        <div><div class="k">合计字节</div><div class="v">@TotalBytes</div></div>
+                        <div><div class="k">引用模板</div><div class="v">@_current.Includes.Count</div></div>
+                    </div>
 
-                        <div class="tpl-row">
-                            <span class="tpl-row-k">引用</span>
-                            <div class="tpl-row-v">
-                                @foreach (string incId in _current.Includes)
-                                {
-                                    <span class="tpl-chip">
-                                        @NameOf(incId)
-                                        <span class="tpl-chip-n">@Templates.ResolveSlots(incId).Count 项</span>
-                                        <button class="tpl-chip-x" type="button"
-                                                title="移除该引用"
-                                                @onclick="() => RemoveInclude(incId)">×</button>
-                                    </span>
-                                }
-
-                                @* 引用数量不设上限，可叠多个（启停 + 报警 + 计数…）。
-                                   下拉只列「加进来不会成环」的候选：让不能选的当场不出现，
-                                   好过选完再弹一句「不允许」。
-                                   候选为空时必须说明原因，否则看起来像"只能引用一个"。 *@
-                                @if (Candidates.Count > 0)
-                                {
-                                    <select class="tpl-add-sel" value=""
-                                            @onchange="e => AddInclude(e.Value?.ToString())">
-                                        <option value="">+ 引用模板</option>
-                                        @foreach (WebDeviceTemplate c in Candidates)
-                                        {
-                                            <option value="@c.Id">@c.Name（@Templates.ResolveSlots(c.Id).Count 项）</option>
-                                        }
-                                    </select>
-                                }
-                                else
-                                {
-                                    <span class="tpl-none">@NoCandidateReason</span>
-                                }
-                            </div>
-                        </div>
-
-                        <div class="tpl-row">
-                            <span class="tpl-row-k">自有</span>
-                            <div class="tpl-row-v">
-                                <span class="tpl-count">@_current.Slots.Count 项</span>
-                                @* 「+ 功能」原先在页面工具栏。它改的是当前模板，
-                                   却和「添加模板」「导入导出」这些页面级操作并排，
-                                   看不出作用对象。移到它真正影响的那一行里。 *@
-                                <button class="btn-sm primary" type="button" @onclick="AddSlot">+ 添加功能</button>
-                                <span class="tpl-none">在下表编辑</span>
-                            </div>
-                        </div>
-
-                        <div class="tpl-row tpl-row-total">
-                            <span class="tpl-row-k">合计</span>
-                            <div class="tpl-row-v">
-                                <span class="tpl-count strong">@Resolved.Count 项</span>
-                                <span class="tpl-none">同步到设备后生成：</span>
-                                @foreach (WebDeviceTemplateSlot s in Resolved)
-                                {
-                                    <span class="tpl-slot @(IsOwn(s.Name) ? "own" : "inherited")"
-                                          title="@(IsOwn(s.Name) ? "本模板自有，可在下表改" : "引用而来，需到来源模板里改")">@s.Name</span>
-                                }
-                            </div>
-                        </div>
-
-                        @if (_current.Includes.Count > 0)
+                    <div class="tpl-includes-bar">
+                        <span class="src">引用：</span>
+                        @foreach (string incId in _current.Includes)
                         {
-                            @* 颜色是唯一区分「哪些能在下表改」的线索，必须给图例。
-                               不给的话，操作员会去下表找那个蓝色的功能名而找不到。 *@
-                            <div class="tpl-legend">
-                                <span class="tpl-slot own">自有</span>可在下表编辑
-                                <span class="tpl-slot inherited">引用</span>需到来源模板里改
-                                <span class="tpl-none">· 同名功能以自有定义为准</span>
-                            </div>
+                            <span class="chip">
+                                @NameOf(incId)
+                                <button class="chip-x" type="button" title="移除该引用"
+                                        @onclick="() => RemoveInclude(incId)">✕</button>
+                            </span>
+                        }
+
+                        @* 引用数量不设上限。候选为空时给出原因，
+                           否则下拉直接消失，看起来像「只能引用一个」。 *@
+                        @if (Candidates.Count > 0)
+                        {
+                            <select class="chip add" value="" @onchange="e => AddInclude(e.Value?.ToString())">
+                                <option value="">＋ 添加引用</option>
+                                @foreach (WebDeviceTemplate c in Candidates)
+                                {
+                                    <option value="@c.Id">@c.Name（@Templates.ResolveSlots(c.Id).Count 项）</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <span class="src">@NoCandidateReason</span>
                         }
                     </div>
 
-                    <div class="tpl-own-hd">自有功能</div>
-                    <table class="data-table var-table">
-                        <thead>
-                            <tr>
-                                <th>名称</th>
-                                <th>类型</th>
-                                <th>字节</th>
-                                <th>备注</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @for (int i = 0; i < _current.Slots.Count; i++)
-                            {
-                                int idx = i;
-                                WebDeviceTemplateSlot s = _current.Slots[idx];
+                    <div class="tpl-table-wrap">
+                        <table class="tpl-table">
+                            <thead>
                                 <tr>
-                                    <td><input value="@s.Name" @onchange="e => SetSlot(idx, name: e.Value?.ToString())" /></td>
-                                    <td>
-                                        <select value="@s.DataType" @onchange="e => SetSlot(idx, type: e.Value?.ToString())">
-                                            @foreach (string t in DataTypes)
-                                            {
-                                                <option value="@t">@t</option>
-                                            }
-                                        </select>
-                                    </td>
-                                    <td class="mono">@SlotLength(s)</td>
-                                    <td><input value="@s.Note" placeholder="说明" @onchange="e => SetSlot(idx, note: e.Value?.ToString())" /></td>
-                                    <td class="row-btns">
-                                        <button class="btn-sm danger" type="button" @onclick="() => RemoveSlot(idx)">删</button>
-                                    </td>
+                                    <th class="idx">#</th>
+                                    <th>名称</th>
+                                    <th>类型</th>
+                                    <th class="num">字节</th>
+                                    <th>备注</th>
+                                    <th>来源</th>
+                                    <th></th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
-                    @* 原来这里有一行「Bool=1，Int16=2…地址不在这里填」。去掉了：
-                       字节数就在上面「字节」列里逐行显示，重复一遍是噪声；
-                       而「地址不在这里填」是在解释一个本来就不存在的输入框，
-                       表里根本没有地址列，这句话反倒让人去找。 *@
+                            </thead>
+                            <tbody>
+                                @{ int rowNo = 0; }
+                                @foreach (ResolvedTemplateSlot r in Resolved)
+                                {
+                                    rowNo++;
+                                    int ownIdx = r.IsOwn ? OwnIndexOf(r.Slot.Name) : -1;
+                                    bool editing = r.IsOwn && _editIdx == ownIdx;
+
+                                    <tr class="@(r.IsOwn ? null : "inherited")">
+                                        <td class="idx">@rowNo.ToString("00")</td>
+
+                                        @if (editing)
+                                        {
+                                            @* 就地改这一行，不弹窗：改完立刻能对着上下行看类型是否协调 *@
+                                            <td><input class="cell" value="@r.Slot.Name"
+                                                       @onchange="e => SetSlot(ownIdx, name: e.Value?.ToString())" /></td>
+                                            <td>
+                                                <select class="cell" value="@r.Slot.DataType"
+                                                        @onchange="e => SetSlot(ownIdx, type: e.Value?.ToString())">
+                                                    @foreach (string t in DataTypes)
+                                                    {
+                                                        <option value="@t">@t</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td class="num mono">@SlotLength(r.Slot)</td>
+                                            <td><input class="cell" value="@r.Slot.Note" placeholder="说明"
+                                                       @onchange="e => SetSlot(ownIdx, note: e.Value?.ToString())" /></td>
+                                            <td class="src">自有</td>
+                                            <td class="ops">
+                                                <button class="btn-sm primary" type="button"
+                                                        @onclick="() => _editIdx = -1">完成</button>
+                                            </td>
+                                        }
+                                        else
+                                        {
+                                            <td>@r.Slot.Name</td>
+                                            <td><span class="type @TypeClass(r.Slot.DataType)">@r.Slot.DataType</span></td>
+                                            <td class="num mono">@SlotLength(r.Slot)</td>
+                                            <td class="note">@r.Slot.Note</td>
+                                            <td class="src">@(r.IsOwn ? "自有" : "↳ " + r.SourceTemplateName)</td>
+                                            <td class="ops">
+                                                @* 继承项这里刻意留空：它在本模板改不了，
+                                                   摆一个点了没反应的按钮比没有按钮更糟 *@
+                                                @if (r.IsOwn)
+                                                {
+                                                    <button class="btn-sm" type="button"
+                                                            @onclick="() => _editIdx = ownIdx">编辑</button>
+                                                    <button class="btn-sm danger" type="button"
+                                                            @onclick="() => RemoveSlot(ownIdx)">删除</button>
+                                                }
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="tpl-foot">
+                        <span>同名功能以自有定义为准；地址、字节序、轮询在「变量配置」页按设备填写。</span>
+                        <button class="btn primary" type="button" @onclick="AddSlot">＋ 添加功能</button>
+                    </div>
+
+                    @if (UsedByDeviceCount > 0)
+                    {
+                        @* 删除功能不会回收已生成的变量——不说清楚的话，操作员会以为
+                           删掉模板项、设备上那条变量也跟着消失了。 *@
+                        <div class="tpl-warn">
+                            ⚠ 该模板已被 @UsedByDeviceCount 台设备引用，删除功能不会移除已生成的变量。
+                        </div>
+                    }
                 }
             </section>
         </div>
@@ -301,9 +314,96 @@
     // 模板引用
     // =========================================================================
 
-    /// <summary>当前模板展开后的完整功能槽（含引用来的）。</summary>
-    private IReadOnlyList<WebDeviceTemplateSlot> Resolved =>
-        _current is null ? Array.Empty<WebDeviceTemplateSlot>() : Templates.ResolveSlots(_current.Id);
+    /// <summary>正在就地编辑的自有槽位下标；-1 表示无。</summary>
+    /// <remarks>
+    /// 只允许同时编辑一行：多行同时变成输入框时，表格失去"一眼看完"的价值，
+    /// 而这张表最主要的用途正是通读。
+    /// </remarks>
+    private int _editIdx = -1;
+
+    /// <summary>当前模板展开后的完整功能槽，含来源标记。</summary>
+    private IReadOnlyList<ResolvedTemplateSlot> Resolved =>
+        _current is null ? Array.Empty<ResolvedTemplateSlot>() : Templates.ResolveDetailed(_current.Id);
+
+    /// <summary>继承来的功能数量（展开总数减去自有数）。</summary>
+    private int InheritedCount => Resolved.Count(r => !r.IsOwn);
+
+    /// <summary>
+    /// 展开后全部功能占用的字节数。
+    /// </summary>
+    /// <remarks>
+    /// 配地址前必须知道这个数：它决定同步下去要占多少连续寄存器。
+    /// 用 <see cref="SlotLength"/> 而非 Slot.Length——定长类型的 Length 字段
+    /// 可能是 0（由类型推导），直接求和会少算。
+    /// </remarks>
+    private int TotalBytes => Resolved.Sum(r => SlotLength(r.Slot));
+
+    /// <summary>本模板自有功能占用的字节数。</summary>
+    /// <remarks>
+    /// 与 <see cref="TotalBytes"/> 分开显示：在本页能改的只有自有那部分，
+    /// 而配地址要按合计留空间。只给合计的话，看不出「这次改动让占用增加了多少」。
+    /// <para>
+    /// 统计的是<b>展开后仍然生效</b>的自有项：自有被更外层覆盖的情况不存在
+    /// （自有已是最外层），但同名自有项重复时以最后一个为准，
+    /// 直接对 <c>_current.Slots</c> 求和会重复计。
+    /// </para>
+    /// </remarks>
+    private int OwnBytes => Resolved.Where(r => r.IsOwn).Sum(r => SlotLength(r.Slot));
+
+    /// <summary>本模板已被多少台设备用过（按变量行上的 TemplateId 统计）。</summary>
+    /// <remarks>
+    /// 统计的是<b>已生成变量</b>的设备数，不是"选了这个模板"的设备数——
+    /// 后者没有持久记录。这个数字的用途是提醒「删功能不会回收已生成的变量」，
+    /// 因此按变量统计正是需要的口径。
+    /// </remarks>
+    private int UsedByDeviceCount =>
+        _current is null
+            ? 0
+            : Variables.GetAll()
+                .Where(v => string.Equals(v.TemplateId, _current.Id, StringComparison.OrdinalIgnoreCase))
+                .Select(v => v.RouteId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+    /// <summary>标题栏右侧的使用情况文案。</summary>
+    private string UsageText
+    {
+        get
+        {
+            int n = UsedByDeviceCount;
+            return n == 0 ? "尚未被设备使用" : "被 " + n + " 台设备使用";
+        }
+    }
+
+    /// <summary>模板 Id 的短形式，供标题栏显示。</summary>
+    /// <remarks>
+    /// 32 位十六进制全列出来会把标题挤满，而它的用途只是「和导出的 JSON 对得上」，
+    /// 首尾各 4 位足够辨认。
+    /// </remarks>
+    private static string ShortId(string id)
+        => string.IsNullOrEmpty(id) || id.Length <= 12
+            ? id
+            : id[..4] + "…" + id[^4..];
+
+    /// <summary>某个功能名在自有槽位里的下标；不是自有则返回 -1。</summary>
+    private int OwnIndexOf(string name)
+        => _current is null
+            ? -1
+            : _current.Slots.FindIndex(s =>
+                string.Equals(s.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>数据类型 → 徽标配色类名。</summary>
+    /// <remarks>
+    /// 按<b>类别</b>着色而非逐个类型：现场扫一列类型时，要分辨的是
+    /// 「这是开关量还是模拟量」，而不是 Int16 与 UInt16 的区别。
+    /// </remarks>
+    private static string TypeClass(string dataType) => dataType switch
+    {
+        "Bool" => "bool",
+        "Float" => "float",
+        "String" or "Hex" => "str",
+        _ => "int",
+    };
 
     /// <summary>
     /// 可被当前模板引用的候选模板。

@@ -55,6 +55,26 @@ public sealed class WebDeviceTemplate
     public List<WebDeviceTemplateSlot> Slots { get; set; } = new();
 }
 
+/// <summary>展开后的一条功能槽，附带它的来源。</summary>
+/// <param name="Slot">生效的槽位定义。</param>
+/// <param name="SourceTemplateId">
+/// 来源模板 Id；<see cref="string.Empty"/> 表示本模板自有。
+/// </param>
+/// <param name="SourceTemplateName">来源模板显示名；自有时为空。</param>
+/// <remarks>
+/// 「自有」判定的是<b>给出生效定义的那一层</b>，不是"名字出现过的那一层"。
+/// 自有覆盖了同名的引用项时，来源随之变成自有——否则界面会把一项标成
+/// 继承（不可编辑），而它其实就在下表里能改。
+/// </remarks>
+public sealed record ResolvedTemplateSlot(
+    WebDeviceTemplateSlot Slot,
+    string SourceTemplateId,
+    string SourceTemplateName)
+{
+    /// <summary>是否为本模板自有（可就地编辑）。</summary>
+    public bool IsOwn => SourceTemplateId.Length == 0;
+}
+
 /// <summary>模板库磁盘镜像。</summary>
 public sealed class WebTemplateStore
 {
@@ -162,6 +182,21 @@ public sealed class WebTemplateStore
     /// </para>
     /// </remarks>
     public IReadOnlyList<WebDeviceTemplateSlot> ResolveSlots(string id)
+        => ResolveDetailed(id).Select(r => r.Slot).ToList();
+
+    /// <summary>
+    /// 与 <see cref="ResolveSlots"/> 相同，但额外给出每一项的来源模板。
+    /// </summary>
+    /// <remarks>
+    /// 界面需要按行标出「这一项是自有还是从谁那儿来的」——
+    /// 只有自有项能就地编辑，继承项要到来源模板里改。
+    /// 不给来源的话，操作员对着一张混合表无从判断哪些能动。
+    /// <para>
+    /// 同步到变量表只关心槽位本身，因此 <see cref="ResolveSlots"/> 保留为
+    /// 简单投影；两者共用同一次展开，规则不会分叉。
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ResolvedTemplateSlot> ResolveDetailed(string id)
     {
         lock (_lock)
         {
@@ -169,9 +204,9 @@ public sealed class WebTemplateStore
             // 「排在哪」与「用谁的定义」是两件事：被覆盖的槽位保持原位置，
             // 只是内容换成覆盖者的——否则改一下类型，这一项就会跳到列表末尾。
             var order = new List<string>();
-            var defs = new Dictionary<string, WebDeviceTemplateSlot>(StringComparer.OrdinalIgnoreCase);
+            var defs = new Dictionary<string, ResolvedTemplateSlot>(StringComparer.OrdinalIgnoreCase);
 
-            Expand_NoLock(id, order, defs, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            Expand_NoLock(id, id, order, defs, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
             return order.Select(n => defs[n]).ToList();
         }
@@ -180,11 +215,13 @@ public sealed class WebTemplateStore
     /// <summary>递归展开。调用方须持有 <see cref="_lock"/>。</summary>
     /// <param name="order">按首次出现顺序记录功能名，决定最终排列。</param>
     /// <param name="defs">功能名 → 当前生效的定义；后写入者覆盖先写入者。</param>
+    /// <param name="rootId">最外层模板 Id，用于判定某一项是否「自有」。</param>
     /// <param name="path">当前展开路径上的模板 Id，用于识别环。</param>
     private void Expand_NoLock(
         string id,
+        string rootId,
         List<string> order,
-        Dictionary<string, WebDeviceTemplateSlot> defs,
+        Dictionary<string, ResolvedTemplateSlot> defs,
         HashSet<string> path)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -201,7 +238,7 @@ public sealed class WebTemplateStore
 
         // 先展开引用、后写自有：自有因此是最后写入的，也就覆盖掉同名的引用项
         foreach (string child in t.Includes)
-            Expand_NoLock(child, order, defs, path);
+            Expand_NoLock(child, rootId, order, defs, path);
 
         foreach (WebDeviceTemplateSlot s in t.Slots)
         {
@@ -209,7 +246,12 @@ public sealed class WebTemplateStore
             if (name.Length == 0) continue;
 
             if (!defs.ContainsKey(name)) order.Add(name);   // 位置只在首次出现时确定
-            defs[name] = CloneSlot(s);                       // 定义永远取最后写入的
+
+            // 定义永远取最后写入的；来源记的是「谁给出了这个生效定义」，
+            // 因此被覆盖时来源也跟着换——界面才不会把一项标成继承却其实可编辑
+            bool own = string.Equals(id, rootId, StringComparison.OrdinalIgnoreCase);
+            defs[name] = new ResolvedTemplateSlot(
+                CloneSlot(s), own ? string.Empty : t.Id, own ? string.Empty : t.Name);
         }
 
         // 退出本层：兄弟分支各自引用同一个模板是合法的（菱形），不算环

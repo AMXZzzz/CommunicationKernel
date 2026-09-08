@@ -35,6 +35,10 @@
     --danger: #ef4444;
     --danger-ink: #fca5a5;
     --danger-bg: #450a0a;
+    /* String / Hex 的类型徽标用紫色：它与蓝(整数)、绿(布尔)、橙(浮点)
+       在深色底上都拉得开，且不与任何状态语义(成功/警告/危险)冲突 */
+    --violet: #7c3aed;
+    --violet-ink: #c678dd;
     --font: "Segoe UI", "Microsoft YaHei", sans-serif;
     --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
     --radius: 8px;
@@ -607,9 +611,38 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .search-input { width: 180px; }
 .auto-scroll { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
 
-.var-layout { display: flex; flex: 1; min-height: 0; border-top: 1px solid var(--border); overflow: hidden; }
-.device-panel { width: 200px; flex-shrink: 0; background: #191919; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-.panel-hd { padding: 12px 14px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+/* 分栏：左右各是一块独立的圆角面板，之间留缝。
+   此前两栏靠一条 1px 竖线分隔、四周贴边，整页是一整片深色，
+   区域边界要靠盯着找。圆角 + 比背景亮一档的底色，边界自己就出来了。 */
+.var-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: var(--space);
+    padding: var(--space);
+    overflow: hidden;
+}
+
+.device-panel {
+    width: 200px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.panel-hd {
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    background: var(--surface2);
+}
 .panel-hd .count { background: #2a2a2a; padding: 1px 7px; border-radius: 10px; font-size: 11px; }
 .dev-item {
     display: block;
@@ -628,7 +661,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .dev-item .n .dot.on { background: var(--success); }
 .dev-item .n .dot.off { background: #555; }
 .dev-item .sub { display: block; font-size: 11px; color: var(--text-dim); margin-top: 3px; padding-left: 13px; }
-.var-panel { flex: 1; overflow: auto; }
+.var-panel {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+}
 .write-cell { display: flex; gap: 4px; align-items: center; }
 .write-input { width: 92px; padding: 4px 6px; }
 .type-pill { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #1e3a5f; color: #93c5fd; }
@@ -1212,120 +1252,214 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 @media (prefers-reduced-motion: reduce) {
     .ck-reconnect-spin { animation: none; border-top-color: var(--border); }
 }
-
 /* ============================================================================
-   模板组成（寄存器模板页）
+   寄存器模板 · 详情面板
    ============================================================================
-   左侧固定宽度的标签列 + 右侧内容，三行读下来是一道算式：
-     引用 N 项 + 自有 M 项 = 合计 K 项
-   上一版是三条同字重的灰字堆叠，扫一眼分不出层次，也看不出这块在讲什么。
+   继承与自有排在同一张表里，用「来源」列区分——那正是同步到设备后会生成
+   什么的样子。此前拆成「自有表 + 合计预览」两块，操作员得自己在脑子里合并。
+
+   色值一律取 :root 令牌，本段不出现散装十六进制（文件头的约定）。
    ---------------------------------------------------------------------------- */
-.tpl-compose {
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface2);
+
+/* 只让表格滚动，指标条与引用条常驻可见——否则往下翻看功能时
+   就不知道自己在哪个模板里了。修饰类而非改 .var-panel：
+   那个类与变量配置页共用，那边整页滚是对的。 */
+.var-panel.tpl-detail {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    overflow: hidden;
 }
 
-.tpl-compose-hd {
-    font-size: 12px;
-    font-weight: 650;
-    color: var(--text-muted);
-    letter-spacing: .04em;
+/* 标题行：模板名可直接改，右侧是 Id 与使用情况 */
+.tpl-hd {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+}
+.tpl-name {
+    flex: 0 1 260px;
+    min-width: 120px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font: inherit;
+    font-weight: 600;
+}
+.tpl-id { font-size: 11.5px; color: var(--text-dim); }
+/* 使用情况推到右侧，与「删除模板」相邻——两者是同一件事的正反面：
+   还有设备在用时，删除就该更谨慎 */
+.tpl-usage { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+
+/* 四格指标条。数字用等宽 + 大字号：这几个数是拿来扫的，不是拿来读的 */
+.kv-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border-bottom: 1px solid var(--border);
+}
+.kv-strip > div { padding: 10px 14px; border-right: 1px solid var(--border); }
+.kv-strip > div:last-child { border-right: 0; }
+.kv-strip .k { font-size: 11.5px; color: var(--text-dim); letter-spacing: .04em; }
+.kv-strip .v {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
-/* 标签列定宽：三行的「引用 / 自有 / 合计」必须对齐，
-   对齐本身就是"这三行是一组"的视觉信号 */
-.tpl-row { display: flex; align-items: flex-start; gap: 12px; }
-.tpl-row-k {
-    flex: 0 0 40px;
-    padding-top: 4px;
-    font-size: 12.5px;
-    color: var(--text-dim);
-}
-.tpl-row-v {
-    flex: 1;
-    min-width: 0;
+/* 引用条 */
+.tpl-includes-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
 }
+.tpl-includes-bar .src { font-size: 12px; color: var(--text-dim); }
 
-/* 合计行是结论，用上边框与前两行分开 */
-.tpl-row-total { border-top: 1px dashed var(--border); padding-top: 8px; }
-
-.tpl-count { font-size: 12.5px; color: var(--text); font-variant-numeric: tabular-nums; }
-.tpl-count.strong { font-weight: 650; color: var(--accent-ink); }
-.tpl-none { font-size: 12px; color: var(--text-dim); }
-
-/* 被引用的模板：做成可摘除的标签，一眼看出是"一整块引进来的东西" */
-.tpl-chip {
+.chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     padding: 3px 4px 3px 10px;
-    border: 1px solid var(--accent-dim);
-    border-radius: 999px;
-    background: #10283b;
-    color: var(--accent-ink);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface2);
     font-size: 12px;
+    color: var(--text);
 }
-.tpl-chip-n { color: var(--text-dim); font-size: 11px; }
-
-/* 24px 是这一行里能给出的最大值；再小车间戴手套点不准 */
-.tpl-chip-x {
+/* 24px 触控下限：车间戴手套或触摸屏一体机上，再小点不准 */
+.chip-x {
     min-width: 24px;
     min-height: 24px;
     border: 0;
     border-radius: 999px;
     background: transparent;
-    color: var(--text-muted);
-    font-size: 15px;
+    color: var(--text-dim);
+    font-size: 12px;
     line-height: 1;
 }
-.tpl-chip-x:hover { background: var(--danger-bg); color: var(--danger-ink); }
+.chip-x:hover { background: var(--danger-bg); color: var(--danger-ink); }
 
-.tpl-add-sel {
-    min-height: 26px;
-    background: var(--bg);
-    color: var(--accent-ink);
-    border: 1px dashed var(--accent-dim);
-    border-radius: 999px;
-    padding: 2px 8px;
+/* 虚线边框表示「这是个入口，不是已有内容」 */
+.chip.add {
+    border-style: dashed;
+    color: var(--text-muted);
+    background: transparent;
+    padding: 3px 10px;
     font: inherit;
     font-size: 12px;
+    min-height: 26px;
 }
 
-/* 合计行里的功能名。颜色是"能不能在下表改"的唯一线索，
-   因此下面必须配图例，否则蓝色那些会被拿去下表里找。 */
-.tpl-slot {
-    padding: 2px 8px;
-    border-radius: 4px;
+/* 表格自己滚动：指标条与引用条要始终可见，
+   否则往下翻看功能时就不知道自己在哪个模板里了 */
+.tpl-table-wrap { flex: 1; min-height: 0; overflow: auto; }
+
+.tpl-table { width: 100%; border-collapse: collapse; }
+.tpl-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
     font-size: 12px;
-    border: 1px solid var(--border);
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 8px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
 }
-.tpl-slot.own { background: var(--surface3); color: var(--text); }
-.tpl-slot.inherited { background: transparent; color: var(--accent-ink); border-color: var(--accent-dim); }
+.tpl-table td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: middle;
+}
+.tpl-table tbody tr:hover td { background: rgba(255, 255, 255, .02); }
 
-.tpl-legend {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    font-size: 11.5px;
+/* 继承行<b>不</b>降对比度——车间屏加环境光下，灰掉的文字直接读不出来。
+   改用首列左侧的一道色条区分：不动文字颜色，扫一眼仍能分出两类。
+   「来源」列写明来自哪个模板，那才是权威线索。 */
+.tpl-table tr.inherited td:first-child {
+    box-shadow: inset 2px 0 0 var(--accent-dim);
+}
+.tpl-table tr:not(.inherited) td:first-child {
+    box-shadow: inset 2px 0 0 var(--border);
+}
+
+.tpl-table .idx {
+    width: 44px;
+    font-family: var(--font-mono);
+    font-size: 12px;
     color: var(--text-dim);
 }
+.tpl-table .num { width: 68px; text-align: left; }
+.tpl-table .note { color: var(--text-muted); }
+.tpl-table .src { font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
+.tpl-table .ops { text-align: right; white-space: nowrap; }
+.tpl-table .ops .btn-sm + .btn-sm { margin-left: 6px; }
 
-.tpl-own-hd {
-    padding: 10px 14px 6px;
-    font-size: 12px;
-    font-weight: 650;
-    color: var(--text-muted);
+/* 编辑态的输入控件占满单元格，行高不跳 */
+.tpl-table .cell {
+    width: 100%;
+    min-height: 28px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--accent-dim);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 12.5px;
 }
 
+/* 类型徽标按<b>类别</b>着色：现场扫这一列时要分辨的是
+   「开关量还是模拟量」，不是 Int16 与 UInt16 的差别 */
+.type {
+    display: inline-block;
+    min-width: 62px;
+    text-align: center;
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+.type.bool  { color: var(--success-ink); border-color: var(--success); }
+.type.int   { color: var(--accent-ink);  border-color: var(--accent-dim); }
+.type.float { color: var(--warning-ink); border-color: var(--warning); }
+.type.str   { color: var(--violet-ink);  border-color: var(--violet); }
+
+/* 底部说明 + 主操作。按钮靠右，说明靠左 */
+.tpl-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-dim);
+}
+.tpl-foot .btn { margin-left: auto; }
+
+/* 提示条：不是错误，是「这个操作的影响范围比你想的小」 */
+.tpl-warn {
+    padding: 9px 14px;
+    border-top: 1px solid var(--border);
+    background: rgba(245, 158, 11, .08);
+    color: var(--warning-ink);
+    font-size: 12px;
+}
+
+@media (max-width: 900px) {
+    /* 五格挤在一行会把数字压成两行，窄屏折成两行 */
+    .kv-strip { grid-template-columns: repeat(3, 1fr); }
+    .kv-strip > div:nth-child(3) { border-right: 0; }
+    .kv-strip > div:nth-child(-n+3) { border-bottom: 1px solid var(--border); }
+}
 /* 浮层底部操作条。按钮靠右、说明靠左，与浮层其它内边距对齐。
    不给样式的话按钮会紧贴文本框挤成一团，看不出是一组操作。 */
 .form-ft {
