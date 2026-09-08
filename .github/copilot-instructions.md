@@ -31,8 +31,11 @@
    命名空间约定：`Abstractions/` → `.Abstractions`；`Models/` → `.Models`；`Runtime/` → **根命名空间，不加后缀**。
 3. **UI 页面/视图不得直接持有传输客户端**，所有 I/O 经服务接口（`IDeviceService` / `IWebDeviceService` 等）。
 4. **服务只发布事件，不认识视图类型**；切回 UI 线程是订阅方的责任，服务层不得出现 `Dispatcher`。
-   当前唯一遗留点：`UI.Wpf/Services/VariablePollingService.cs`（3 处）。
-   `UI.Wpf/ViewModels/DeviceListModel.cs` 里的 `Dispatcher` 是**合规的**——它是订阅方。
+   两条链路已完全对称：`GrpcDeviceService → DeviceListModel`、
+   `VariablePollingService → VariableLiveValueModel`。
+   判定方法：`UI.Wpf/Services/` 下不得出现 `using System.Windows` 或任何 `Dispatcher` 调用
+   （目前该目录里 `Dispatcher` 只在注释中出现）。
+   **`ViewModels/` 里的 `Dispatcher` 是合规的**——那是订阅方在履行职责，不要报成违规。
 5. **构造注入优先**，`IServiceProvider` 只用于运行时才知道类型的场景（如按 `Type` 导航）；组合根除外。
 6. **本地配置落盘一律经 `Hosting.Sdk.JsonFileStore`**，禁止直接 `File.WriteAllText`（非原子写掉电会丢整份配置）。
 

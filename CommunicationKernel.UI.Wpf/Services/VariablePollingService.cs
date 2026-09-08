@@ -3,7 +3,15 @@
 // -----------------------------------------------------------------------------
 // 文件: Services/VariablePollingService.cs
 // 层级: UI 层 — WPF 变量轮询服务
-// 作用: 为启用轮询的变量跑后台 ReadAsync，结果写入 LastValue；遇 RouteNotFound 则对账重注册。
+// 作用: 为启用轮询的变量跑后台 ReadAsync，把结果以事件发布；遇 RouteNotFound 则对账重注册。
+//
+// 本文件<b>不引用 System.Windows</b>，也不写任何绑定对象的属性。
+//   此前三处（读成功、读失败、网络异常）各自用 Application.Current.Dispatcher
+//   把 VariableItem.LastValue / LastError 写回 UI 线程。那违反纪律 4：
+//   服务只发事件，切线程是订阅方的责任。
+//
+//   现在改为发布 VariableReadUpdate，由 ViewModels/VariableLiveValueModel 落到界面。
+//   与设备侧 GrpcDeviceService → DeviceListModel 是同一套分工。
 // -----------------------------------------------------------------------------
 
 using System;
@@ -11,7 +19,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using CommunicationKernel.UI.Wpf.Core.Enums;
 using CommunicationKernel.UI.Wpf.Core.Interfaces;
 using CommunicationKernel.UI.Wpf.Core.Models;
@@ -85,6 +92,29 @@ namespace CommunicationKernel.UI.Wpf.Services
 
         /// <summary>服务是否已启动（防止多次调用 Start）。</summary>
         private bool _started = false;
+
+        // =========================================================================
+        // 事件
+        // =========================================================================
+
+        /// <summary>
+        /// 一个变量读取完成（无论成败），参数携带该次结果。
+        /// </summary>
+        /// <remarks>
+        /// <b>在后台轮询线程触发。</b>订阅方若要更新界面必须自行切回 UI 线程——
+        /// 这是刻意的：切线程属于呈现层职责，放进服务会让它无法脱离 WPF 使用。
+        /// 本项目唯一的订阅者是 <c>ViewModels.VariableLiveValueModel</c>。
+        /// </remarks>
+        public event Action<VariableReadUpdate> ValueUpdated;
+
+        /// <summary>发布一次读取结果。</summary>
+        /// <param name="variableId">变量 Id。</param>
+        /// <param name="value">显示值；null 表示不改动已显示的值。</param>
+        /// <param name="error">错误文本；string.Empty 表示成功、清除既有错误。</param>
+        private void Publish(string variableId, string value, string error)
+            => ValueUpdated?.Invoke(new VariableReadUpdate {
+                VariableId = variableId, Value = value, Error = error,
+            });
 
         // =========================================================================
         // 构造函数
@@ -306,21 +336,16 @@ namespace CommunicationKernel.UI.Wpf.Services
 
                     if (result.Success)
                     {
-                        // 读取成功：重置退避计数，解析字节数组并更新 UI
+                        // 读取成功：重置退避计数，解析字节数组并发布结果
                         consecutiveFails = 0;
 
                         bool parsed = ValueParser.TryParseBytes(
                             item.DataType, result.Data, out string display);
 
-                        Application app = Application.Current;
-                        if (app != null)
-                        {
-                            await app.Dispatcher.InvokeAsync(() =>
-                            {
-                                item.LastValue = parsed ? display : "?";
-                                item.LastError = string.Empty;
-                            });
-                        }
+                        // 解析不出来时显示 "?" 而不是原始字节：这一格显示的是
+                        // 「值」，摆一串十六进制只会让操作员以为设备坏了。
+                        // 真正的排查线索在日志里，不在这一格。
+                        Publish(variableId, parsed ? display : "?", string.Empty);
                     }
                     else if (string.Equals(result.ErrorCode, RouteNotFoundCode, StringComparison.Ordinal)
                              && _reconciler != null)
@@ -340,13 +365,13 @@ namespace CommunicationKernel.UI.Wpf.Services
                         {
                             // 路由已恢复：清零退避，下一轮立刻按正常周期重试
                             consecutiveFails = 0;
-                            await SetErrorAsync(item, "路由已重新注册，正在恢复读取").ConfigureAwait(false);
+                            Publish(variableId, value: null, "路由已重新注册，正在恢复读取");
                         }
                         else
                         {
                             // 仍未恢复（宿主没起来 / PLC 不可达 / 处于节流窗口）：照常退避
                             consecutiveFails++;
-                            await SetErrorAsync(item, "路由不存在，正在尝试重新注册").ConfigureAwait(false);
+                            Publish(variableId, value: null, "路由不存在，正在尝试重新注册");
                         }
                     }
                     else
@@ -357,7 +382,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                             ? result.ErrorMessage
                             : string.Format("{0}: {1}", result.ErrorCode, result.ErrorMessage);
 
-                        await SetErrorAsync(item, errText).ConfigureAwait(false);
+                        Publish(variableId, value: null, errText);
                     }
                 }
                 catch (OperationCanceledException)
@@ -368,34 +393,9 @@ namespace CommunicationKernel.UI.Wpf.Services
                 {
                     // 网络异常：累计失败次数，触发退避，不中断轮询（等下一个周期重试）
                     consecutiveFails++;
-                    Application app = Application.Current;
-                    if (app != null)
-                    {
-                        string errMsg = ex.Message;
-                        await app.Dispatcher.InvokeAsync(() =>
-                        {
-                            item.LastError = errMsg;
-                        });
-                    }
+                    Publish(variableId, value: null, ex.Message);
                 }
             }
-        }
-
-        /// <summary>切回 UI 线程写入变量的错误文本。</summary>
-        /// <remarks>
-        /// VariableItem 绑定在界面上，属性变更通知必须发生在 UI 线程；
-        /// 三处失败分支都要做同一件事，收敛到一处以免其中一处漏掉线程切换。
-        /// </remarks>
-        private static async Task SetErrorAsync(VariableItem item, string message)
-        {
-            // 应用退出时 Dispatcher 可能已空
-            Application app = Application.Current;
-            if (app == null) return;
-
-            await app.Dispatcher.InvokeAsync(() =>
-            {
-                item.LastError = message;
-            });
         }
 
         /// <summary>

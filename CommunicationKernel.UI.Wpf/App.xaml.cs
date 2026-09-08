@@ -96,7 +96,12 @@ public partial class App : Application {
         _ = _host.Services.GetRequiredService<DeviceListModel>();
         _host.Services.GetRequiredService<IDeviceService>().Load();
 
-        // 4. 启动变量轮询：对 IsPollingEnabled=true 的变量按 ScanRateMs 周期 ReadAsync
+        // 4. 启动变量轮询：对 IsPollingEnabled=true 的变量按 ScanRateMs 周期 ReadAsync。
+        //
+        //    与第 3 步同一个道理：ValueUpdated 是即发即忘的，没有订阅者时
+        //    那一轮读到的值直接丢弃。订阅者必须先于 Start() 存在，
+        //    否则界面上的变量值会空到第一次事件被接住为止。
+        _ = _host.Services.GetRequiredService<VariableLiveValueModel>();
         _host.Services.GetRequiredService<VariablePollingService>().Start();
 
         // 5. 启动 Hosting.App 健康轮询。
@@ -293,12 +298,20 @@ public partial class App : Application {
         // 变量轮询 + 主窗口
         // =====================================================================
 
-        // 对 IsPollingEnabled 的变量按 ScanRateMs 后台 ReadAsync
+        // 对 IsPollingEnabled 的变量按 ScanRateMs 后台 ReadAsync。
+        // 它只发布 ValueUpdated 事件，不碰界面——落到 VariableItem 由下面那个负责。
         services.AddSingleton<VariablePollingService>(sp =>
             new VariablePollingService(
                 sp.GetRequiredService<IVariableService>(),
                 sp.GetRequiredService<HostingClient>(),
                 sp.GetRequiredService<IRouteReconciler>()));
+
+        // 把轮询结果写回界面绑定的 VariableItem，负责切回 UI 线程。
+        // 与设备侧的 DeviceListModel 对称，是变量侧唯一允许用 Dispatcher 的地方。
+        services.AddSingleton<VariableLiveValueModel>(sp =>
+            new VariableLiveValueModel(
+                sp.GetRequiredService<IVariableService>(),
+                sp.GetRequiredService<VariablePollingService>()));
 
         // 主窗口注入 IServiceProvider，按导航懒解析页面
         services.AddSingleton<MainWindow>();
