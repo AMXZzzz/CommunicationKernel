@@ -23,6 +23,20 @@ public sealed class WebDeviceTemplateSlot
 
     /// <summary>仅 String / Hex 使用；其它类型套用时按类型重算。</summary>
     public int Length { get; set; }
+
+    /// <summary>
+    /// 该功能是否只读（例如「输出频率」「输出电流」这类测量值）。
+    /// </summary>
+    /// <remarks>
+    /// 标在模板上而不是逐台设备标：一台变频器有哪些是测量值、哪些是给定值，
+    /// 是这类设备的固有属性，不会因为装在哪条线上而不同。
+    /// 十几个槽位、几台设备，逐条手工标一遍既费事又必然漏。
+    /// <para>
+    /// 只读只拦<b>界面上的写入</b>——真正的读写权限在 PLC 侧，
+    /// 这里防的是操作员手滑往测量值里写数，而不是安全边界。
+    /// </para>
+    /// </remarks>
+    public bool ReadOnly { get; set; }
 }
 
 /// <summary>一类设备的功能模板。</summary>
@@ -428,7 +442,10 @@ public sealed class WebTemplateStore
         Name = s.Name,
         DataType = s.DataType,
         Note = s.Note ?? string.Empty,
-        Length = s.Length
+        Length = s.Length,
+        // 新增字段务必加到这里：CloneSlot 是槽位进出存储的唯一通道，
+        // 漏一个的表现是「改了能保存、一刷新又变回默认」，且不报错
+        ReadOnly = s.ReadOnly
     };
 
     private sealed class TemplatePack

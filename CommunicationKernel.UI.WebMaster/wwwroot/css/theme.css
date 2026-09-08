@@ -411,24 +411,32 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min)), 1fr)); gap: 14px; }
 
 .mes-card {
-    background: var(--surface2);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0)) , var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: border-color 0.15s;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 6px 18px rgba(0, 0, 0, 0.28);
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
-.mes-card:hover { border-color: #444; }
+.mes-card:hover {
+    border-color: #4a4d53;
+    transform: translateY(-2px);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 26px rgba(0, 0, 0, 0.38);
+}
 /* 在线状态只用头部 LED 表达，不再整卡描绿边——
    一屏十几台设备时，满屏彩色边框反而看不出哪台异常 */
 .mes-card.is-on, .mes-card.is-off { border-color: var(--border); }
+/* 离线卡整体降饱和：在线卡自然浮到前面，不需要额外颜色 */
+.mes-card.is-off .mes-hd { filter: saturate(0.6); }
+.mes-card.is-off .card-name { color: var(--text-muted); }
 
 .mes-hd {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 13px 14px;
     background: var(--surface3);
     border-bottom: 1px solid var(--border);
 }
@@ -438,18 +446,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
    不与任何具体协议名绑定——新插件自动获得一个固定且各异的颜色。
    增删槽位时必须同步修改 UiHelpers.PaletteSlots。
    六种色相在明暗两个主题下都有足够对比度。 */
-.proto-bar { width: 3px; align-self: stretch; border-radius: 2px; min-height: 30px; flex-shrink: 0; }
-.proto-bar.p0 { background: #00a0e3; }
-.proto-bar.p1 { background: #f59e0b; }
-.proto-bar.p2 { background: #3b82f6; }
-.proto-bar.p3 { background: #10b981; }
-.proto-bar.p4 { background: #a855f7; }
-.proto-bar.p5 { background: #ef4444; }
+.proto-bar { width: 4px; align-self: stretch; border-radius: 2px; min-height: 30px; flex-shrink: 0; box-shadow: 0 0 10px -2px currentColor; }
+.proto-bar.p0 { background: #00a0e3; color: #00a0e3; }
+.proto-bar.p1 { background: #f59e0b; color: #f59e0b; }
+.proto-bar.p2 { background: #3b82f6; color: #3b82f6; }
+.proto-bar.p3 { background: #10b981; color: #10b981; }
+.proto-bar.p4 { background: #a855f7; color: #a855f7; }
+.proto-bar.p5 { background: #ef4444; color: #ef4444; }
 
-.mes-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
-.kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12.5px; }
+.mes-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 0; flex: 1; }
+.kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12.5px; padding: 5px 0; border-bottom: 1px dashed var(--border-soft); }
+.kv:last-child { border-bottom: 0; }
 .kv span:first-child { color: var(--text-dim); flex-shrink: 0; }
-.kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kv.err span:last-child { color: var(--danger-ink); }
 
 /* 需要操作、但不是故障的状态（例如「已配置未连接」）。
@@ -469,13 +478,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .card-proto { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
 
 /* 状态 LED：在线带辉光，一眼能从卡片阵列里扫出异常那张 */
-.card-led { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.card-led.online { background: var(--success); box-shadow: 0 0 8px rgba(34, 197, 94, 0.55); }
-.card-led.offline { background: #555; }
+.card-led { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px var(--surface3), 0 0 0 3px var(--border); }
+.card-led.online { background: var(--success); box-shadow: 0 0 0 2px var(--surface3), 0 0 0 3px rgba(34, 197, 94, 0.45), 0 0 10px rgba(34, 197, 94, 0.6); }
+.card-led.offline { background: #4a4d53; }
 
-.card-status { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.card-status.online { background: var(--success-bg); color: var(--success-ink); }
-.card-status.offline { background: #3f3f46; color: #a1a1aa; }
+.card-status { font-size: 11px; padding: 2px 9px; border-radius: 999px; white-space: nowrap; letter-spacing: 0.03em; border: 1px solid transparent; }
+.card-status.online { background: var(--success-bg); color: var(--success-ink); border-color: rgba(34, 197, 94, 0.3); }
+.card-status.offline { background: transparent; color: var(--text-dim); border-color: var(--border); }
 
 /* 网格末尾的虚线「添加」卡：把新增入口放在它将要出现的位置，
    而不是只藏在顶部工具栏里 */
@@ -1711,3 +1720,18 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     /* 窄屏：搜索占满一行，分段筛选跟在下面 */
     .vars-search { margin-left: 0; width: 100%; }
 }
+
+/* 模板表的「只读」列：窄列 + 居中。
+   继承行显示"只读"二字而不是禁用的勾选框——禁用控件看起来像"可以点但坏了"。 */
+.tpl-table th.ro, .tpl-table td.ro {
+    width: 56px;
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+.tpl-table td.ro input[type="checkbox"] { margin: 0; }
+
+/* 只读变量的写入框：降透明度而非换底色，
+   一眼看出"这里本来有个输入框，只是现在不让填" */
+.var-detail .w input:disabled,
+.var-detail .w button:disabled { opacity: .45; }

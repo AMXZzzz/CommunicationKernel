@@ -45,6 +45,23 @@ public sealed class WebVariable
     /// <summary>工程单位，例如「rpm」「℃」；纯展示用，不参与编解码。</summary>
     public string Unit { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 只读变量（测量值），界面禁止写入。
+    /// </summary>
+    /// <remarks>
+    /// 「输出频率」「输出电流」这类是 PLC 算出来的测量值，往里写数没有意义，
+    /// 严重时会被设备当成非法参数而报警停机。
+    /// <para>
+    /// 这只是<b>界面上的护栏</b>，不是安全边界——真正的读写权限在 PLC 侧。
+    /// 因此除了禁用输入框，<c>WriteAsync</c> 里还要再挡一次：
+    /// 光靠禁用控件挡不住已经打开的旧页面，也挡不住并发路径。
+    /// </para>
+    /// <para>
+    /// 由模板带下来（见 <c>WebDeviceTemplateSlot.ReadOnly</c>），也可逐条手改。
+    /// </para>
+    /// </remarks>
+    public bool ReadOnly { get; set; }
+
     /// <summary>备注。模板带下来，本机点也可填。</summary>
     public string Note { get; set; } = string.Empty;
 
@@ -304,6 +321,7 @@ public sealed class WebVariableStore
                         DataType = slot.DataType,
                         Length = length,
                         Note = slot.Note ?? string.Empty,
+                        ReadOnly = slot.ReadOnly,
                         TemplateId = template.Id,
                         ScanRateMs = 1000
                     });
@@ -319,6 +337,7 @@ public sealed class WebVariableStore
                     existing.DataType == slot.DataType &&
                     existing.Length == length &&
                     existing.Note == note &&
+                    existing.ReadOnly == slot.ReadOnly &&
                     existing.TemplateId == template.Id;
 
                 if (same) continue;
@@ -326,6 +345,9 @@ public sealed class WebVariableStore
                 existing.DataType = slot.DataType;
                 existing.Length = length;
                 existing.Note = note;
+                // 只读标记由模板统一管：一台变频器哪些是测量值是设备的固有属性，
+                // 让它随模板下发，操作员就不必逐台逐条重标一遍
+                existing.ReadOnly = slot.ReadOnly;
                 existing.TemplateId = template.Id;
                 changed++;
             }

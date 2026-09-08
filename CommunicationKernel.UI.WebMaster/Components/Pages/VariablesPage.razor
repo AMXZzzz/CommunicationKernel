@@ -177,11 +177,17 @@
                                         <td class="age @(IsStale(row) ? "old" : null)" data-label="刷新">@AgeText(row)</td>
 
                                         <td data-label="写入">
+                                            @* 只读变量（测量值）禁用写入：往输出频率、输出电流这类
+                                               PLC 算出来的值里写数没有意义，严重时会被设备当成
+                                               非法参数而报警停机 *@
                                             <div class="w">
-                                                <input @bind="row.WriteText" placeholder="值" />
+                                                <input @bind="row.WriteText"
+                                                       placeholder="@(row.ReadOnly ? "只读" : "值")"
+                                                       disabled="@row.ReadOnly" />
                                                 <button class="btn-sm primary" type="button"
+                                                        title="@(row.ReadOnly ? "该变量为只读，不能写入" : "写入")"
                                                         @onclick="() => WriteAsync(row)"
-                                                        disabled="@(_busy || !Session.Online)">写</button>
+                                                        disabled="@(_busy || !Session.Online || row.ReadOnly)">写</button>
                                             </div>
                                         </td>
 
@@ -268,6 +274,20 @@
                 }
                 <label>扫描周期 (ms)</label>
                 <input type="number" @bind="_scan" min="200" />
+
+                @* 模板行的只读标记归模板所有，理由同下面的备注：
+                   这里改了，下次「重新同步模板」会被覆盖。 *@
+                <label class="radio-line @(_editingFromTemplate ? "disabled" : null)">
+                    <input type="checkbox" @bind="_readOnly" disabled="@_editingFromTemplate" />
+                    <span>
+                        只读变量（禁止写入）
+                        <span class="label-note">
+                            @(_editingFromTemplate
+                                ? "由模板维护，请到「模板」页修改"
+                                : "输出频率、输出电流这类测量值应勾上")
+                        </span>
+                    </span>
+                </label>
 
                 <label>
                     备注
@@ -602,6 +622,9 @@
 
     /// <summary>表单：轮询扫描周期（毫秒）。</summary>
     private int _scan = 1000;
+
+    /// <summary>表单：是否只读（禁止写入）。</summary>
+    private bool _readOnly;
 
     // ========================================================================
     // 派生视图数据
@@ -1002,6 +1025,7 @@
         _dataType = row.DataType;
         _length = row.Length;
         _scan = row.ScanRateMs;
+        _readOnly = row.ReadOnly;
         _note = row.Note;
 
         // 记下来源：模板行的备注只读，见表单里的说明
@@ -1022,6 +1046,7 @@
         _dataType = "Int16";
         _length = ValueCodec.DefaultLength("Int16");
         _scan = 1000;
+        _readOnly = false;
         _note = string.Empty;
 
         // 新增态一律不是模板行；漏了这句会把上一次编辑模板行时的只读状态带过来
@@ -1095,9 +1120,12 @@
             existing.Length = Math.Max(1, _length);
             existing.ScanRateMs = Math.Max(200, _scan);
 
-            // 模板行的备注归模板所有，本页不写回——写了也会被下次同步覆盖
-            if (!_editingFromTemplate)
+            // 模板行的备注与只读标记都归模板所有，本页不写回——
+            // 写了也会被下次「重新同步模板」覆盖，白改一次还找不到原因
+            if (!_editingFromTemplate) {
                 existing.Note = _note.Trim();
+                existing.ReadOnly = _readOnly;
+            }
 
             // 地址/类型变了，旧的显示值就不再对应当前定义——
             // 留着会让人以为那是刚读回来的新值
@@ -1115,6 +1143,7 @@
                 DataType = _dataType,
                 Length = Math.Max(1, _length),
                 ScanRateMs = Math.Max(200, _scan),
+                ReadOnly = _readOnly,
                 Note = _note.Trim(),
             });
             _banner = "已添加 " + _name.Trim();
@@ -1166,6 +1195,14 @@
     /// 事后追查"谁在什么时候改了哪个值"全靠这条记录。读取则不记，否则日志会被轮询淹没。
     /// </remarks>
     private async Task WriteAsync (WebVariable row) {
+        // 禁用按钮只是护栏，不是关卡：一个在改成只读之前就打开着的页面，
+        // 它渲染出来的按钮仍然是可点的。真正下发之前必须再判一次。
+        if (row.ReadOnly) {
+            _banner = row.Name + " 是只读变量，不能写入";
+            _bannerClass = "status-warn";
+            return;
+        }
+
         _busy = true;
         try {
             // 编码失败不会发起 I/O，服务直接返回 PARSE_ERROR

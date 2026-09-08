@@ -119,6 +119,7 @@
                                     <th>名称</th>
                                     <th>类型</th>
                                     <th class="num">字节</th>
+                                    <th class="ro">只读</th>
                                     <th>备注</th>
                                     <th>来源</th>
                                     <th></th>
@@ -150,6 +151,10 @@
                                                 </select>
                                             </td>
                                             <td class="num mono">@SlotLength(r.Slot)</td>
+                                            <td class="ro">
+                                                <input type="checkbox" checked="@r.Slot.ReadOnly"
+                                                       @onchange="e => SetSlot(ownIdx, readOnly: e.Value is true)" />
+                                            </td>
                                             <td><input class="cell" value="@r.Slot.Note" placeholder="说明"
                                                        @onchange="e => SetSlot(ownIdx, note: e.Value?.ToString())" /></td>
                                             <td class="src">自有</td>
@@ -163,6 +168,9 @@
                                             <td>@r.Slot.Name</td>
                                             <td><span class="type @TypeClass(r.Slot.DataType)">@r.Slot.DataType</span></td>
                                             <td class="num mono">@SlotLength(r.Slot)</td>
+                                            @* 只读是设备的固有属性，标在模板上随同步下发，
+                                               操作员不必逐台逐条重标一遍 *@
+                                            <td class="ro">@(r.Slot.ReadOnly ? "只读" : "")</td>
                                             <td class="note">@r.Slot.Note</td>
                                             <td class="src">@(r.IsOwn ? "自有" : "↳ " + r.SourceTemplateName)</td>
                                             <td class="ops">
@@ -300,13 +308,15 @@
         Persist();
     }
 
-    private void SetSlot(int i, string? name = null, string? type = null, string? note = null)
+    private void SetSlot(
+        int i, string? name = null, string? type = null, string? note = null, bool? readOnly = null)
     {
         if (_current is null || i < 0 || i >= _current.Slots.Count) return;
         WebDeviceTemplateSlot s = _current.Slots[i];
         if (name is not null) s.Name = name.Trim();
         if (type is not null) s.DataType = type;
         if (note is not null) s.Note = note;
+        if (readOnly is not null) s.ReadOnly = readOnly.Value;
         Persist();
     }
 
