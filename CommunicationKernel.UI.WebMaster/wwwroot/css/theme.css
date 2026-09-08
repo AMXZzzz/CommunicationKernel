@@ -4,6 +4,10 @@
  */
 
 :root {
+    /* 告诉浏览器这是深色界面：Chromium 的滚动条、<select> 下拉、日期控件
+       会跟着变深。不声明的话它们保持浅色，在深色工位屏上是一块刺眼的白。 */
+    color-scheme: dark;
+
     --bg: #161616;
     --surface: #1e1e1e;
     --surface2: #242424;
@@ -14,7 +18,11 @@
     --titlebar: #111111;
     --text: #e8eaed;
     --text-muted: #9aa0a6;
-    --text-dim: #6b7076;
+    /* 在 --surface (#1e1e1e) 上约 4.6:1，刚过 WCAG AA。
+       原值 #6b7076 只有 3.9:1，却被用在 11px 的标签上——车间观看距离下直接看不见。 */
+    --text-dim: #7d838a;
+    /* 键盘焦点环。操作员用 Tab / 扫码枪 / 薄膜键盘时靠它知道焦点在哪。 */
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
     --accent: #0ea5e9;
     --accent-2: #0284c7;
     --accent-dim: #1e3a5f;
@@ -62,6 +70,25 @@ body {
 
 button, [role="button"] { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
+
+/* 焦点只在键盘导航时显示（:focus-visible），鼠标点击不出环。
+   全局统一一处，页面禁止各自再写 outline。 */
+:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: 4px;
+}
+
+/* 数值稠密区一律等宽数字：实时值刷新时列宽不抖，扫视一列数字才对得齐。 */
+.mono, .addr, .summary-value, .kv span:last-child, .data-table tbody td, .log-time {
+    font-variant-numeric: tabular-nums;
+}
+
+/* 系统设置了「减弱动态效果」时，一切闪烁停下。
+   ISA-101 也只允许未确认报警闪烁，其他状态本就不该动。 */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 
 .app-shell {
     display: flex;
@@ -213,12 +240,12 @@ button:disabled { cursor: not-allowed; }
     align-items: center;
     justify-content: space-between;
     padding: 0 16px;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted);
     flex-shrink: 0;
 }
 
-/* 工具栏条带：固定高度、通栏、底部分隔线。
+/* 工具栏条带
    操作入口集中在这一条里，主体区因此可以整块留给内容。 */
 .toolbar {
     height: var(--toolbar-h);
@@ -287,19 +314,22 @@ button:disabled { cursor: not-allowed; }
     font-size: 11px;
     white-space: nowrap;
 }
+/* 「实时」徽标不闪。闪烁是报警专属的注意力资源，正常态也闪就把报警稀释了。 */
 .live::before {
     content: "";
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: var(--success-ink);
-    animation: pulse 1.2s infinite;
 }
 .section-row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 12px; }
 .section-title { font-size: 14px; font-weight: 650; }
 
+/* 桌面按钮最低 32px：带手套或在触摸一体机上，30px 以下的按钮点不准。
+   手机断点里再抬到 40px。 */
 .btn {
-    padding: 7px 16px;
+    min-height: 32px;
+    padding: 6px 16px;
     border-radius: 6px;
     border: 1px solid transparent;
     font-size: 13px;
@@ -317,7 +347,9 @@ button:disabled { cursor: not-allowed; }
 .btn.danger { background: #b91c1c; border-color: var(--danger); color: #fff; }
 .btn.danger:hover:not(:disabled) { background: #991b1b; }
 .btn:disabled { opacity: 0.45; }
-.btn-sm { padding: 3px 8px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); }
+/* 表格行内的读 / 写 / 删。原来 22px 高、11px 字，是全站最小的可点目标，
+   却承担写 PLC 这种不可撤销的操作。抬到 28px、12px。 */
+.btn-sm { min-height: 28px; padding: 4px 10px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); }
 .btn-sm.primary { background: #0c4a6e; color: #7dd3fc; border-color: #1e3a5f; }
 .btn-sm.danger { background: #3b1515; color: #fca5a5; border-color: #7f1d1d; }
 .btn-sm.ghost:hover { color: var(--text); background: #2a2a2a; }
@@ -339,7 +371,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .data-table thead th {
     background: #1a1a1a;
     color: var(--text-muted);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     text-align: left;
     padding: 8px 10px;
@@ -416,6 +448,11 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .kv span:first-child { color: var(--text-dim); flex-shrink: 0; }
 .kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kv.err span:last-child { color: var(--danger-ink); }
+
+/* 需要操作、但不是故障的状态（例如「已配置未连接」）。
+   用红色会让操作员以为设备坏了，而那其实是「添加 ≠ 连接」的正常中间态；
+   用灰色又会被当成无关紧要而略过。琥珀色的意思是"该你动手了"。 */
+.kv.warn span:last-child { color: var(--warning-ink); }
 .card-ft {
     padding: 10px 14px 14px;
     display: flex;
@@ -433,7 +470,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .card-led.online { background: var(--success); box-shadow: 0 0 8px rgba(34, 197, 94, 0.55); }
 .card-led.offline { background: #555; }
 
-.card-status { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.card-status { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .card-status.online { background: var(--success-bg); color: var(--success-ink); }
 .card-status.offline { background: #3f3f46; color: #a1a1aa; }
 
@@ -544,11 +581,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     min-height: 0;
     overflow: auto;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 12px;
 }
-.log-row { display: flex; gap: 12px; padding: 2px 4px; }
+.log-row { display: flex; gap: 12px; padding: 3px 4px; }
 .log-row:hover { background: #1a1a1a; }
-.log-time { color: #4b5563; width: 88px; flex-shrink: 0; }
+/* 时间戳原用 #4b5563，在 #0f0f0f 上只有 2.9:1，排障时最需要看的一列反而最暗 */
+.log-time { color: var(--text-dim); width: 92px; flex-shrink: 0; }
 .log-level { width: 32px; flex-shrink: 0; font-weight: 700; }
 .log-cat { width: 110px; flex-shrink: 0; color: #60a5fa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .log-msg { flex: 1; word-break: break-all; }
@@ -651,7 +689,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     padding: 10px 12px;
     flex-shrink: 0;
 }
-.alarm-hd { font-size: 12px; color: #fca5a5; font-weight: 650; margin-bottom: 8px; }
+.alarm-hd { font-size: 12px; color: var(--danger-ink); font-weight: 650; margin-bottom: 8px; }
 .alarm-row {
     display: grid;
     grid-template-columns: 140px 140px 1fr;
@@ -661,7 +699,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     border-top: 1px solid #3b1515;
 }
 .alarm-name { font-weight: 650; }
-.alarm-msg { color: #fca5a5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alarm-msg { color: var(--danger-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .add-form-overlay.center {
     justify-content: center;
@@ -670,7 +708,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .confirm-box p { color: var(--text-muted); margin: 8px 0 4px; line-height: 1.5; }
 
-.status-dot.online { animation: pulse 1.6s infinite; }
+/* 顶栏在线灯常亮不闪：理由同 .live，闪烁只留给 .health-strip.is-alarm。 */
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #111; }
@@ -742,7 +780,7 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
     justify-content: center;
     gap: 3px;
     color: #888;
-    font-size: 10px;
+    font-size: 11px;
     text-decoration: none;
     min-height: 56px;
     -webkit-tap-highlight-color: transparent;
@@ -823,6 +861,7 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 
     input, select, textarea { font-size: 16px; padding: 10px 12px; }
     .btn { min-height: 40px; padding: 8px 14px; }
+    .btn-sm { min-height: 36px; padding: 6px 12px; }
     .card-ft { gap: 8px; }
     .card-ft > .btn, .card-ft > .btn-sm { height: 40px; flex: 1; }
     .form-actions { flex-wrap: wrap; }

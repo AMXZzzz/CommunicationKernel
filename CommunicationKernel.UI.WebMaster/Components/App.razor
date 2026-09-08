@@ -44,7 +44,9 @@
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="app.css?v=4" />
     <link rel="stylesheet" href="CommunicationKernel.UI.WebMaster.styles.css" />
-    <link rel="stylesheet" href="css/theme.css?v=8" />
+    @* 改动 theme.css 必须同时 +1 这个版本号，否则老浏览器会拿缓存里的旧样式：
+       新加的类不生效，表现是"某个元素颜色不对"，而查代码看不出任何问题。 *@
+    <link rel="stylesheet" href="css/theme.css?v=9" />
     <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
 </head>
 

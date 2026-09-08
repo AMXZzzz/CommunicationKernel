@@ -68,9 +68,18 @@
                                 <span>字节序</span>
                                 <span class="mono" title="@ByteOrderHint(row.ByteOrder)">@row.ByteOrder</span>
                             </div>
+                            @* 「已配置未连接」是正常中间态，不是故障：本页添加设备只写本地配置，
+                               建立物理连接是下面那个「连接」按钮的事。因此用琥珀色而非红色，
+                               文案直接说该做什么——原来写的是「本地待对账」，
+                               那是记账术语，现场看不懂也不知道要干嘛。 *@
                             @if (!row.OnHost)
                             {
-                                <div class="kv err"><span>宿主</span><span>本地待对账</span></div>
+                                <div class="kv warn">
+                                    <span>宿主</span>
+                                    <span title="配置已保存在本机，但宿主上还没有这条路由，所以读写都不会发生。点下方「连接」即可建立；宿主重启导致路由丢失时，本机也会自动把它重新注册回去。">
+                                        未连接 · 点下方「连接」
+                                    </span>
+                                </div>
                             }
                         </div>
                         @* 连接是显式动作，不在「添加设备」时顺带发生——

@@ -89,14 +89,14 @@
 
     <div class="section-row">
         <div class="section-title">设备状态</div>
-        <span class="toolbar-count">卡片来自宿主路由 + 本地待对账配置</span>
+        <span class="toolbar-count">卡片来自宿主已注册的路由，以及本机已保存但尚未连接的设备</span>
     </div>
 
     @if (Cards.Count == 0)
     {
         <div class="empty-state">
             <div class="empty-title">暂无设备</div>
-            <div class="empty-hint">到「设备管理」注册 PLC 路由。本地已保存的配置会在 Host 恢复后自动对账。</div>
+            <div class="empty-hint">到「设备管理」添加并连接 PLC。本机保存的配置不会丢：宿主重启后会自动把这些设备重新连上。</div>
             <a class="btn primary" href="/devices">去添加设备</a>
         </div>
     }
@@ -121,9 +121,17 @@
                         <div class="kv"><span>路由</span><span class="mono">@card.RouteId</span></div>
                         <div class="kv"><span>连接</span><span class="addr">@card.Endpoint</span></div>
                         <div class="kv"><span>传输</span><span>@card.TransportKind</span></div>
+                        @* 本页是只读监控，没有连接按钮，因此文案要指路。
+                           不要写成「本地待对账」——记账术语，操作员看不懂，
+                           也看不出该去哪儿做什么。 *@
                         @if (!card.OnHost)
                         {
-                            <div class="kv"><span>状态</span><span>本地待对账</span></div>
+                            <div class="kv warn">
+                                <span>状态</span>
+                                <span title="配置已保存在本机，但宿主上还没有这条路由，所以读写都不会发生。到「设备管理」页点该设备的「连接」即可。">
+                                    未连接 · 去「设备管理」连接
+                                </span>
+                            </div>
                         }
                         @if (st is not null && !string.IsNullOrWhiteSpace(st.ErrorMessage) && !online)
                         {
