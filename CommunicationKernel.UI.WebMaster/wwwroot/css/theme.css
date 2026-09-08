@@ -1477,3 +1477,237 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     color: var(--text-dim);
     font-variant-numeric: tabular-nums;
 }
+
+/* ============================================================================
+   变量配置 · 详情面板
+   ============================================================================
+   与寄存器模板页同构：左右两块圆角面板，右侧头部固定、表格自己滚。
+   类型徽标、.tbl-wrap 等直接复用模板页那套，不再重复定义。
+   ---------------------------------------------------------------------------- */
+.var-panel.var-detail {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 左栏设备项：LED + 名称/副标题 + 计数，三列固定对齐 */
+.dev {
+    display: grid;
+    grid-template-columns: 8px 1fr auto;
+    column-gap: 10px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    background: transparent;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--border-soft);
+    color: inherit;
+    font: inherit;
+}
+.dev:hover { background: var(--surface2); }
+.dev.active { background: var(--accent-dim); border-left-color: var(--accent); }
+
+.dev .led {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+}
+.dev.on .led { background: var(--success); box-shadow: 0 0 6px rgba(34, 197, 94, .5); }
+/* 「全部」那一行没有在线概念，藏起来但保留占位，三列不至于错位 */
+.dev .led.none { visibility: hidden; }
+
+.dev .body { min-width: 0; }
+.dev .t {
+    display: block;
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dev .s {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dev .cnt {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+/* 有错误的设备在左栏就标红：哪台在报错，扫一眼就知道，
+   不必逐台点进去看表格 */
+.dev .cnt.err { color: var(--danger-ink); }
+
+/* 「管理设备 →」推到底部：它是离开本页的出口，不该混在设备条目里 */
+.devs-ft {
+    margin-top: auto;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+}
+.devs-ft .btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    text-decoration: none;
+}
+
+/* 右侧头部：范围 + 概要 + 搜索 + 分段筛选 */
+.vars-hd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+}
+.vars-hd .title { font-weight: 600; }
+.vars-hd .ep { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+.vars-search {
+    margin-left: auto;
+    min-height: 30px;
+    width: 200px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 2px 10px;
+    font: inherit;
+    font-size: 13px;
+}
+
+/* 分段筛选：三选一，比三个独立复选框更省位置也更明确 */
+.seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.seg button {
+    min-height: 30px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 12px;
+}
+.seg button.on { background: var(--surface3); color: var(--text); }
+.seg button + button { border-left: 1px solid var(--border); }
+
+/* 表格 */
+.var-detail .tbl-wrap { flex: 1; min-height: 0; overflow: auto; }
+.var-detail .var-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 900px; }
+.var-detail .var-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+}
+.var-detail .var-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.var-detail .var-table th.r, .var-detail .var-table td.r { text-align: right; }
+.var-detail .var-table tbody tr:hover td { background: rgba(255, 255, 255, .02); }
+
+.var-detail .name { font-size: 13.5px; }
+/* 模板徽标紧跟名字：来源标在名字旁边，视线不用横跨整行 */
+.var-detail .name .tpl {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    vertical-align: 1px;
+}
+
+/* 值列：右对齐 + 等宽 + 加粗。这是整张表最该先被看到的一列 */
+.var-detail .val {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.var-detail .val .u {
+    margin-left: 4px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+}
+/* 陈旧与从未读取都降到暗色：它们都不能当作现场实况用 */
+.var-detail .val.stale { color: var(--text-dim); }
+/* 错误用小字：错误码比数值长，保持大字号会撑破列宽 */
+.var-detail .val.err { color: var(--danger-ink); font-size: 12px; font-weight: 400; }
+
+.var-detail .age {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+}
+/* 超过阈值转黄：值本身没错，但已经不是现在的值了 */
+.var-detail .age.old { color: var(--warning-ink); }
+
+.var-detail .w { display: flex; gap: 4px; }
+.var-detail .w input {
+    flex: 1;
+    min-width: 0;
+    min-height: 28px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+}
+
+/* 轮询开关：圆点表示开关，按钮文字是周期毫秒数 */
+.btn-sm.toggle::before { content: "○ "; }
+.btn-sm.toggle.on { color: var(--success-ink); border-color: var(--success); }
+.btn-sm.toggle.on::before { content: "● "; }
+
+.var-detail .ops { text-align: right; white-space: nowrap; }
+.var-detail .ops .btn-sm + .btn-sm { margin-left: 4px; }
+
+/* 底部图例：三条约定说明，最后一条推到右侧 */
+.vars-ft {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+.vars-ft .push { margin-left: auto; }
+
+@media (max-width: 900px) {
+    /* 窄屏：搜索占满一行，分段筛选跟在下面 */
+    .vars-search { margin-left: 0; width: 100%; }
+}

@@ -75,9 +75,21 @@ public sealed class WebVariable
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsError { get; set; }
 
+    /// <summary>
+    /// 最近一次读取的时刻；null 表示从未读过。
+    /// </summary>
+    /// <remarks>
+    /// 存时间戳而不是格式化字符串：界面要算「距上次刷新多久」——
+    /// 值本身正确但已经是十几秒前的，和读失败一样危险，而前者不会标红，
+    /// 只能靠这个年龄暴露。字符串形式由 <see cref="LastUpdated"/> 派生。
+    /// </remarks>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime? LastReadAt { get; set; }
+
     /// <summary>最近一次读取时刻（HH:mm:ss），作为值单元格的 tooltip。</summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public string LastUpdated { get; set; } = string.Empty;
+    public string LastUpdated =>
+        LastReadAt is null ? string.Empty : LastReadAt.Value.ToString("HH:mm:ss");
 }
 
 /// <summary>导入变量时的覆盖范围。</summary>
@@ -404,7 +416,7 @@ public sealed class WebVariableStore
             v.IsError = error;
 
             // 只记时分秒：表格那一列是 tooltip，日期对"这个值是不是刚读的"没有帮助
-            v.LastUpdated = DateTime.Now.ToString("HH:mm:ss");
+            v.LastReadAt = DateTime.Now;
         }
 
         Changed?.Invoke();

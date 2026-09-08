@@ -66,77 +66,157 @@
         <div class="var-layout">
             <aside class="device-panel">
                 <div class="panel-hd">设备 <span class="count">@RouteChoices.Count</span></div>
+
                 @* 用 string.Empty 而不是 ""：特性由双引号界定，参数里再写双引号
-               会让 Razor 在第一个引号处截断特性值，解析成无参调用。 *@
-                <button class="dev-item @(_filterRoute.Length == 0 ? "active" : null)" type="button" @onclick="() => SelectRoute(string.Empty)">
-                    <span class="n">全部</span>
-                    <span class="sub">@Store.GetAll().Count 条变量</span>
+                   会让 Razor 在第一个引号处截断特性值，解析成无参调用。 *@
+                <button class="dev @(_filterRoute.Length == 0 ? "active" : null)" type="button"
+                        @onclick="() => SelectRoute(string.Empty)">
+                    <span class="led none"></span>
+                    <span class="body">
+                        <span class="t">全部</span>
+                        <span class="s">@Store.GetAll().Count 条变量 · @Store.GetAll().Count(v => v.Polling) 轮询</span>
+                    </span>
+                    <span class="cnt"></span>
                 </button>
+
                 @foreach (RouteChoice r in RouteChoices) {
-                    <button class="dev-item @(_filterRoute == r.RouteId ? "active" : null)" type="button" @onclick="() => SelectRoute(r.RouteId)">
-                        <span class="n">
-                            <span class="dot @(Session.IsRouteOnline(r.RouteId) ? "on" : "off")"></span>
-                            @r.Name
+                    int errs = ErrorCountOf(r.RouteId);
+                    <button class="dev @(_filterRoute == r.RouteId ? "active" : null) @(Session.IsRouteOnline(r.RouteId) ? "on" : null)"
+                            type="button" @onclick="() => SelectRoute(r.RouteId)">
+                        <span class="led"></span>
+                        <span class="body">
+                            <span class="t">@r.Name</span>
+                            @* 副标题带上端点：同一协议下挂多台时，光看协议名分不出是哪台 *@
+                            <span class="s">@r.ProtocolId@(EndpointOf(r.RouteId) is { Length: > 0 } ep ? " · " + ep : "")</span>
                         </span>
-                        <span class="sub">@r.ProtocolId</span>
+                        @* 错误数并入计数：哪台设备在报错，扫左栏就知道，
+                           不必逐台点进去看表格 *@
+                        <span class="cnt @(errs > 0 ? "err" : null)">
+                            @CountOf(r.RouteId)@(errs > 0 ? " · " + errs + " 错" : "")
+                        </span>
                     </button>
                 }
+
+                @* 设备的增删改在设备管理页，这里给一个去处，省得操作员在导航栏来回找 *@
+                <div class="devs-ft">
+                    <a class="btn ghost" href="/devices">管理设备 →</a>
+                </div>
             </aside>
 
-            <section class="var-panel">
+            <section class="var-panel var-detail">
+                @* 面板头：当前范围 + 概要 + 搜索 + 分段筛选。
+                   概要里的「站号 / 字节序」来自设备配置，放在这儿是因为它们决定
+                   下面这张表怎么解释读回来的字节——值不对时第一个要核的就是它们。 *@
+                <div class="vars-hd">
+                    <span class="title">@ScopeTitle</span>
+                    <span class="ep">@ScopeMeta</span>
+                    <input class="vars-search" placeholder="搜索名称 / 地址" aria-label="搜索变量"
+                           @bind="_search" @bind:event="oninput" />
+                    <div class="seg">
+                        <button type="button" class="@(_view == VarView.All ? "on" : null)"
+                                @onclick="() => _view = VarView.All">全部</button>
+                        <button type="button" class="@(_view == VarView.Polling ? "on" : null)"
+                                @onclick="() => _view = VarView.Polling">轮询中</button>
+                        <button type="button" class="@(_view == VarView.Error ? "on" : null)"
+                                @onclick="() => _view = VarView.Error">有错误</button>
+                    </div>
+                </div>
+
                 @if (Visible.Count == 0) {
-                    <div class="empty-state"><div class="empty-hint">没有变量。添加时请选择已注册的路由 ID。</div></div>
+                    <div class="empty-state">
+                        <div class="empty-hint">@EmptyHint</div>
+                    </div>
                 } else {
-                    <table class="data-table var-table">
-                        <thead>
-                            <tr>
-                                <th>名称</th>
-                                <th>路由</th>
-                                <th>地址</th>
-                                <th>类型</th>
-                                <th>备注</th>
-                                <th>当前值</th>
-                                <th>写入</th>
-                                <th>轮询</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (WebVariable row in Visible) {
-                                <tr class="@(row.IsError ? "row-error" : null)">
-                                    <td class="name" data-label="名称">@row.Name</td>
-                                    <td class="addr" data-label="路由">@row.RouteId</td>
-                                    <td class="mono" data-label="地址">@row.Address</td>
-                                    <td data-label="类型"><span class="type-pill">@row.DataType</span></td>
-                                    @* 不在这里标「模板」：行尾的「锁」按钮已经说明了来源，
-                                   备注列只放备注本身，否则真备注被后缀挤得读不出来。 *@
-                                    <td data-label="备注" title="@row.Note">@(string.IsNullOrEmpty(row.Note) ? "—" : row.Note)</td>
-                                    <td class="val-green mono" data-label="当前值" title="@row.LastUpdated">@row.DisplayValue</td>
-                                    <td class="write-cell" data-label="写入">
-                                        <input class="write-input" @bind="row.WriteText" placeholder="值" />
-                                        <button class="btn-sm primary" type="button" @onclick="() => WriteAsync(row)" disabled="@(_busy || !Session.Online)">写</button>
-                                        <button class="btn-sm ghost" type="button" @onclick="() => ReadAsync(row)" disabled="@(_busy || !Session.Online)">读</button>
-                                    </td>
-                                    <td data-label="轮询">
-                                        <label class="poll-toggle">
-                                            <input type="checkbox" checked="@row.Polling" @onchange="e => TogglePoll(row, e)" />
-                                        </label>
-                                    </td>
-                                    <td class="row-btns" data-label="">
-                                        <button class="btn-sm ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
-                                        @if (row.FromTemplate) {
-                                            <button class="btn-sm ghost" type="button" disabled
-                                                    title="来自模板，不能单条删除（下次同步模板会把它加回来）。要去掉整套请把上方模板选成「（不使用模板）」">
-                                                锁
-                                            </button>
-                                        } else {
-                                            <button class="btn-sm danger" type="button" @onclick="() => AskRemove(row)">删</button>
-                                        }
-                                    </td>
+                    <div class="tbl-wrap">
+                        <table class="var-table">
+                            <colgroup>
+                                <col style="width:19%" /><col style="width:10%" /><col style="width:9%" />
+                                <col style="width:6%" /><col style="width:15%" /><col style="width:7%" />
+                                <col style="width:14%" /><col style="width:8%" /><col style="width:12%" />
+                            </colgroup>
+                            <thead>
+                                <tr>
+                                    <th>名称</th>
+                                    <th>地址</th>
+                                    <th>类型</th>
+                                    <th class="r">字节</th>
+                                    <th class="r">当前值</th>
+                                    <th class="r">刷新</th>
+                                    <th>写入</th>
+                                    <th>轮询</th>
+                                    <th class="r">操作</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @foreach (WebVariable row in Visible) {
+                                    <tr>
+                                        <td class="name" data-label="名称" title="@row.Note">
+                                            @row.Name
+                                            @* 模板徽标取代原来行尾那个「锁」按钮：来源标在名字旁边，
+                                               视线不用横跨整行才知道这条能不能删 *@
+                                            @if (row.FromTemplate) {
+                                                <span class="tpl" title="来自模板「@TemplateNameOf(row.TemplateId)」，不能单条删除">@TemplateNameOf(row.TemplateId)</span>
+                                            }
+                                        </td>
+                                        <td class="mono" data-label="地址">@row.Address</td>
+                                        <td data-label="类型"><span class="type @TypeClass(row.DataType)">@row.DataType</span></td>
+                                        <td class="mono r" data-label="字节">@row.Length</td>
+
+                                        @* 值单元格：错误红、未读灰、陈旧灰、正常亮。
+                                           单位小一号跟在数字后面，不参与对齐 *@
+                                        <td class="val @ValueClass(row)" data-label="当前值"
+                                            title="@(row.LastUpdated.Length > 0 ? "最近读取 " + row.LastUpdated : "尚未读取")">
+                                            @row.DisplayValue
+                                            @if (!row.IsError && row.Unit.Length > 0 && row.DisplayValue != "--") {
+                                                <span class="u">@row.Unit</span>
+                                            }
+                                        </td>
+
+                                        @* 刷新年龄：值本身正确但已是十几秒前的，与读失败一样危险，
+                                           而前者不会标红——只能靠这一列暴露 *@
+                                        <td class="age @(IsStale(row) ? "old" : null)" data-label="刷新">@AgeText(row)</td>
+
+                                        <td data-label="写入">
+                                            <div class="w">
+                                                <input @bind="row.WriteText" placeholder="值" />
+                                                <button class="btn-sm primary" type="button"
+                                                        @onclick="() => WriteAsync(row)"
+                                                        disabled="@(_busy || !Session.Online)">写</button>
+                                            </div>
+                                        </td>
+
+                                        @* 轮询开关直接显示周期：勾选框只能表达开/关，
+                                           而现场真正要核对的是「这条多久读一次」 *@
+                                        <td data-label="轮询">
+                                            <button class="btn-sm toggle @(row.Polling ? "on" : null)" type="button"
+                                                    title="@(row.Polling ? "轮询中，点击停止" : "已停止，点击开始")"
+                                                    @onclick="() => TogglePoll(row)">@row.ScanRateMs</button>
+                                        </td>
+
+                                        <td class="ops" data-label="操作">
+                                            <button class="btn-sm" type="button" @onclick="() => ReadAsync(row)"
+                                                    disabled="@(_busy || !Session.Online)">读</button>
+                                            <button class="btn-sm" type="button" @onclick="() => OpenEdit(row)"
+                                                    disabled="@_busy">编辑</button>
+                                            @* 模板行没有「删」：删了下次同步又会回来。
+                                               要整套去掉得在上方把模板选成「（不使用模板）」，
+                                               名字旁的徽标已经说明了这一点，这里不再摆禁用按钮 *@
+                                            @if (!row.FromTemplate) {
+                                                <button class="btn-sm danger" type="button"
+                                                        @onclick="() => AskRemove(row)">删</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="vars-ft">
+                        <span>● 轮询开 / ○ 关，数字为周期 ms</span>
+                        <span>模板生成的变量无「删」，到模板页维护</span>
+                        <span class="push">刷新超过 @StaleSeconds 秒变黄 = 值已陈旧</span>
+                    </div>
                 }
             </section>
         </div>
@@ -530,10 +610,151 @@
     /// <summary>
     /// 当前应显示的变量行：未选筛选时为全部，否则按路由 Id 过滤。
     /// </summary>
-    private IReadOnlyList<WebVariable> Visible =>
+    private IReadOnlyList<WebVariable> Visible
+    {
+        get
+        {
+            IEnumerable<WebVariable> q = Store.GetAll();
+
+            if (!string.IsNullOrEmpty(_filterRoute))
+                q = q.Where(v => string.Equals(v.RouteId, _filterRoute, StringComparison.OrdinalIgnoreCase));
+
+            // 名称与地址一起搜：现场既会按功能名找（"频率给定"），
+            // 也会拿着 PLC 程序里的地址反查（"40001"），两种都得中
+            if (_search.Length > 0)
+            {
+                string k = _search.Trim();
+                q = q.Where(v =>
+                    v.Name.Contains(k, StringComparison.OrdinalIgnoreCase) ||
+                    v.Address.Contains(k, StringComparison.OrdinalIgnoreCase));
+            }
+
+            q = _view switch
+            {
+                VarView.Polling => q.Where(v => v.Polling),
+                VarView.Error => q.Where(v => v.IsError),
+                _ => q,
+            };
+
+            return q.ToList();
+        }
+    }
+
+    /// <summary>右侧表格的筛选视图。</summary>
+    private enum VarView { All, Polling, Error }
+
+    /// <summary>当前筛选视图。</summary>
+    private VarView _view = VarView.All;
+
+    /// <summary>名称 / 地址搜索关键字。</summary>
+    private string _search = string.Empty;
+
+    /// <summary>超过这么多秒未刷新即视为陈旧。</summary>
+    /// <remarks>
+    /// 取 10 秒：最长的常用扫描周期是 5 秒，留一倍余量。
+    /// 定得太短会让正常的慢周期变量一直标黄，警示就失效了。
+    /// </remarks>
+    private const int StaleSeconds = 10;
+
+    /// <summary>右侧面板标题：当前看的是哪台设备。</summary>
+    private string ScopeTitle =>
         string.IsNullOrEmpty(_filterRoute)
-            ? Store.GetAll()
-            : Store.GetAll().Where(v => string.Equals(v.RouteId, _filterRoute, StringComparison.OrdinalIgnoreCase)).ToList();
+            ? "全部设备"
+            : RouteChoices.FirstOrDefault(r => r.RouteId == _filterRoute)?.Name ?? _filterRoute;
+
+    /// <summary>
+    /// 标题右侧的概要。
+    /// </summary>
+    /// <remarks>
+    /// 站号与字节序放在这里，是因为它们决定下面这张表<b>怎么解释读回来的字节</b>——
+    /// 数值明显不对时，第一个要核的就是这两项，不该逼操作员切到设备页去看。
+    /// </remarks>
+    private string ScopeMeta
+    {
+        get
+        {
+            IReadOnlyList<WebVariable> all = Visible;
+            string tail = all.Count + " 变量 · " + all.Count(v => v.Polling) + " 轮询";
+
+            if (string.IsNullOrEmpty(_filterRoute)) return tail;
+
+            WebDeviceRecord? rec = Devices.Get(_filterRoute);
+            if (rec is null) return tail;
+
+            string station = string.IsNullOrWhiteSpace(rec.Station) ? "—" : rec.Station;
+            return "站 " + station + " · " + rec.ByteOrder + " · " + tail;
+        }
+    }
+
+    /// <summary>空表时的提示：要区分「本来就没有」与「被筛掉了」。</summary>
+    private string EmptyHint =>
+        _search.Length > 0 || _view != VarView.All
+            ? "当前筛选下没有变量。清空搜索或切回「全部」。"
+            : "没有变量。添加时请选择已注册的路由 ID。";
+
+    /// <summary>某路由下最近一次读取失败的变量数。</summary>
+    private int ErrorCountOf(string routeId) =>
+        Store.GetAll().Count(v =>
+            string.Equals(v.RouteId, routeId, StringComparison.OrdinalIgnoreCase) && v.IsError);
+
+    /// <summary>某路由的连接端点，供左栏副标题区分同协议的多台设备。</summary>
+    private string EndpointOf(string routeId)
+    {
+        WebDeviceRecord? rec = Devices.Get(routeId);
+        if (rec is null) return string.Empty;
+
+        return string.Equals(rec.TransportKind, "Serial", StringComparison.OrdinalIgnoreCase)
+            ? rec.SerialPort
+            : rec.Address + ":" + rec.Port;
+    }
+
+    /// <summary>模板 Id → 显示名；模板已删时退回「模板」二字。</summary>
+    private string TemplateNameOf(string templateId)
+    {
+        WebDeviceTemplate? t = Templates.Get(templateId);
+        return t is null || t.Name.Length == 0 ? "模板" : t.Name;
+    }
+
+    /// <summary>数据类型 → 徽标配色类名，与寄存器模板页同一套。</summary>
+    private static string TypeClass(string dataType) => dataType switch
+    {
+        "Bool" => "bool",
+        "Float" => "float",
+        "String" or "Hex" => "str",
+        _ => "int",
+    };
+
+    /// <summary>值单元格的状态类名。</summary>
+    /// <remarks>
+    /// 四种状态要分得开：读失败(红) / 从未读(灰) / 已陈旧(灰) / 正常。
+    /// 陈旧与正常都是"有值"，但陈旧的那个不能当作现场实况用。
+    /// </remarks>
+    private static string ValueClass(WebVariable v)
+    {
+        if (v.IsError) return "err";
+        if (v.LastReadAt is null) return "stale";
+        return IsStale(v) ? "stale" : string.Empty;
+    }
+
+    /// <summary>距上次读取是否已超过 <see cref="StaleSeconds"/>。</summary>
+    private static bool IsStale(WebVariable v) =>
+        v.LastReadAt is null || (DateTime.Now - v.LastReadAt.Value).TotalSeconds > StaleSeconds;
+
+    /// <summary>刷新年龄文本。</summary>
+    /// <remarks>
+    /// 1 分钟内给一位小数（能看出轮询周期对不对），超过则退到分钟——
+    /// 那时精确到零点几秒已无意义，只需要知道"很久没动了"。
+    /// </remarks>
+    private static string AgeText(WebVariable v)
+    {
+        if (v.LastReadAt is null) return "—";
+
+        double s = (DateTime.Now - v.LastReadAt.Value).TotalSeconds;
+        if (s < 0) return "0.0s";                        // 系统对时回拨
+        if (s < 60) return s.ToString("0.0") + "s";
+        if (s < 3600) return (int)(s / 60) + "m";
+        return (int)(s / 3600) + "h";
+    }
 
     /// <summary>左侧设备列表与表单下拉框共用的路由候选项。</summary>
     private IReadOnlyList<RouteChoice> RouteChoices => BuildRouteChoices();
@@ -554,6 +775,9 @@
     protected override void OnInitialized () {
         Session.Changed += OnChanged;
         Store.Changed += OnChanged;
+
+        // 「刷新」列的年龄要自己往前走，见 StartAgeTicker 的说明
+        StartAgeTicker();
 
         // 表单默认选中第一条路由，省去操作员每次新增都要手动选
         if (RouteChoices.Count > 0)
@@ -908,8 +1132,13 @@
     /// <c>e.Value</c> 是装箱的 object，用 <c>is true</c> 而非强转——
     /// 复选框在某些浏览器上可能回传 null。
     /// </remarks>
-    private void TogglePoll (WebVariable row, ChangeEventArgs e) {
-        row.Polling = e.Value is true;
+    /// <remarks>
+    /// 由按钮直接取反，不再走复选框的 ChangeEventArgs：
+    /// 那个按钮同时要显示扫描周期，勾选框放不下——而周期恰恰是现场
+    /// 最常核对的一项（"这条到底多久读一次"）。
+    /// </remarks>
+    private void TogglePoll (WebVariable row) {
+        row.Polling = !row.Polling;
         Store.Update(row);
     }
 
@@ -1248,7 +1477,30 @@
     public void Dispose () {
         Session.Changed -= OnChanged;
         Store.Changed -= OnChanged;
+        _ageTimer?.Dispose();
     }
+
+    /// <summary>
+    /// 每秒重绘一次，只为让「刷新」列的年龄往前走。
+    /// </summary>
+    /// <remarks>
+    /// <b>不能只靠 Store.Changed。</b>那个事件由轮询回填触发——设备一掉线就
+    /// 不再有回填，年龄会冻在最后一次读取的读数上，而那恰恰是最该看见它
+    /// 增长的时刻：界面显示 "0.4s" 而实际已经三分钟没读到了。
+    /// <para>
+    /// 每个电路一个 1 秒定时器，代价可忽略；<see cref="Dispose"/> 里释放，
+    /// 漏释放会让已关闭的页面继续每秒唤醒渲染。
+    /// </para>
+    /// </remarks>
+    private System.Threading.Timer? _ageTimer;
+
+    /// <summary>启动年龄计时器。</summary>
+    private void StartAgeTicker () =>
+        _ageTimer = new System.Threading.Timer(
+            _ => InvokeAsync(StateHasChanged),
+            null,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1));
 
     /// <summary>
     /// 路由候选项：左侧设备列表与表单下拉框共用。
