@@ -1545,9 +1545,13 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
 }
-/* 有错误的设备在左栏就标红：哪台在报错，扫一眼就知道，
-   不必逐台点进去看表格 */
-.dev .cnt.err { color: var(--danger-ink); }
+/* 用 visibility 而非 display 隐藏：后者会让元素不占位，
+   工具栏总宽度随之变化、flex 重新分配，左侧内容闪一下再回位 */
+.busy-hint.hidden { visibility: hidden; }
+
+/* 禁用的「删」保持占位并降透明度：隐藏会让同列按钮左右参差，
+   扫视时对不上位 */
+.var-detail .ops .btn-sm:disabled { opacity: .4; }
 
 /* 「管理设备 →」推到底部：它是离开本页的出口，不该混在设备条目里 */
 .devs-ft {

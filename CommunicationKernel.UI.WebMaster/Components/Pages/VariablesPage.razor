@@ -50,9 +50,10 @@
             </button>
         }
         <div class="toolbar-right">
-            @if (_busy) {
-                <span class="busy-hint">处理中…</span>
-            }
+            @* 始终渲染，只切可见性：条件渲染会让工具栏总宽度在「处理中…」出现的
+               瞬间变化，flex 随之重新分配，左侧的模板下拉与按钮会向左闪一下再回位。
+               点一次「读」闪一次，看起来像界面出了故障。 *@
+            <span class="busy-hint @(_busy ? null : "hidden")">处理中…</span>
             <span class="toolbar-count">@Visible.Count 个变量</span>
         </div>
     </div>
@@ -80,7 +81,6 @@
                 </button>
 
                 @foreach (RouteChoice r in RouteChoices) {
-                    int errs = ErrorCountOf(r.RouteId);
                     <button class="dev @(_filterRoute == r.RouteId ? "active" : null) @(Session.IsRouteOnline(r.RouteId) ? "on" : null)"
                             type="button" @onclick="() => SelectRoute(r.RouteId)">
                         <span class="led"></span>
@@ -89,11 +89,11 @@
                             @* 副标题带上端点：同一协议下挂多台时，光看协议名分不出是哪台 *@
                             <span class="s">@r.ProtocolId@(EndpointOf(r.RouteId) is { Length: > 0 } ep ? " · " + ep : "")</span>
                         </span>
-                        @* 错误数并入计数：哪台设备在报错，扫左栏就知道，
-                           不必逐台点进去看表格 *@
-                        <span class="cnt @(errs > 0 ? "err" : null)">
-                            @CountOf(r.RouteId)@(errs > 0 ? " · " + errs + " 错" : "")
-                        </span>
+                        @* 只显示变量数。错误数曾并在这里（「4 · 2 错」），去掉了：
+                           设备离线时它下面每条变量都会报错，这个数字就等同于变量总数，
+                           既不提供新信息，又把一个正常的离线状态渲染成一片红。
+                           要看哪条错，用右侧的「有错误」筛选。 *@
+                        <span class="cnt">@CountOf(r.RouteId)</span>
                     </button>
                 }
 
@@ -208,13 +208,15 @@
                                                     disabled="@(_busy || !Session.Online || !row.CanRead)">读</button>
                                             <button class="btn-sm" type="button" @onclick="() => OpenEdit(row)"
                                                     disabled="@_busy">编辑</button>
-                                            @* 模板行没有「删」：删了下次同步又会回来。
-                                               要整套去掉得在上方把模板选成「（不使用模板）」，
-                                               名字旁的徽标已经说明了这一点，这里不再摆禁用按钮 *@
-                                            @if (!row.FromTemplate) {
-                                                <button class="btn-sm danger" type="button"
-                                                        @onclick="() => AskRemove(row)">删</button>
-                                            }
+                                            @* 模板行的「删」置灰而非隐藏：隐藏会让这一行少一个按钮，
+                                               「读」「编辑」随之右移，整列参差不齐，扫视时很难对位。
+                                               灰按钮既占住位置，也把「这条为什么删不了」说清楚。 *@
+                                            <button class="btn-sm @(row.FromTemplate ? null : "danger")" type="button"
+                                                    disabled="@row.FromTemplate"
+                                                    title="@(row.FromTemplate
+                                                        ? "来自模板「" + TemplateNameOf(row.TemplateId) + "」，删了下次同步又会回来。要整套去掉请把上方模板选成「（不使用模板）」"
+                                                        : "删除该变量")"
+                                                    @onclick="() => AskRemove(row)">删</button>
                                         </td>
                                     </tr>
                                 }
@@ -725,11 +727,6 @@
         _search.Length > 0 || _view != VarView.All
             ? "当前筛选下没有变量。清空搜索或切回「全部」。"
             : "没有变量。添加时请选择已注册的路由 ID。";
-
-    /// <summary>某路由下最近一次读取失败的变量数。</summary>
-    private int ErrorCountOf(string routeId) =>
-        Store.GetAll().Count(v =>
-            string.Equals(v.RouteId, routeId, StringComparison.OrdinalIgnoreCase) && v.IsError);
 
     /// <summary>某路由的连接端点，供左栏副标题区分同协议的多台设备。</summary>
     private string EndpointOf(string routeId)
