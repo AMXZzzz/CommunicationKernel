@@ -141,9 +141,17 @@ public sealed class WebTemplateStore
     /// <returns>去重后的槽位清单；模板不存在时返回空表。</returns>
     /// <remarks>
     /// <para>
-    /// <b>同名槽位只保留先出现的那个。</b>「启停」里已有「启动」，引用它的模板
-    /// 又自己写了「启动」时，取先出现的——也就是被引用的那个。
-    /// 这样同一个功能名在整条产线上只有一种类型与长度，变量表按名字对齐才不会错位。
+    /// <b>同名槽位由自有定义覆盖引用来的。</b>「启停」里已有「启动」，引用它的模板
+    /// 又自己写了「启动」时，取<b>自有</b>那个——写在这里就是为了改它，
+    /// 与 CSS、配置叠加等所有组合体系一致：更具体的覆盖更通用的。
+    /// <para>
+    /// 位置仍按首次出现确定：被覆盖的槽位留在原位，只换内容。
+    /// 否则改一下类型，这一项就会跳到列表末尾，看起来像被删了又加回来。
+    /// </para>
+    /// <para>
+    /// 反过来「先到先得」曾经试过，问题是界面无法如实说明：合计里那一项
+    /// 明明来自引用，图例却标成"自有，可在下表改"——而在下表改它根本不生效。
+    /// </para>
     /// </para>
     /// <para>
     /// <b>环引用会被截断而不是抛异常。</b> A 引用 B、B 又引用 A 时，
@@ -157,19 +165,26 @@ public sealed class WebTemplateStore
     {
         lock (_lock)
         {
-            var result = new List<WebDeviceTemplateSlot>();
-            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            Expand_NoLock(id, result, seenNames, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-            return result;
+            // order 记首次出现顺序，defs 记最终定义。分开两份是因为
+            // 「排在哪」与「用谁的定义」是两件事：被覆盖的槽位保持原位置，
+            // 只是内容换成覆盖者的——否则改一下类型，这一项就会跳到列表末尾。
+            var order = new List<string>();
+            var defs = new Dictionary<string, WebDeviceTemplateSlot>(StringComparer.OrdinalIgnoreCase);
+
+            Expand_NoLock(id, order, defs, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+            return order.Select(n => defs[n]).ToList();
         }
     }
 
     /// <summary>递归展开。调用方须持有 <see cref="_lock"/>。</summary>
+    /// <param name="order">按首次出现顺序记录功能名，决定最终排列。</param>
+    /// <param name="defs">功能名 → 当前生效的定义；后写入者覆盖先写入者。</param>
     /// <param name="path">当前展开路径上的模板 Id，用于识别环。</param>
     private void Expand_NoLock(
         string id,
-        List<WebDeviceTemplateSlot> into,
-        HashSet<string> seenNames,
+        List<string> order,
+        Dictionary<string, WebDeviceTemplateSlot> defs,
         HashSet<string> path)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -184,16 +199,17 @@ public sealed class WebTemplateStore
         WebDeviceTemplate? t = _items.FirstOrDefault(x => x.Id == id);
         if (t is null) { path.Remove(id); return; }
 
-        // 先引用、后自有：公共功能排在前面，卡片与变量表的顺序才稳定
+        // 先展开引用、后写自有：自有因此是最后写入的，也就覆盖掉同名的引用项
         foreach (string child in t.Includes)
-            Expand_NoLock(child, into, seenNames, path);
+            Expand_NoLock(child, order, defs, path);
 
         foreach (WebDeviceTemplateSlot s in t.Slots)
         {
             string name = s.Name.Trim();
             if (name.Length == 0) continue;
-            if (!seenNames.Add(name)) continue;   // 同名先到先得
-            into.Add(CloneSlot(s));
+
+            if (!defs.ContainsKey(name)) order.Add(name);   // 位置只在首次出现时确定
+            defs[name] = CloneSlot(s);                       // 定义永远取最后写入的
         }
 
         // 退出本层：兄弟分支各自引用同一个模板是合法的（菱形），不算环
