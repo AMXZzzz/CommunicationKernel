@@ -74,14 +74,19 @@
     @if (Alarms.Count > 0)
     {
         <div class="alarm-panel">
-            <div class="alarm-hd">离线 / 故障（来自 WatchRouteStatus，不是模拟）</div>
+            @* 标题只说事实。原文带着「不是模拟」——那是写给评审看的自辩，
+               对操作员没有任何信息量，反而让人怀疑别处是不是就是模拟的。 *@
+            <div class="alarm-hd">离线 / 故障（@Alarms.Count 台）</div>
             @foreach (DeviceView card in Alarms)
             {
                 RouteStatusDto? st = Session.GetStatus(card.RouteId);
                 <div class="alarm-row">
                     <span class="alarm-name">@card.Name</span>
                     <span class="mono">@card.RouteId</span>
-                    <span class="alarm-msg">@(st?.ErrorCode) @(st?.ErrorMessage)</span>
+                    @* 从未连接过的设备没有任何状态事件，ErrorCode/Message 都是空，
+                       此前这一行就只剩名字和路由号，看起来像界面出了错。
+                       必须说清「为什么在报警里」，否则操作员无从下手。 *@
+                    <span class="alarm-msg">@AlarmReason(card, st)</span>
                 </div>
             }
         </div>
@@ -194,6 +199,27 @@
     /// 健康状态由真实路由在线率推导，<b>没有</b>任何假的产线启停开关。
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// 说明某台设备为什么出现在报警列表里。
+    /// </summary>
+    /// <remarks>
+    /// 三种情况的处置完全不同，不能都显示成「离线」：
+    /// <list type="bullet">
+    ///   <item>宿主上没有这条路由 → 去连接，不是设备坏了；</item>
+    ///   <item>有错误码 → 现场故障，照错误码排查；</item>
+    ///   <item>路由在但没有任何状态事件 → 刚注册完还没收到首帧，等一下即可。</item>
+    /// </list>
+    /// </remarks>
+    private static string AlarmReason(DeviceView card, RouteStatusDto? st)
+    {
+        if (!card.OnHost) return "未连接 · 去「设备管理」连接";
+
+        if (st is not null && !string.IsNullOrWhiteSpace(st.ErrorMessage))
+            return st.ErrorCode + " · " + st.ErrorMessage;
+
+        return st is null ? "等待首次状态上报" : "已断开";
+    }
+
     private string HealthText
     {
         get

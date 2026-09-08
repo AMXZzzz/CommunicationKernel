@@ -21,6 +21,11 @@
         <h2 class="page-title">设备管理</h2>
         <button class="btn ghost" type="button" @onclick="RefreshAsync" disabled="@_busy">刷新</button>
         <button class="btn ghost" type="button" @onclick="ConnectAllAsync" disabled="@(_busy || !Session.Online)">一键连接</button>
+        @* 与「一键连接」成对。禁用条件多一个「有没有已连接的设备」，
+           否则一台都没连时按钮仍可点，点完只弹一句"没有设备"，是无效操作。 *@
+        <button class="btn ghost" type="button" @onclick="DisconnectAllAsync"
+                disabled="@(_busy || !Session.Online || !Rows.Any(r => r.OnHost))"
+                title="断开所有已连接的设备，本地配置全部保留">一键断开</button>
         @* 添加设备不需要 Host 在线：它只写本地配置，不建连接 *@
         <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@_busy">添加设备</button>
         <div class="toolbar-right">
@@ -491,6 +496,60 @@
     }
 
     /// <summary>断开单台设备：从宿主注销路由，本地配置保留。</summary>
+    /// <summary>
+    /// 断开当前所有已连接的设备（配置一律保留）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与「一键连接」成对。现场检修、换线、挪设备时要先让上位机松开所有串口
+    /// 与 socket，逐台点断开在几十台的规模下不现实。
+    /// </para>
+    /// <para>
+    /// 逐台串行而非并发：断开会真的去关物理连接，几十条同时关会在宿主侧
+    /// 掀起一波并发注销。这里不赶时间，串行更稳，也让失败计数是准的。
+    /// </para>
+    /// <para>
+    /// 单台失败不中断整批——现场常见一两台已经掉线，为它们停下会让其余
+    /// 设备保持连接，与操作员的意图（全部松开）相反。
+    /// </para>
+    /// </remarks>
+    private async Task DisconnectAllAsync()
+    {
+        _busy = true;
+        try
+        {
+            // 先取快照：断开过程中 Rows 会随路由表刷新而变，边遍历边变会漏掉设备
+            List<DeviceView> connected = Rows.Where(r => r.OnHost).ToList();
+            if (connected.Count == 0)
+            {
+                _banner = "当前没有已连接的设备";
+                _bannerClass = "status-warn";
+                return;
+            }
+
+            int ok = 0;
+            string firstError = string.Empty;
+            foreach (DeviceView row in connected)
+            {
+                DeviceOperationResult result =
+                    await Devices.DisconnectAsync(row.RouteId).ConfigureAwait(true);
+
+                if (result.Success) { ok++; continue; }
+
+                // 只留第一条错误：几十台一起失败时，横幅里堆满同样的文案没有意义
+                if (firstError.Length == 0)
+                    firstError = row.Name + "：[" + result.ErrorCode + "] " + result.ErrorMessage;
+            }
+
+            _banner = "一键断开完成：" + ok + " / " + connected.Count + " 台已断开（配置保留）"
+                    + (firstError.Length > 0 ? "。首个失败 " + firstError : "");
+            _bannerClass = ok == connected.Count ? "status-ok" : "status-error";
+
+            await Session.RefreshRoutesAsync().ConfigureAwait(true);
+        }
+        finally { _busy = false; }
+    }
+
     private async Task DisconnectAsync(DeviceView row)
     {
         _busy = true;

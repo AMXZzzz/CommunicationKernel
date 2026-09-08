@@ -608,7 +608,9 @@
         WebDeviceTemplate? tpl = Templates.Get(_bindTemplateId);
         if (tpl is null) return;
 
-        int n = Store.ApplyTemplate(_filterRoute, tpl);
+        // 用展开后的清单：模板可能引用了「启停」这类公共模板，
+        // 直接传 tpl.Slots 会漏掉引用进来的全部槽位，且不报错
+        int n = Store.ApplyTemplate(_filterRoute, tpl, Templates.ResolveSlots(tpl.Id));
 
         // 报「0 处更新」也要说清楚，否则用户会以为按钮没生效
         _banner = n == 0

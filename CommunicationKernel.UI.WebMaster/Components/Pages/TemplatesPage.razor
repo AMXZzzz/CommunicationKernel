@@ -41,7 +41,9 @@
                 {
                     <button class="dev-item @(_currentId == t.Id ? "active" : null)" type="button" @onclick="() => Select(t.Id)">
                         <span class="n">@t.Name</span>
-                        <span class="sub">@(t.Slots.Count == 0 ? "空模板" : string.Join(" / ", t.Slots.Select(s => s.Name)))</span>
+                        @* 显示展开后的清单：只列自有槽位的话，一个纯引用组合而成的
+                           模板会显示成「空模板」，而它同步下去其实会生成一堆变量。 *@
+                        <span class="sub">@SubtitleOf(t)</span>
                     </button>
                 }
             </aside>
@@ -57,6 +59,65 @@
                         <input value="@_current.Name" @onchange="e => Rename(e.Value?.ToString())" />
                         <button class="btn-sm danger" type="button" @onclick="AskRemoveTpl">删除模板</button>
                     </div>
+
+                    @* 引用其它模板：「启停」这类每台设备都有的功能只需维护一份，
+                       改一次所有引用它的模板跟着变。复制过去做不到这一点。 *@
+                    <div class="tpl-includes">
+                        <div class="tpl-includes-hd">
+                            <span>引用模板</span>
+                            <span class="hint">引用来的功能排在自有功能之前；同名功能以先出现的为准</span>
+                        </div>
+
+                        @if (_current.Includes.Count == 0)
+                        {
+                            <span class="tpl-none">未引用其它模板</span>
+                        }
+                        else
+                        {
+                            <div class="tpl-chips">
+                                @foreach (string incId in _current.Includes)
+                                {
+                                    <span class="tpl-chip">
+                                        @NameOf(incId)
+                                        <span class="tpl-chip-n">@Templates.ResolveSlots(incId).Count 项</span>
+                                        <button class="tpl-chip-x" type="button"
+                                                title="移除该引用"
+                                                @onclick="() => RemoveInclude(incId)">×</button>
+                                    </span>
+                                }
+                            </div>
+                        }
+
+                        @* 只列出「加进来不会成环」的候选。让不能选的当场不出现，
+                           好过选完再弹一句「不允许」。 *@
+                        @if (Candidates.Count > 0)
+                        {
+                            <select class="toolbar-select" value=""
+                                    @onchange="e => AddInclude(e.Value?.ToString())">
+                                <option value="">+ 引用一个模板…</option>
+                                @foreach (WebDeviceTemplate c in Candidates)
+                                {
+                                    <option value="@c.Id">@c.Name（@Templates.ResolveSlots(c.Id).Count 项）</option>
+                                }
+                            </select>
+                        }
+                    </div>
+
+                    @if (_current.Includes.Count > 0)
+                    {
+                        @* 展开预览：下面那张表只能编辑自有功能，
+                           不给预览的话，操作员看不出这个模板同步下去到底会生成哪些变量。 *@
+                        <div class="tpl-resolved">
+                            <span class="tpl-resolved-hd">同步后共 @Resolved.Count 项：</span>
+                            @foreach (WebDeviceTemplateSlot s in Resolved)
+                            {
+                                <span class="tpl-slot @(IsOwn(s.Name) ? "own" : "inherited")"
+                                      title="@(IsOwn(s.Name) ? "本模板自有" : "引用而来")">@s.Name</span>
+                            }
+                        </div>
+                    }
+
+                    <div class="tpl-own-hd">自有功能（引用来的不在此表，需到来源模板里改）</div>
                     <table class="data-table var-table">
                         <thead>
                             <tr>
@@ -199,6 +260,77 @@
         if (type is not null) s.DataType = type;
         if (note is not null) s.Note = note;
         Persist();
+    }
+
+    // =========================================================================
+    // 模板引用
+    // =========================================================================
+
+    /// <summary>当前模板展开后的完整功能槽（含引用来的）。</summary>
+    private IReadOnlyList<WebDeviceTemplateSlot> Resolved =>
+        _current is null ? Array.Empty<WebDeviceTemplateSlot>() : Templates.ResolveSlots(_current.Id);
+
+    /// <summary>
+    /// 可被当前模板引用的候选模板。
+    /// </summary>
+    /// <remarks>
+    /// 排除三类：自己、已经引用过的、以及引用后会成环的。
+    /// 让不可选的当场不出现，好过选完再弹一句"不允许"——
+    /// 后者要求操作员理解"环引用"是什么，而那不该是现场需要懂的概念。
+    /// </remarks>
+    private IReadOnlyList<WebDeviceTemplate> Candidates =>
+        _current is null
+            ? Array.Empty<WebDeviceTemplate>()
+            : List.Where(t =>
+                  t.Id != _current.Id
+                  && !_current.Includes.Contains(t.Id)
+                  && !Templates.WouldCreateCycle(_current.Id, t.Id))
+              .ToList();
+
+    /// <summary>左侧列表的副标题：展开后的功能名，过长时截断。</summary>
+    private string SubtitleOf(WebDeviceTemplate t)
+    {
+        IReadOnlyList<WebDeviceTemplateSlot> all = Templates.ResolveSlots(t.Id);
+        if (all.Count == 0) return "空模板";
+
+        // 侧栏只有一行高度，全列出来会被 CSS 截成半个字。
+        // 前四项加计数，比截断字符串更容易读。
+        string head = string.Join(" / ", all.Take(4).Select(s => s.Name));
+        return all.Count > 4 ? head + " … 共 " + all.Count + " 项" : head;
+    }
+
+    /// <summary>按 Id 取模板显示名；模板已被删除时给出可辨识的占位。</summary>
+    private string NameOf(string id)
+        => List.FirstOrDefault(t => t.Id == id)?.Name ?? "(已删除)";
+
+    /// <summary>某个功能名是否来自本模板自有槽位（用于预览着色）。</summary>
+    private bool IsOwn(string name)
+        => _current is not null
+           && _current.Slots.Any(s => string.Equals(s.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>添加一个引用。</summary>
+    private void AddInclude(string? id)
+    {
+        if (_current is null || string.IsNullOrWhiteSpace(id)) return;
+        if (_current.Includes.Contains(id)) return;
+
+        // 再挡一次环：候选列表已经过滤过，但下拉的值可能来自陈旧的渲染
+        if (Templates.WouldCreateCycle(_current.Id, id))
+        {
+            Log.Warn("Templates", "拒绝会成环的模板引用：" + _current.Name + " → " + NameOf(id));
+            return;
+        }
+
+        _current.Includes.Add(id);
+        Templates.Update(_current);
+    }
+
+    /// <summary>移除一个引用。</summary>
+    private void RemoveInclude(string id)
+    {
+        if (_current is null) return;
+        _current.Includes.Remove(id);
+        Templates.Update(_current);
     }
 
     private void Rename(string? name)

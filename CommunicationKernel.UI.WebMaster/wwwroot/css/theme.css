@@ -126,7 +126,7 @@ button:disabled { cursor: not-allowed; }
 .offline-banner {
     flex-shrink: 0;
     background: #3b1515;
-    color: #fca5a5;
+    color: var(--danger-ink);
     padding: 8px 16px;
     font-size: 12px;
     border-bottom: 1px solid #7f1d1d;
@@ -351,7 +351,7 @@ button:disabled { cursor: not-allowed; }
    却承担写 PLC 这种不可撤销的操作。抬到 28px、12px。 */
 .btn-sm { min-height: 28px; padding: 4px 10px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); }
 .btn-sm.primary { background: #0c4a6e; color: #7dd3fc; border-color: #1e3a5f; }
-.btn-sm.danger { background: #3b1515; color: #fca5a5; border-color: #7f1d1d; }
+.btn-sm.danger { background: #3b1515; color: var(--danger-ink); border-color: #7f1d1d; }
 .btn-sm.ghost:hover { color: var(--text); background: #2a2a2a; }
 
 input, select, textarea {
@@ -671,7 +671,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .health-strip.is-alarm { border-color: #7f1d1d; background: #2a1212; }
 .health-strip.is-alarm .health-dot { background: var(--danger); animation: pulse 1s infinite; }
-.health-strip.is-alarm .health-val { color: #fca5a5; }
+.health-strip.is-alarm .health-val { color: var(--danger-ink); }
 
 .health-strip.is-down { border-color: #3f3f46; }
 .health-strip.is-down .health-val { color: var(--text-muted); }
@@ -1130,4 +1130,133 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .add-form label.radio-line.disabled {
     opacity: .5;
     cursor: not-allowed;
+}
+
+/* ============================================================================
+   Blazor Server 断线重连提示
+   ============================================================================
+   默认样式把它贴在页面最顶端，只有一条窄横幅，在 1080p 工位屏上极容易被
+   当成浏览器自己的提示条而略过——而这条提示的含义是「界面已经不再刷新，
+   你现在看到的全是旧数据」，是操作员最需要立刻知道的事。
+   改为居中遮罩：挡住内容，逼人看见。
+
+   注意选择器名由 Blazor 框架规定，不能改；结构是
+     #components-reconnect-modal > (rejoining / failed / refused 三种状态)
+   ---------------------------------------------------------------------------- */
+#components-reconnect-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* 半透明而非全遮：让操作员仍看得见后面是哪个页面，
+       否则重连成功后会不知道自己刚才在哪 */
+    background: rgba(0, 0, 0, .68);
+    color: var(--text);
+    font-family: var(--font);
+    text-align: center;
+    padding: 24px;
+}
+
+/* 框架用 display 控制显隐，未显示时必须彻底不占位，
+   否则整块透明遮罩会盖住页面让所有点击失效 */
+#components-reconnect-modal:not([style*="display: block"]):not([style*="display:block"]) {
+    display: none;
+}
+
+#components-reconnect-modal > div {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: 22px 28px;
+    min-width: 260px;
+    max-width: 420px;
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+/* 正在重试：琥珀色，含义是"等一下"，不是故障 */
+#components-reconnect-modal .components-reconnect-rejoining {
+    border-color: var(--warning);
+    color: var(--warning-ink);
+}
+
+/* 重试用尽 / 被拒：红色，必须手动刷新才能恢复 */
+#components-reconnect-modal .components-reconnect-failed,
+#components-reconnect-modal .components-reconnect-refused {
+    border-color: var(--danger);
+    color: var(--danger-ink);
+}
+
+/* ============================================================================
+   模板引用（寄存器模板页）
+   ---------------------------------------------------------------------------- */
+.tpl-includes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.tpl-includes-hd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tpl-includes-hd > span:first-child { font-size: 12.5px; font-weight: 650; }
+.tpl-includes-hd .hint { font-size: 11px; color: var(--text-dim); }
+.tpl-none { font-size: 12px; color: var(--text-dim); }
+
+.tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.tpl-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px 3px 10px;
+    border: 1px solid var(--accent-dim);
+    border-radius: 999px;
+    background: #10283b;
+    color: var(--accent-ink);
+    font-size: 12px;
+}
+.tpl-chip-n { color: var(--text-dim); font-size: 11px; }
+
+/* 32px 触控下限：车间戴手套或用触摸屏一体机时，小于这个尺寸点不准 */
+.tpl-chip-x {
+    min-width: 24px;
+    min-height: 24px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1;
+}
+.tpl-chip-x:hover { background: var(--danger-bg); color: var(--danger-ink); }
+
+.tpl-resolved {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+}
+.tpl-resolved-hd { font-size: 12px; color: var(--text-dim); }
+
+.tpl-slot {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+}
+/* 自有与引用来的必须一眼分得开：引用来的改不了，操作员点开表格找不到它时
+   会以为是界面出问题。颜色差异就是"为什么这一项不在下面表里"的答案。 */
+.tpl-slot.own { background: var(--surface3); color: var(--text); }
+.tpl-slot.inherited { background: transparent; color: var(--accent-ink); border-color: var(--accent-dim); }
+
+.tpl-own-hd {
+    padding: 10px 12px 6px;
+    font-size: 12px;
+    color: var(--text-dim);
 }
