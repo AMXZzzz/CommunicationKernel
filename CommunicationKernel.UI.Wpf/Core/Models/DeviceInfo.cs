@@ -83,6 +83,8 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         private int    _baudRate;
         /// <summary><see cref="MinIoIntervalMs"/> 的后备字段。</summary>
         private int    _minIoIntervalMs;
+        /// <summary><see cref="ByteOrder"/> 的后备字段。默认大端，与协议插件产出一致。</summary>
+        private string _byteOrder      = "ABCD";
         /// <summary><see cref="ExtraSettingsJson"/> 的后备字段。默认空对象而非 null。</summary>
         private string _extraSettingsJson = "{}";
         /// <summary><see cref="IsConnected"/> 的后备字段。</summary>
@@ -230,6 +232,24 @@ namespace CommunicationKernel.UI.Wpf.Core.Models
         {
             get => _minIoIntervalMs;
             set => SetField(ref _minIoIntervalMs, value < 0 ? 0 : value);
+        }
+
+        /// <summary>
+        /// 多字节数值在该设备寄存器里的排列方式：ABCD / CDAB / BADC / DCBA。
+        /// </summary>
+        /// <remarks>
+        /// 本地元数据，<b>不经 gRPC 传输</b>——它是"怎么解释读回来的字节"，
+        /// 属于上位机的显示语义，宿主与协议插件一律只产出大端。
+        /// <para>
+        /// 空值回落 ABCD，与 <c>ValueCodec.ParseOrder</c> 的行为一致：
+        /// 手工编辑 devices.json 写错字符串时不至于整台设备读不出来。
+        /// </para>
+        /// </remarks>
+        public string ByteOrder
+        {
+            get => _byteOrder;
+            set => SetField(ref _byteOrder,
+                string.IsNullOrWhiteSpace(value) ? "ABCD" : value.Trim().ToUpperInvariant());
         }
 
         /// <summary>

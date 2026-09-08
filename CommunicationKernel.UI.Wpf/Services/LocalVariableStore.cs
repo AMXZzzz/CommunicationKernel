@@ -50,6 +50,9 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>gRPC 客户端，用于执行 WriteAsync。</summary>
         private readonly HostingClient _client;
 
+        /// <summary>设备配置，按 RouteId 查字节序。</summary>
+        private readonly DeviceConfigStore _devices;
+
         /// <summary>内存变量列表，所有 CRUD 操作均在此列表上进行。</summary>
         private readonly List<VariableItem> _items = new List<VariableItem>();
 
@@ -75,10 +78,17 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// 初始化 LocalVariableStore，并从磁盘加载上次保存的变量列表。
         /// </summary>
         /// <param name="client">已初始化的 gRPC 客户端，用于写入操作。</param>
-        public LocalVariableStore(HostingClient client)
+        /// <param name="devices">设备配置存储，用于按 RouteId 查该设备的字节序。</param>
+        /// <remarks>
+        /// 写入必须按<b>目标设备</b>的字节序编码，不能一律大端：
+        /// 同样是 Modbus，跨寄存器的 32 位值有的设备是 ABCD、有的是 CDAB。
+        /// 编错的表现是写进去的数字与界面上填的完全不同，且不报任何错。
+        /// </remarks>
+        public LocalVariableStore(HostingClient client, DeviceConfigStore devices)
         {
-            // gRPC 客户端必填，写入走 WriteAsync
-            _client = client ?? throw new ArgumentNullException(nameof(client));
+            // gRPC 客户端与设备配置必填，写入走 WriteAsync
+            _client  = client  ?? throw new ArgumentNullException(nameof(client));
+            _devices = devices ?? throw new ArgumentNullException(nameof(devices));
             // 启动时从磁盘恢复，恢复失败则静默忽略（内存列表为空，用户可重新导入）
             LoadFromDisk();
         }
@@ -223,8 +233,9 @@ namespace CommunicationKernel.UI.Wpf.Services
             byte[] bytes;
             try
             {
-                // 按 DataType 把界面值编成大端字节
-                bytes = SerializeValue(variable.DataType, value);
+                // 按 DataType 与「目标设备的字节序」把界面值编成字节。
+                // 字节序取自设备配置而非写死大端——见 SerializeValue 的注释。
+                bytes = SerializeValue(variable.DataType, value, OrderOf(variable.DeviceId));
             }
             catch (Exception ex)
             {
@@ -337,22 +348,34 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// 同类逻辑分成两处、只有一处出错，正是本项目反复栽的跟头。
         /// </remarks>
         /// <exception cref="InvalidOperationException">类型不支持或数值超范围。</exception>
-        private static byte[] SerializeValue(VariableDataType dataType, object value)
+        /// <param name="order">
+        /// 目标设备的字节序。<b>不能一律传 ABCD</b>：Modbus 规范只规定 16 位寄存器
+        /// 内部是大端，跨寄存器的 32 位值怎么摆完全没规定，同样是 Modbus，
+        /// 不同品牌的变频器/PLC 可能是 ABCD 也可能是 CDAB。
+        /// 编错时写进 PLC 的数字与界面上填的完全不同，且不报任何错。
+        /// </param>
+        private static byte[] SerializeValue(VariableDataType dataType, object value, ByteOrder order)
         {
-            // 字节序目前固定大端：WPF 尚未提供按设备配置字节序的界面，
-            // 而大端正是三个协议插件统一产出的排列，与原有行为完全一致。
             if (!ValueCodec.TryEncodeValue(
                     value,
                     ValueParser.ToCodecType(dataType),
                     length: 0,
                     out byte[] bytes,
                     out string error,
-                    ByteOrder.ABCD))
+                    order))
             {
                 throw new InvalidOperationException(error);
             }
 
             return bytes;
         }
+
+        /// <summary>取某条路由所属设备的字节序；无配置时回落大端。</summary>
+        /// <remarks>
+        /// 回落而不是抛异常：设备配置可能刚被删、或变量指向了一个已不存在的路由，
+        /// 那种情况下写入本来就会失败在下游，不该在这里先炸一个不相干的异常。
+        /// </remarks>
+        private ByteOrder OrderOf(string routeId)
+            => ValueCodec.ParseOrder(_devices.Get(routeId)?.ByteOrder);
     }
 }

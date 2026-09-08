@@ -106,13 +106,20 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// 初始化 GrpcDeviceService。
         /// </summary>
         /// <param name="client">已初始化的 gRPC 客户端。</param>
+        /// <param name="config">设备配置存储（必须非 null）。</param>
         /// <param name="log">可选日志记录器，为 null 时不记录日志。</param>
-        public GrpcDeviceService(HostingClient client, IAppLogger log = null)
+        /// <remarks>
+        /// <paramref name="config"/> 由 DI 注入而不是在这里 <c>new</c>：
+        /// 变量轮询与写入也要按 RouteId 查设备的字节序，各自再造一个实例
+        /// 会得到两份内存镜像抢同一个 devices.json——一侧的保存会被另一侧覆盖，
+        /// 且不报任何错。
+        /// </remarks>
+        public GrpcDeviceService(HostingClient client, DeviceConfigStore config, IAppLogger log = null)
         {
-            // gRPC 客户端必填；日志可空；本地配置用于名称还原与宿主重启后重注册
+            // gRPC 客户端与配置存储必填；日志可空
             _client = client ?? throw new ArgumentNullException(nameof(client));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
             _log    = log;
-            _config = new DeviceConfigStore(log);
         }
 
         /// <inheritdoc />
@@ -153,6 +160,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                 // 漏掉这一行的后果是隐性的：卡片建出来时是 0，操作员改个名字触发
                 // Update，就把现场调好的帧间静默悄悄写回 0 了，且不报任何错
                 MinIoIntervalMs   = record.MinIoIntervalMs,
+                ByteOrder         = record.ByteOrder,
 
                 // 运行期状态不持久化：显示一个从未验证过的连接状态比不显示更糟
                 StatusType        = DeviceStatusType.Offline,
@@ -248,6 +256,9 @@ namespace CommunicationKernel.UI.Wpf.Services
                         // 从本地记录取，不从 RouteDto 取：gRPC 的路由模型里没有这一项。
                         // 漏了会把现场调好的帧间静默在下次 Update 时悄悄写回 0
                         MinIoIntervalMs = meta != null ? meta.MinIoIntervalMs : 0,
+
+                        // 同上：字节序也只在本地记录里，RouteDto 不带它
+                        ByteOrder     = meta != null ? meta.ByteOrder : "ABCD",
 
                         // 状态一律从离线起步；真实状态只由 WatchRouteStatus 流推送。
                         // 订阅方对已存在的条目会保留其当前状态，不会被这里覆盖

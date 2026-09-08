@@ -104,6 +104,21 @@ namespace CommunicationKernel.UI.Wpf.Services
             /// </remarks>
             public int    MinIoIntervalMs { get; set; }
 
+            /// <summary>
+            /// 多字节数值在该设备寄存器里的排列方式，取值 ABCD / CDAB / BADC / DCBA。
+            /// </summary>
+            /// <remarks>
+            /// 按设备配而非按协议写死：Modbus 规范只规定 16 位寄存器内部是大端，
+            /// 跨寄存器的 32 位值怎么摆完全没规定——同样是 Modbus，
+            /// 不同品牌的变频器/PLC 可能是 ABCD 也可能是 CDAB。
+            /// <para>
+            /// 默认 ABCD：三个协议插件上抛的字节都已归一为大端，
+            /// 绝大多数设备也是这个排列。填错的表现是 Int32 / Float 显示成
+            /// 一个数量级完全不对的数——不会报错，只是值不对。
+            /// </para>
+            /// </remarks>
+            public string ByteOrder      { get; set; } = "ABCD";
+
             // gRPC 路由模型里没有、必须本地留存的展示元数据
 
             /// <summary>设备显示名。宿主只认路由 ID，这个名字只存在于本地。</summary>
@@ -188,6 +203,7 @@ namespace CommunicationKernel.UI.Wpf.Services
                     SerialPort        = info.SerialPort,
                     BaudRate          = info.BaudRate,
                     MinIoIntervalMs   = info.MinIoIntervalMs,
+                    ByteOrder         = info.ByteOrder,
                     Name              = info.Name,
                     Model             = info.Model,
                     IsDualLane        = info.IsDualLane,

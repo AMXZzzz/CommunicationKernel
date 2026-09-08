@@ -196,10 +196,16 @@ public partial class App : Application {
         // 业务服务（单例）
         // =====================================================================
 
+        // 设备配置磁盘镜像。必须是单例：设备服务、变量写入、变量轮询三处都要读它，
+        // 各自 new 一个会得到三份内存镜像抢同一个 devices.json。
+        services.AddSingleton<DeviceConfigStore>(sp =>
+            new DeviceConfigStore(sp.GetRequiredService<IAppLogger>()));
+
         // 封装 gRPC RegisterRoute / QueryRoutes / WatchRouteStatus / RemoveRoute
         services.AddSingleton<IDeviceService>(sp =>
             new GrpcDeviceService(
                 sp.GetRequiredService<HostingClient>(),
+                sp.GetRequiredService<DeviceConfigStore>(),
                 sp.GetRequiredService<IAppLogger>()));
 
         // 同一单例再按 IRouteReconciler 取出：两份实例会拆开在途表，合并与限流失效
@@ -215,7 +221,9 @@ public partial class App : Application {
 
         // 内存变量表；写入走 gRPC WriteAsync
         services.AddSingleton<IVariableService>(sp =>
-            new LocalVariableStore(sp.GetRequiredService<HostingClient>()));
+            new LocalVariableStore(
+                sp.GetRequiredService<HostingClient>(),
+                sp.GetRequiredService<DeviceConfigStore>()));
 
         // 协议清单一律来自 Hosting.App 已加载的插件，UI 不内置协议名
         services.AddSingleton<IProtocolResolver>(sp =>
@@ -304,6 +312,7 @@ public partial class App : Application {
             new VariablePollingService(
                 sp.GetRequiredService<IVariableService>(),
                 sp.GetRequiredService<HostingClient>(),
+                sp.GetRequiredService<DeviceConfigStore>(),
                 sp.GetRequiredService<IRouteReconciler>()));
 
         // 把轮询结果写回界面绑定的 VariableItem，负责切回 UI 线程。

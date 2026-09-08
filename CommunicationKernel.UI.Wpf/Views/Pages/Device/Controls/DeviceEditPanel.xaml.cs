@@ -72,10 +72,43 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
         /// </remarks>
         public ISerialPortProvider SerialPortProvider { get; set; }
 
+        /// <summary>
+        /// 字节序候选项。
+        /// </summary>
+        /// <remarks>
+        /// 与 <c>Hosting.Sdk.ByteOrder</c> 枚举逐一对应，也与 WebMaster 设备页的列表一致。
+        /// 顺序刻意固定为 ABCD 在前——它是默认值，也是绝大多数设备的排列。
+        /// </remarks>
+        private static readonly string[] ByteOrderOptions = {
+            "ABCD — 大端（标准）",
+            "CDAB — 字交换",
+            "BADC — 字节交换",
+            "DCBA — 小端（全反序）",
+        };
+
         /// <summary>构造：解析 XAML，构建视觉树。</summary>
         public DeviceEditPanel () {
             // 解析 XAML，构建视觉树
             InitializeComponent();
+
+            // 字节序是固定四项，不来自宿主，因此可以在构造时一次填好。
+            // 带中文说明是刻意的：只写 "CDAB" 现场根本判断不出该选哪个。
+            cmbByteOrder.ItemsSource = ByteOrderOptions;
+            cmbByteOrder.SelectedIndex = 0;
+        }
+
+        /// <summary>把下拉项文本还原成存盘用的四字母代码。</summary>
+        /// <remarks>
+        /// 显示文本是「CDAB — 字交换」，存盘只能存 "CDAB"——
+        /// 把带说明的整串写进 devices.json 会让 <c>ValueCodec.ParseOrder</c>
+        /// 解析失败并静默回落大端，表现为「选了 CDAB 却没生效」。
+        /// </remarks>
+        private static string ByteOrderCodeOf (string display) {
+            if (string.IsNullOrWhiteSpace(display)) return "ABCD";
+
+            int dash = display.IndexOf('—');
+            string code = dash > 0 ? display.Substring(0, dash) : display;
+            return code.Trim().ToUpperInvariant();
         }
 
         /// <summary>当前是否为「新增设备」，由页面决定标题与删除按钮的可用性。</summary>
@@ -359,6 +392,14 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
 
             _editingId = isNew ? null : info.Id;
             _isDual = info.IsDualLane;
+
+            // 字节序回填：按代码前缀匹配，匹配不上（配置文件被手工写坏）落到 ABCD，
+            // 与 ValueCodec.ParseOrder 的回落行为一致
+            string wanted = string.IsNullOrWhiteSpace(info.ByteOrder) ? "ABCD" : info.ByteOrder;
+            int orderIndex = Array.FindIndex(
+                ByteOrderOptions, o => ByteOrderCodeOf(o) == wanted.Trim().ToUpperInvariant());
+            cmbByteOrder.SelectedIndex = orderIndex >= 0 ? orderIndex : 0;
+
             _extraSettingsJson = string.IsNullOrWhiteSpace(info.ExtraSettingsJson)
                 ? "{}"
                 : info.ExtraSettingsJson;
@@ -470,6 +511,10 @@ namespace CommunicationKernel.UI.Wpf.Views.Pages.Device {
             }
 
             d.IsDualLane = _isDual;
+
+            // 只取四字母代码，不要把带说明的显示文本存进配置
+            d.ByteOrder = ByteOrderCodeOf(cmbByteOrder.SelectedItem as string);
+
             d.ExtraSettingsJson = string.IsNullOrWhiteSpace(_extraSettingsJson)
                 ? "{}"
                 : _extraSettingsJson;

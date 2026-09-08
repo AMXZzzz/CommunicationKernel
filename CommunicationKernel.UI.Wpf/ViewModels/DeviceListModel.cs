@@ -181,6 +181,7 @@ namespace CommunicationKernel.UI.Wpf.ViewModels
             existing.BaudRate          = incoming.BaudRate;
             existing.TransportKind     = incoming.TransportKind;
             existing.MinIoIntervalMs   = incoming.MinIoIntervalMs;
+            existing.ByteOrder         = incoming.ByteOrder;
             existing.ExtraSettingsJson = incoming.ExtraSettingsJson;
 
             // 连接状态只在「宿主侧已经没有这条路由」时才由列表刷新改写。

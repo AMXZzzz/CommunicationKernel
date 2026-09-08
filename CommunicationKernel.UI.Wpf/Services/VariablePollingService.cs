@@ -51,6 +51,9 @@ namespace CommunicationKernel.UI.Wpf.Services
         /// <summary>gRPC 客户端，用于调用 ReadAsync。</summary>
         private readonly HostingClient _client;
 
+        /// <summary>设备配置，按 RouteId 查该设备的字节序。</summary>
+        private readonly DeviceConfigStore _devices;
+
         /// <summary>
         /// 路由对账器：宿主重启导致路由消失时，据本地配置把它重新注册回去。
         /// 可为 null（此时退化为原有行为：一直退避重试）。
@@ -129,6 +132,7 @@ namespace CommunicationKernel.UI.Wpf.Services
         public VariablePollingService(
             IVariableService variableService,
             HostingClient client,
+            DeviceConfigStore devices,
             IRouteReconciler reconciler = null)
         {
             // 变量服务与 gRPC 客户端必填；对账器可空（空则 RouteNotFound 只能退避）
@@ -136,6 +140,8 @@ namespace CommunicationKernel.UI.Wpf.Services
                 ?? throw new ArgumentNullException(nameof(variableService));
             _client = client
                 ?? throw new ArgumentNullException(nameof(client));
+            _devices = devices
+                ?? throw new ArgumentNullException(nameof(devices));
             _reconciler = reconciler;
         }
 
@@ -339,8 +345,12 @@ namespace CommunicationKernel.UI.Wpf.Services
                         // 读取成功：重置退避计数，解析字节数组并发布结果
                         consecutiveFails = 0;
 
+                        // 字节序取自设备配置，不能用默认的 ABCD：
+                        // 跨寄存器的 32 位值有的设备是字交换的，用错的表现是
+                        // Int32 / Float 显示成一个数量级完全不对的数，且不报错。
                         bool parsed = ValueParser.TryParseBytes(
-                            item.DataType, result.Data, out string display);
+                            item.DataType, result.Data, out string display,
+                            ValueCodec.ParseOrder(_devices.Get(item.DeviceId)?.ByteOrder));
 
                         // 解析不出来时显示 "?" 而不是原始字节：这一格显示的是
                         // 「值」，摆一串十六进制只会让操作员以为设备坏了。

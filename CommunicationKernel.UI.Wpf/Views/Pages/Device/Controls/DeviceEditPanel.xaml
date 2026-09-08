@@ -243,6 +243,21 @@
                                Foreground="{StaticResource SF.Brush.Text.Secondary}"
                                Text="该协议无需站号：机架/槽位已固定在协议内部，变量地址直接填写即可。"/>
 
+                    <!-- 字节序：按设备配，不按协议写死。
+                         Modbus 规范只规定 16 位寄存器内部是大端，跨寄存器的 32 位值
+                         怎么摆完全没规定——同样是 Modbus，不同品牌的变频器/PLC
+                         可能是 ABCD 也可能是 CDAB。选错不会报错，只是 Int32/Float
+                         显示成一个数量级完全不对的数，因此这一项必须让操作员看得见。 -->
+                    <TextBlock Text="字节序"
+                               FontSize="12"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"
+                               Margin="0,12,0,4"/>
+                    <ComboBox x:Name="cmbByteOrder"
+                              Style="{StaticResource SF.Style.ComboBox}"/>
+                    <TextBlock Text="多字节数值（Int32 / Float）在寄存器里的排列。默认 ABCD 适用于绝大多数设备；读到的数明显不对时改这里。"
+                               FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Foreground="{StaticResource SF.Brush.Text.Secondary}"/>
+
                     <!-- 轨道类型 -->
                     <TextBlock Text="轨道类型"
                                FontSize="12"
