@@ -126,9 +126,12 @@
                             @* 定宽列：不写死的话，一进入编辑态单元格换成输入框，
                                各列宽度会按新内容重新分配，整张表跳一下 *@
                             <colgroup>
-                                <col style="width:52px" /><col style="width:24%" /><col style="width:13%" />
-                                <col style="width:64px" /><col style="width:88px" /><col style="width:24%" />
-                                <col style="width:14%" /><col style="width:126px" />
+                                @* 定宽列用 px、可伸缩列用 %，两者加起来正好铺满 880px 的
+                                   min-width。原先的 330px + 75%% 在 860px 宽时超出近 120px，
+                                   于是每列被等比压窄，表头「字节」都被折成了两行。 *@
+                                <col style="width:44px" /><col style="width:21%" /><col style="width:96px" />
+                                <col style="width:60px" /><col style="width:76px" /><col style="width:25%" />
+                                <col style="width:14%" /><col style="width:120px" />
                             </colgroup>
                             <thead>
                                 <tr>

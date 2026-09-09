@@ -15,23 +15,47 @@
 @implements IDisposable
 
 <PageTitle>设备管理 — CommunicationKernel</PageTitle>
+@* 整个模板共用这一份。Rows 是个每次访问都重新合并宿主路由与本地配置的属性，
+   模板里要用五六次（计数、汇总、遍历、按钮禁用判断），
+   不存成局部变量就等于每渲染一帧把合并跑五六遍——
+   而本页订阅了 Session.Changed，路由一上下线就重绘。 *@
+@{
+    IReadOnlyList<DeviceView> rows = Rows;
+    int online = rows.Count(r => Session.IsRouteOnline(r.RouteId));
+    int pending = rows.Count(r => !r.OnHost);
+    int faulted = rows.Count(r => r.OnHost && !Session.IsRouteOnline(r.RouteId));
+}
 
 <div class="page page-dev">
     <div class="toolbar">
         <h2 class="page-title">设备管理</h2>
+        @* 汇总条替代原来的「N / M 在线」：一个比值说不清剩下那些是什么情况。
+           「未连接」是还没点过连接的正常中间态，「异常」是连上过又掉了的真故障，
+           两者的处置完全不同——前者点连接，后者去查线路和 PLC。
+           计数为 0 的那一项直接不渲染，平时这条只有一两个数字，不会变成噪声。 *@
+        <div class="sum">
+            <span>设备 <b>@rows.Count</b></span>
+            @if (online > 0) { <span class="ok">在线 <b>@online</b></span> }
+            @if (faulted > 0) {
+                <span class="err" title="宿主上有这条路由，但当前不通。多半是线路、电源或 PLC 侧的问题。">异常 <b>@faulted</b></span>
+            }
+            @if (pending > 0) {
+                <span class="warn" title="配置已保存，但还没在宿主上建立连接。点卡片上的「连接」即可。">未连接 <b>@pending</b></span>
+            }
+        </div>
+        <span class="spacer"></span>
         <button class="btn ghost" type="button" @onclick="RefreshAsync" disabled="@_busy">刷新</button>
         <button class="btn ghost" type="button" @onclick="ConnectAllAsync" disabled="@(_busy || !Session.Online)">一键连接</button>
         @* 与「一键连接」成对。禁用条件多一个「有没有已连接的设备」，
            否则一台都没连时按钮仍可点，点完只弹一句"没有设备"，是无效操作。 *@
         <button class="btn ghost" type="button" @onclick="DisconnectAllAsync"
-                disabled="@(_busy || !Session.Online || !Rows.Any(r => r.OnHost))"
+                disabled="@(_busy || !Session.Online || pending == rows.Count)"
                 title="断开所有已连接的设备，本地配置全部保留">一键断开</button>
         @* 添加设备不需要 Host 在线：它只写本地配置，不建连接 *@
-        <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@_busy">添加设备</button>
-        <div class="toolbar-right">
-            @if (_busy) { <span class="busy-hint">处理中…</span> }
-            <span class="toolbar-count">@OnlineCount / @Rows.Count 在线</span>
-        </div>
+        <button class="btn primary" type="button" @onclick="OpenAdd" disabled="@_busy">＋ 添加设备</button>
+        @* 始终渲染只切可见性：条件渲染会让工具栏总宽度在「处理中…」出现的瞬间变化，
+           flex 重新分配后左侧那排按钮会闪一下再回位 *@
+        <span class="busy-hint @(_busy ? null : "hidden")">处理中…</span>
     </div>
 
     <div class="page-body">
@@ -40,7 +64,7 @@
             <div class="status-msg @_bannerClass">@_banner</div>
         }
 
-        @if (Rows.Count == 0)
+        @if (rows.Count == 0)
         {
             <div class="empty-state">
                 <div class="empty-title">还没有路由</div>
@@ -51,10 +75,10 @@
         else
         {
             <div class="device-grid">
-                @foreach (DeviceView row in Rows)
+                @foreach (DeviceView row in rows)
                 {
-                    bool online = Session.IsRouteOnline(row.RouteId);
-                    <div class="mes-card @(online ? "is-on" : "is-off")">
+                    bool isOn = Session.IsRouteOnline(row.RouteId);
+                    <div class="mes-card @(isOn ? "is-on" : "is-off")">
                         <div class="mes-hd">
                             <span class="proto-bar @UiHelpers.ProtocolBarClass(row.ProtocolId)"></span>
                             <div class="mes-titles">
@@ -62,8 +86,8 @@
                                 <div class="card-proto">@row.ProtocolId</div>
                             </div>
                             @* LED 与文字徽标并存：LED 供扫视整屏找异常，文字供确认 *@
-                            <span class="card-status @(online ? "online" : "offline")">@(online ? "在线" : "离线")</span>
-                            <span class="card-led @(online ? "online" : "offline")"></span>
+                            <span class="card-status @(isOn ? "online" : "offline")">@(isOn ? "在线" : "离线")</span>
+                            <span class="card-led @(isOn ? "online" : "offline")"></span>
                         </div>
                         <div class="mes-body">
                             <div class="kv"><span>路由</span><span class="mono">@row.RouteId</span></div>
@@ -102,7 +126,9 @@
                                         disabled="@(_busy || !Session.Online)">连接</button>
                             }
                             <button class="btn ghost" type="button" @onclick="() => OpenEdit(row)" disabled="@_busy">编辑</button>
-                            <button class="btn danger card-del" type="button"
+                            @* ghost + 红字而不是实心红：一屏十几张卡，每张右下角一个实心红块，
+                               整屏最扎眼的会是「删除」而不是设备状态。实底留给弹窗里那个确认键。 *@
+                            <button class="btn ghost danger card-del" type="button"
                                     @onclick="() => AskRemove(row)" disabled="@_busy" title="删除设备">删除</button>
                         </div>
                     </div>
@@ -392,13 +418,6 @@
 
     /// <summary>设备卡片行，由宿主路由与本地配置合并而来。</summary>
     private IReadOnlyList<DeviceView> Rows => BuildRows();
-
-    /// <summary>当前在线的路由数，供工具栏显示「在线 / 总计」。</summary>
-    /// <remarks>
-    /// 只报总台数看不出问题——十台里掉了一台，数字依旧是十。
-    /// 在线数才是操作员真正要扫的那个值。
-    /// </remarks>
-    private int OnlineCount => Rows.Count(r => Session.IsRouteOnline(r.RouteId));
 
     /// <summary>订阅会话变化，用于在路由上下线时刷新卡片状态灯。</summary>
     protected override void OnInitialized()

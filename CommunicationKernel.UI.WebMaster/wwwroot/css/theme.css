@@ -8,24 +8,30 @@
        会跟着变深。不声明的话它们保持浅色，在深色工位屏上是一块刺眼的白。 */
     color-scheme: dark;
 
+    /* 中性色带一点点蓝：纯灰(#242424 这类)在大面积深色界面上会显得发脏，
+       偏一档色相后与 --accent 同族，整屏看起来是「配过的」而不是默认值。
+       偏移量刻意压得很小(饱和度 <6%)，避免变成蓝色主题。 */
     --bg: #161616;
-    --surface: #1e1e1e;
-    --surface2: #242424;
-    --surface3: #2a2a2a;
-    --border: #2f2f2f;
-    --border-soft: #262626;
-    --sidebar: #1a1a1a;
-    --titlebar: #111111;
-    --text: #e8eaed;
-    --text-muted: #9aa0a6;
-    /* 在 --surface (#1e1e1e) 上约 4.6:1，刚过 WCAG AA。
-       原值 #6b7076 只有 3.9:1，却被用在 11px 的标签上——车间观看距离下直接看不见。 */
-    --text-dim: #7d838a;
+    --surface: #1a1b1e;
+    --surface2: #1e1f22;
+    --surface3: #26282c;
+    --border: #33363b;
+    --border-soft: #2a2c30;
+    --sidebar: #17181b;
+    --titlebar: #121316;
+    --text: #e6e7e9;
+    --text-muted: #a7abb1;
+    /* 在 --surface 上约 5.2:1，稳过 WCAG AA。
+       这一档不能再压暗：它被用在 11px 的标签上，车间观看距离下
+       曾用过的 #6b7076(3.9:1) 直接看不见。 */
+    --text-dim: #8b9096;
     /* 键盘焦点环。操作员用 Tab / 扫码枪 / 薄膜键盘时靠它知道焦点在哪。 */
     --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-    --accent: #0ea5e9;
-    --accent-2: #0284c7;
-    --accent-dim: #1e3a5f;
+    /* 蓝而非青：青色(#0ea5e9)配白字只有 2.9:1，主按钮上的字在车间的
+       强环境光下会糊掉；这个蓝是 3.5:1，过 WCAG 的非文本/大字号一档。 */
+    --accent: #3d8bfd;
+    --accent-2: #2f6fd0;
+    --accent-dim: #1d2732;
     --accent-ink: #93c5fd;
     --success: #22c55e;
     --success-ink: #86efac;
@@ -279,6 +285,19 @@ button:disabled { cursor: not-allowed; }
     vertical-align: -2px;
 }
 .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+/* 把后面的东西推到右边。比 .toolbar-right 那种包一层的写法灵活：
+   工具栏里常常要「左一组、右一组」，中间插一个空 span 就够了。 */
+.spacer { flex: 1; }
+
+/* 页头汇总条：几个「名词 数字」的短语并排。
+   数字用等宽 + 加粗，扫的是数字，名词只是给数字定性。
+   语义色只上在数字上，不上在整条上——整条染色会让工具栏看起来在报警。 */
+.sum { display: flex; gap: 14px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.sum b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+.sum .ok b { color: var(--success-ink); }
+.sum .warn b { color: var(--warning-ink); }
+.sum .err b { color: var(--danger-ink); }
 .toolbar-count {
     margin-left: auto;
     color: var(--text-dim);
@@ -341,20 +360,29 @@ button:disabled { cursor: not-allowed; }
     white-space: nowrap;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.btn.primary { background: var(--accent-2); border-color: var(--accent); color: #fff; }
-.btn.primary:hover:not(:disabled) { background: #0369a1; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-2); border-color: var(--accent-2); }
 /* ghost 用实底而非透明：工具栏本身已是浅一档的面，
    透明按钮在上面几乎看不出边界，点不准 */
-.btn.ghost { background: var(--surface3); border-color: #3a3a3a; color: #ddd; }
-.btn.ghost:hover:not(:disabled) { background: #333; color: #fff; }
+.btn.ghost { background: var(--surface3); border-color: var(--border); color: var(--text); }
+.btn.ghost:hover:not(:disabled) { background: #32353a; color: #fff; }
 .btn.danger { background: #b91c1c; border-color: var(--danger); color: #fff; }
 .btn.danger:hover:not(:disabled) { background: #991b1b; }
+/* ghost + danger：底色仍是 ghost 的实底，只有字是红的。
+   给「清空日志」「删除」这类动作用——实心红块的分量应当留给
+   真正会丢数据的确认按钮，工具栏里摆一个会让整条栏都在喊。 */
+.btn.ghost.danger { background: var(--surface3); border-color: var(--border); color: var(--danger-ink); }
+.btn.ghost.danger:hover:not(:disabled) { background: #3b2222; border-color: #7f1d1d; color: #fff; }
 .btn:disabled { opacity: 0.45; }
 /* 表格行内的读 / 写 / 删。原来 22px 高、11px 字，是全站最小的可点目标，
    却承担写 PLC 这种不可撤销的操作。抬到 28px、12px。 */
 .btn-sm { min-height: 28px; padding: 4px 10px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); }
-.btn-sm.primary { background: #0c4a6e; color: #7dd3fc; border-color: #1e3a5f; }
-.btn-sm.danger { background: #3b1515; color: var(--danger-ink); border-color: #7f1d1d; }
+.btn-sm.primary { background: #1b3358; color: #93c5fd; border-color: #2c4a7a; }
+/* 空心而非实底：一张表里每行都有一个「删」，实心红块会让整列红成一条，
+   把视线从真正要看的数据上拉走。红字 + 常规边框已经足够表达危险，
+   实底留给弹窗里那个「确认删除」。 */
+.btn-sm.danger { background: transparent; color: var(--danger-ink); border-color: rgba(239, 68, 68, .35); }
+.btn-sm.danger:hover:not(:disabled) { background: rgba(239, 68, 68, .12); border-color: var(--danger); }
 .btn-sm.ghost:hover { color: var(--text); background: #2a2a2a; }
 
 input, select, textarea {
@@ -410,25 +438,38 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min)), 1fr)); gap: 14px; }
 
+/* 卡片本体。顶部一道极淡的高光渐变 + 外阴影，让它从页面底色上「浮」起来：
+   一屏十几张同尺寸卡片时，纯平面的边框方块会糊成一片网格，
+   有厚度的卡片才能被当成一个个独立的设备来看。 */
 .mes-card {
-    background: var(--surface2);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, 0)), var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: border-color 0.15s;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 6px 18px rgba(0, 0, 0, .28);
+    transition: border-color .15s, transform .15s, box-shadow .15s;
 }
-.mes-card:hover { border-color: #444; }
+.mes-card:hover {
+    border-color: #4a4d53;
+    transform: translateY(-2px);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 10px 26px rgba(0, 0, 0, .38);
+}
 /* 在线状态只用头部 LED 表达，不再整卡描绿边——
    一屏十几台设备时，满屏彩色边框反而看不出哪台异常 */
 .mes-card.is-on, .mes-card.is-off { border-color: var(--border); }
+/* 离线卡整体降饱和、名字转灰：颜色是这一屏最先被扫到的信息，
+   离线设备继续鲜艳会把视线从真正需要处理的那张上引开。
+   注意只降头部而不是整卡——正文里的「最后错误」还得保持红色。 */
+.mes-card.is-off .mes-hd { filter: saturate(.6); }
+.mes-card.is-off .card-name { color: var(--text-muted); }
 
 .mes-hd {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 13px 14px;
     background: var(--surface3);
     border-bottom: 1px solid var(--border);
 }
@@ -437,17 +478,37 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
    槽位按 ProtocolId 的稳定哈希分配（见 Services/UiHelpers.cs），
    不与任何具体协议名绑定——新插件自动获得一个固定且各异的颜色。
    增删槽位时必须同步修改 UiHelpers.PaletteSlots。
-   六种色相在明暗两个主题下都有足够对比度。 */
-.proto-bar { width: 3px; align-self: stretch; border-radius: 2px; min-height: 30px; flex-shrink: 0; }
-.proto-bar.p0 { background: #00a0e3; }
-.proto-bar.p1 { background: #f59e0b; }
-.proto-bar.p2 { background: #3b82f6; }
-.proto-bar.p3 { background: #10b981; }
-.proto-bar.p4 { background: #a855f7; }
-.proto-bar.p5 { background: #ef4444; }
+   六种色相在明暗两个主题下都有足够对比度。
+   color 与 background 设成同值，是为了让 currentColor 能驱动下面那道光晕。 */
+.proto-bar {
+    width: 4px;
+    align-self: stretch;
+    border-radius: 2px;
+    min-height: 30px;
+    flex-shrink: 0;
+    box-shadow: 0 0 10px -2px currentColor;
+}
+.proto-bar.p0 { background: #00a0e3; color: #00a0e3; }
+.proto-bar.p1 { background: #f59e0b; color: #f59e0b; }
+.proto-bar.p2 { background: #3b82f6; color: #3b82f6; }
+.proto-bar.p3 { background: #10b981; color: #10b981; }
+.proto-bar.p4 { background: #a855f7; color: #a855f7; }
+.proto-bar.p5 { background: #ef4444; color: #ef4444; }
 
-.mes-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
-.kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12.5px; }
+.mes-body { padding: 12px 14px; display: flex; flex-direction: column; flex: 1; }
+/* 行间虚线而不是纯靠间距：卡片里都是「标签—值」的两端对齐，
+   中间那段空白很宽，没有横线时视线容易在跨列时串到上下行去。
+   虚线比实线弱，不会把卡片切成一格格的表。 */
+.kv {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 12.5px;
+    padding: 5px 0;
+    border-bottom: 1px dashed var(--border-soft);
+}
+.kv:last-child { border-bottom: 0; }
 .kv span:first-child { color: var(--text-dim); flex-shrink: 0; }
 .kv span:last-child { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kv.err span:last-child { color: var(--danger-ink); }
@@ -468,35 +529,48 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .card-name { font-size: 13.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-proto { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: var(--font-mono); }
 
-/* 状态 LED：在线带辉光，一眼能从卡片阵列里扫出异常那张 */
-.card-led { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.card-led.online { background: var(--success); box-shadow: 0 0 8px rgba(34, 197, 94, 0.55); }
-.card-led.offline { background: #555; }
+/* 状态 LED：在线带辉光，一眼能从卡片阵列里扫出异常那张。
+   外面套一圈与卡头同色的环再套一圈边框色，让它无论压在哪种底色上
+   都有一条干净的分界，不会和背景糊在一起。 */
+.card-led {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px var(--surface3), 0 0 0 3px var(--border);
+}
+.card-led.online {
+    background: var(--success);
+    box-shadow: 0 0 0 2px var(--surface3), 0 0 0 3px rgba(34, 197, 94, .45), 0 0 10px rgba(34, 197, 94, .6);
+}
+.card-led.offline { background: #4a4d53; }
 
-.card-status { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
-.card-status.online { background: var(--success-bg); color: var(--success-ink); }
-.card-status.offline { background: #3f3f46; color: #a1a1aa; }
+.card-status { font-size: 11px; padding: 2px 9px; border-radius: 999px; white-space: nowrap; letter-spacing: .03em; border: 1px solid transparent; }
+.card-status.online { background: var(--success-bg); color: var(--success-ink); border-color: rgba(34, 197, 94, .3); }
+/* 离线改描边空心：实心灰底的胶囊和在线的实心绿底一样「重」，
+   两者混在一屏里得读完字才分得清。空心的一眼就是「没在跑」。 */
+.card-status.offline { background: transparent; color: var(--text-dim); border-color: var(--border); }
 
 /* 网格末尾的虚线「添加」卡：把新增入口放在它将要出现的位置，
    而不是只藏在顶部工具栏里 */
 .add-card {
     min-height: 168px;
     background: transparent;
-    border: 1.5px dashed #1e5a8a;
+    border: 1.5px dashed var(--border);
     border-radius: var(--radius-lg);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    color: #6a8aaa;
+    gap: 6px;
+    color: var(--text-dim);
     font-family: inherit;
     font-size: 13px;
     transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
-.add-card:hover:not(:disabled) { border-color: var(--accent); background: rgba(14, 165, 233, 0.06); color: var(--accent); }
+.add-card:hover:not(:disabled) { border-color: var(--accent); background: rgba(61, 139, 253, .06); color: var(--text); }
 .add-card:disabled { opacity: 0.4; border-color: var(--border); color: var(--text-dim); }
-.add-card .plus { font-size: 26px; font-weight: 300; line-height: 1; }
+.add-card .plus { font-size: 28px; font-weight: 300; line-height: 1; }
 
 /* 结果横幅：左侧 3px 色条承担「这条是什么性质」的辨识，
    底色压暗，避免整条高饱和色块在深色界面里过度抢眼 */
@@ -558,58 +632,377 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .close-btn:hover { color: var(--danger); }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
-.settings-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px;
-    max-width: 560px;
-    margin-bottom: 16px;
-}
-.settings-card h3 { font-size: 13px; font-weight: 650; margin-bottom: 10px; }
-.settings-card label { display: block; font-size: 11px; color: var(--text-muted); margin: 0 0 6px; }
-.settings-card input { margin-bottom: 12px; }
-.setting-desc { font-size: 13px; margin-bottom: 4px; }
 .setting-hint { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
-.connect-status { font-size: 12px; padding: 6px 10px; border-radius: 6px; }
 
-.page-log .log-area {
-    background: #0f0f0f;
+/* ----------------------------------------------------------------------------
+   系统设置页。左栏导航 + 右栏单节内容，两块独立圆角面板。
+   此前是六张卡片竖着堆，整页近两屏；而最要紧的两条——口令开没开、
+   穿透就不就绪——恰好在最底下，不滚到底根本看不见。
+   现在它们作为胶囊常驻左栏，一进页面就在眼前。
+   ---------------------------------------------------------------------------- */
+.set-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 12px;
+    align-items: start;
+    min-height: 0;
+}
+.set-nav, .set-content {
+    background: var(--surface2);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px;
-    /* 高度交给 .page-body 的 flex，不再按视口写死——
-       工具栏或横幅一变高，写死的 calc 就会算错，日志区要么溢出要么留一截空白 */
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+.set-nav-hd {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.set-nav button {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 14px;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+.set-nav button:hover { background: var(--surface3); }
+.set-nav button.active { background: var(--accent-dim); border-left-color: var(--accent); }
+.set-nav button:last-of-type { border-bottom: 0; }
+.set-nav .t { font-weight: 600; font-size: 13px; }
+.set-nav .s { display: block; font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+
+/* 状态胶囊。左栏每项右侧一颗，写的是那一节此刻的实际状态，
+   不是分类标签——它存在的全部意义就是免去逐节点开确认。 */
+.pill {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+.pill.on { color: var(--success-ink); border-color: rgba(34, 197, 94, .5); }
+.pill.off { color: var(--text-dim); }
+.pill.warn, .pill.restart { color: var(--warning-ink); border-color: rgba(245, 158, 11, .5); }
+
+.set-sec { display: flex; flex-direction: column; }
+.sec-hd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 18px;
+    background: var(--surface3);
+    border-bottom: 1px solid var(--border);
+}
+.sec-hd h3 { font-size: 14px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+/* 副标题多是配置文件的绝对路径，长到能顶两行。
+   让它单行截断而不是换行：换行会把右边那颗「需重启」胶囊挤到第二行去，
+   而胶囊才是这一行里唯一需要立刻看到的东西。完整路径给 title。 */
+.sec-hd .desc {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sec-hd .pill { margin-left: auto; }
+.sec-body { padding: 16px 18px; display: grid; gap: 14px; }
+
+/* 表单行：标签 | 控件 | 说明，三列对齐。
+   说明放控件右边而不是上边的一段小字——上边那种写法里，
+   说明和它解释的那个框中间隔着标签，读到框时已经忘了刚才那句在说什么。
+   控件列给上限宽度：输入框拉满一整屏时，光标落在哪一头都看不清。 */
+.row {
+    display: grid;
+    grid-template-columns: 150px minmax(200px, 380px) 1fr;
+    gap: 14px;
+    align-items: center;
+}
+.row > label { color: var(--text-muted); font-size: 13px; }
+.row .help { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.row .help b { color: var(--text); }
+.row.top { align-items: start; }
+.row.top > label { padding-top: 7px; }
+.row .inline { display: flex; gap: 8px; align-items: center; }
+.row .inline input { flex: 1; min-width: 0; }
+
+/* 开关。比复选框大得多，也直白得多——这几个开关背后是
+   「界面要不要挂到公网」这类事，值得一个一眼看得出开合的控件。 */
+.switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    user-select: none;
+}
+.switch i {
+    width: 38px;
+    height: 22px;
+    border-radius: 11px;
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    position: relative;
+    transition: background .15s, border-color .15s;
+    flex: none;
+}
+.switch i::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: left .15s, background .15s;
+}
+.switch.on i { background: rgba(61, 139, 253, .25); border-color: var(--accent); }
+.switch.on i::after { left: 18px; background: var(--accent); }
+.switch:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 地址清单：左侧一颗灯，中间等宽地址。 */
+.url-list { display: grid; gap: 6px; }
+.url {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+.url code { font-family: var(--font-mono); font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.led { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); display: inline-block; flex: none; }
+.led.on { background: var(--success); }
+
+/* 段尾操作条：左边状态、右边按钮。
+   保存按钮和"保存成功/失败"必须同处一行——分开时，
+   点完保存要抬头去别处找结果，容易以为没生效而连点几次。 */
+.actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+}
+.actions .msg { font-size: 12px; color: var(--text-dim); }
+.actions .msg.status-ok { background: none; border: 0; padding: 0; color: var(--success-ink); }
+.actions .msg.status-warn { background: none; border: 0; padding: 0; color: var(--warning-ink); }
+.actions .msg.status-error { background: none; border: 0; padding: 0; color: var(--danger-ink); }
+.actions .msg.status-muted { background: none; border: 0; padding: 0; color: var(--text-dim); }
+.actions .right { margin-left: auto; display: flex; gap: 8px; }
+
+/* 提示条。三档语气：info 只是说明，warn 要你留意，err 是拦你。 */
+.notice { padding: 9px 12px; border-radius: 4px; font-size: 12px; line-height: 1.6; border: 1px solid; }
+.notice.info { color: var(--text-muted); border-color: var(--border); background: var(--bg); }
+.notice.warn { color: var(--warning-ink); border-color: rgba(245, 158, 11, .4); background: rgba(245, 158, 11, .08); }
+.notice.err { color: var(--danger-ink); border-color: rgba(239, 68, 68, .4); background: rgba(239, 68, 68, .08); }
+.notice .mono { color: var(--text); }
+
+/* 设置页里的状态条是嵌在有内边距的节体里的，不像模板页那样贴着面板顶边，
+   所以要自己带一圈边框和圆角；列数也只有四格。 */
+.sec-body .kv-strip {
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.sec-body .kv-strip > div { background: var(--bg); }
+
+.status-box {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 14px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+}
+.status-box .k { color: var(--text-dim); }
+.status-box .v { font-family: var(--font-mono); word-break: break-all; }
+
+/* 页头那句总说明。窄屏下先它让位——按钮和标题不能被挤掉。 */
+.toolbar .hint { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ----------------------------------------------------------------------------
+   通讯日志页。整页是一块圆角面板：工具栏 / 日志区 / 状态栏三段，
+   与设备、模板、变量各页同一套「有边框的矩形区域」语言。
+   ---------------------------------------------------------------------------- */
+.log-panel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.log-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+}
+/* width:auto 覆盖全局的 input,select{width:100%}——不覆盖的话它会撑满
+   整条工具栏，把搜索框和右边那组开关全挤到下一行去。 */
+.log-select {
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 30px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 2px 8px;
+    font-size: 13px;
+}
+/* 可伸缩：工具栏一行放不下时优先压搜索框，而不是把右边那组开关
+   挤到第二行去。min-width 是必需的——input 的 min-width 默认按内容算，
+   不写死就压不下去，结果还是换行。 */
+.log-search {
+    min-height: 30px;
+    flex: 1 1 200px;
+    min-width: 130px;
+    max-width: 280px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 2px 10px;
+    font-size: 13px;
+}
+
+/* 级别分段：等宽 + 计数 + 语义色。
+   计数放在代码右边而不是括号里，是为了让四个数字自己排成一列，
+   扫一眼就知道「有没有错误」——那是打开这页最常见的目的。 */
+.seg.lv button { font-family: var(--font-mono); gap: 6px; }
+.seg.lv button b { font-weight: 600; }
+.seg.lv .c { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.seg.lv .inf b { color: var(--accent); }
+.seg.lv .wrn b { color: var(--warning-ink); }
+.seg.lv .err b { color: var(--danger-ink); }
+.seg.lv .dbg b { color: var(--text-dim); }
+
+/* 视图开关组：左边一个圆点表示开关状态。
+   这三个是「开着还是关着」，不是「选了哪一个」——用和级别一样的
+   选中态高亮会让人以为它们互斥，只能三选一。 */
+.seg.tools { margin-left: auto; }
+.seg.tools button::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--text-dim);
+    background: transparent;
+    flex: none;
+}
+.seg.tools button.on::before { background: var(--accent); border-color: var(--accent); }
+/* 暂停亮的是琥珀色而不是蓝色：它是一个「界面没在跟着实时走」的警示状态，
+   忘了关会让人对着一屏定格的日志判断现场，那是危险的。 */
+.seg.tools button.pause.on { color: var(--warning-ink); }
+.seg.tools button.pause.on::before { background: var(--warning); border-color: var(--warning); }
+
+.log-area {
     flex: 1;
     min-height: 0;
     overflow: auto;
+    background: var(--bg);
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    font-variant-numeric: tabular-nums;
 }
-.log-row { display: flex; gap: 12px; padding: 3px 4px; }
-.log-row:hover { background: #1a1a1a; }
-/* 时间戳原用 #4b5563，在 #0f0f0f 上只有 2.9:1，排障时最需要看的一列反而最暗 */
-.log-time { color: var(--text-dim); width: 92px; flex-shrink: 0; }
-.log-level { width: 32px; flex-shrink: 0; font-weight: 700; }
-.log-cat { width: 110px; flex-shrink: 0; color: #60a5fa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.log-msg { flex: 1; word-break: break-all; }
-.level-info { color: var(--text); }
-.level-warn { color: var(--warning); }
-.level-error { color: var(--danger); }
-.level-muted { color: var(--text-dim); }
-.filter-group { display: flex; gap: 4px; }
-.btn-filter {
-    padding: 4px 10px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-muted);
+/* 跨天分隔条。吸顶，往上翻的时候始终知道现在看的是哪一天。 */
+.day {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface3);
+    color: var(--text-dim);
     font-size: 11px;
-    font-family: var(--font-mono);
+    letter-spacing: .08em;
+    padding: 3px 14px;
+    border-bottom: 1px solid var(--border);
 }
-.btn-filter.active { background: var(--accent); color: #fff; border-color: transparent; }
-.search-input { width: 180px; }
-.auto-scroll { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
+.log-more {
+    padding: 8px 14px;
+    color: var(--text-dim);
+    font-family: var(--font);
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* 四列定宽网格而不是 flex：flex 下正文一长，前三列的宽度会被挤动，
+   上下行的时间、级别、分类就对不齐，而这三列正是用来纵向扫的。 */
+.log-row {
+    display: grid;
+    grid-template-columns: 96px 44px 108px 1fr;
+    gap: 12px;
+    padding: 3px 14px;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, .03);
+}
+.log-row:hover { background: rgba(255, 255, 255, .03); }
+/* 左侧色条只给警告和错误：信息级是绝大多数，给它上色等于没上色。
+   错误再补一层极淡的红底——一屏几百行里，只靠 3px 的边条容易划过去。 */
+.log-row.warn { border-left-color: var(--warning); }
+.log-row.error { border-left-color: var(--danger); background: rgba(239, 68, 68, .06); }
+.log-row.muted { color: var(--text-dim); }
+
+/* 时间戳原用 #4b5563，在深色底上只有 2.9:1，排障时最需要看的一列反而最暗 */
+.log-time { color: var(--text-dim); white-space: nowrap; }
+.log-time .ms { color: #5c6066; }
+.log-level { font-weight: 600; letter-spacing: .05em; }
+.log-level.info { color: var(--accent); }
+.log-level.warn { color: var(--warning-ink); }
+.log-level.error { color: var(--danger-ink); }
+.log-level.muted { color: var(--text-dim); }
+.log-cat { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* pre-wrap 保住正文里的换行：错误日志常带第二行的 KernelErrorCode 与原始帧，
+   压成一行后那些信息会挤在句尾，正是排障最需要看清的部分。 */
+.log-msg { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.log-msg mark { background: rgba(210, 153, 34, .35); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+.log-ft {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+}
+.log-ft b { color: var(--text); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+/* 缓冲进度条。满了就意味着最旧的正在被丢，
+   这是「还能往回翻多久」的唯一指示。 */
+.buf { flex: 1; max-width: 200px; height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+.buf i { display: block; height: 100%; background: var(--accent); }
+.pause-note { color: var(--warning-ink); }
+.follow { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.follow .led { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+.follow.on .led { background: var(--success); }
 
 /* 分栏：左右各是一块独立的圆角面板，之间留缝。
    此前两栏靠一条 1px 竖线分隔、四周贴边，整页是一整片深色，
@@ -889,7 +1282,7 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 
     .toolbar { overflow-x: auto; scrollbar-width: none; padding: 0 12px; gap: 6px; }
     .toolbar::-webkit-scrollbar { display: none; }
-    .toolbar .btn, .toolbar .btn-filter, .toolbar .file-btn { min-height: 36px; flex-shrink: 0; }
+    .toolbar .btn, .toolbar .file-btn { min-height: 36px; flex-shrink: 0; }
     .page-body { padding: var(--space); }
     .summary-bar { gap: var(--space); }
     .device-grid { --card-min: 100%; gap: var(--space); }
@@ -905,7 +1298,17 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
     .card-ft > .btn, .card-ft > .btn-sm { height: 40px; flex: 1; }
     .form-actions { flex-wrap: wrap; }
     .form-actions .btn { flex: 1; min-width: 120px; }
-    .settings-card { max-width: none; padding: 16px; }
+    /* 窄屏：设置页改成上下两段，导航横着滚；表单行的三列折成一列。
+       150px 的标签列在手机上会把控件挤成一条缝。 */
+    .set-layout { grid-template-columns: 1fr; }
+    .set-nav { display: flex; overflow-x: auto; }
+    .set-nav-hd { display: none; }
+    .set-nav button { border-bottom: 0; border-left: 0; border-top: 3px solid transparent; min-width: 150px; }
+    .set-nav button.active { border-top-color: var(--accent); }
+    .set-nav .pill { display: none; }
+    .row { grid-template-columns: 1fr; gap: 6px; }
+    .row.top > label { padding-top: 0; }
+    .toolbar .hint { display: none; }
 
     .add-form-overlay { align-items: flex-end; justify-content: center; padding: 0; background: rgba(0,0,0,.55); }
     .add-form, .add-form.wide {
@@ -925,8 +1328,20 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
     }
     .add-form-overlay.center { align-items: flex-end; padding: 0; }
 
-    .log-row { flex-wrap: wrap; gap: 4px 8px; }
-    .log-time, .log-cat { width: auto; }
+    /* 窄屏：正文换到第二行独占整宽。手机上 1fr 只剩几十像素，
+       一条日志会被切成十几行竖着的碎字。 */
+    .log-row {
+        grid-template-columns: 72px 40px 1fr;
+        grid-template-areas: "t l c" "m m m";
+        gap: 2px 8px;
+    }
+    .log-time { grid-area: t; }
+    .log-level { grid-area: l; }
+    .log-cat { grid-area: c; }
+    .log-msg { grid-area: m; }
+    .log-time .ms { display: none; }
+    .log-search { width: 100%; }
+    .seg.tools { margin-left: 0; }
 
     .data-table thead { display: none; }
     .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
@@ -1304,12 +1719,19 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .kv-strip > div:last-child { border-right: 0; }
 .kv-strip .k { font-size: 11.5px; color: var(--text-dim); letter-spacing: .04em; }
 .kv-strip .v {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-top: 2px;
     font-family: var(--font-mono);
     font-size: 20px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
+/* 放版本号、IP 这类「是个字符串而不是个数」的格子。
+   20px 的数字字号套在 1.0.0-grpc-v3 上会换行，换行后整条的高度
+   被这一格拉高，旁边几个数字就浮在半空。 */
+.kv-strip .v.small { font-size: 13px; font-weight: 500; }
 
 /* 引用条 */
 .tpl-includes-bar {
@@ -1361,7 +1783,11 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
    否则往下翻看功能时就不知道自己在哪个模板里了 */
 .tpl-table-wrap { flex: 1; min-height: 0; overflow: auto; }
 
-.tpl-table { width: 100%; border-collapse: collapse; }
+/* fixed + min-width，与变量表同一套：不加 table-layout:fixed 时 colgroup
+   只是建议值，浏览器会把列压到内容装得下为止——「字节」被压成「字/节」
+   两行、「可读写」压成三行，整表的行高被这一列撑起来。
+   min-width 让装不下时横向滚动，而不是继续压。 */
+.tpl-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 820px; }
 .tpl-table th {
     position: sticky;
     top: 0;
@@ -1598,7 +2024,13 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     border-radius: 4px;
     overflow: hidden;
 }
+/* inline-flex 而不是默认的 inline-block：分段按钮里除了文字还要放计数、
+   圆点指示这类附件，靠 gap 排版；块级排版下 gap 无效，
+   「ALL」和它的计数会直接粘成「ALL29」。 */
 .seg button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     min-height: 30px;
     padding: 0 10px;
     border: 0;
@@ -1606,7 +2038,9 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     color: var(--text-muted);
     font: inherit;
     font-size: 12px;
+    white-space: nowrap;
 }
+.seg button:hover { background: rgba(255, 255, 255, .03); }
 .seg button.on { background: var(--surface3); color: var(--text); }
 .seg button + button { border-left: 1px solid var(--border); }
 

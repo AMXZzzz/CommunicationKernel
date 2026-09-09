@@ -11,83 +11,200 @@
 
 <PageTitle>通讯日志 — CommunicationKernel</PageTitle>
 
-@* 整个模板共用这一份：计数、遍历、空判都基于它，避免同一帧内重复过滤快照 *@
+@* 整个模板共用这一份：级别计数、分类清单、遍历、空判都基于它，
+   避免同一帧内把 2000 条的快照反复过滤。 *@
 @{
-    List<AppLogEntry> rows = BuildRows();
+    LogViewData view = BuildView();
+    DateTime day = default;
 }
 
 <div class="page page-log">
     <div class="toolbar">
         <h2 class="page-title">通讯日志</h2>
-        <div class="filter-group">
-            @foreach (string lvl in new[] { "ALL", "INF", "WRN", "ERR" })
-            {
-                <button class="btn-filter @(FilterLevel == lvl ? "active" : null)" type="button" @onclick="() => FilterLevel = lvl">@lvl</button>
-            }
-        </div>
-        <input class="search-input" placeholder="搜索…" @bind="FilterText" @bind:event="oninput" />
-        <button class="btn ghost" type="button" @onclick="Export">导出</button>
-        <button class="btn ghost" type="button" @onclick="Logs.Clear">清空</button>
-        <div class="toolbar-right">
-            <label class="auto-scroll">
-                <input type="checkbox" @bind="AutoScroll" />
-                自动滚动
-            </label>
-            <span class="toolbar-count">@_matchCount 条</span>
-        </div>
+        <span class="spacer"></span>
+        <button class="btn ghost" type="button" @onclick="ExportAsync"
+                disabled="@(view.BufferCount == 0)" title="把缓冲里的全部日志存成 .log 文件">导出文本</button>
+        <button class="btn ghost" type="button" @onclick="CopyAsync"
+                disabled="@(view.Rows.Count == 0)" title="把当前筛选出来的这些行复制到剪贴板">复制</button>
+        <button class="btn ghost danger" type="button" @onclick="ClearAll"
+                disabled="@(view.BufferCount == 0)" title="清空缓冲。已写到磁盘的日志文件不受影响">清空</button>
     </div>
 
-    <div class="page-body">
-    <div class="log-area" id="log-area">
-        @if (_matchCount > rows.Count)
-        {
-            @* 说明这里为什么不是全部：不写的话，操作员会以为早先的日志丢了 *@
-            <div class="empty-hint">
-                共 @_matchCount 条，仅显示最近 @rows.Count 条。需要完整记录请用顶栏「导出」。
-            </div>
-        }
-        @foreach (AppLogEntry entry in rows)
-        {
-            <div class="log-row">
-                <span class="log-time">@entry.Timestamp.ToString("HH:mm:ss.fff")</span>
-                <span class="log-level level-@entry.LevelClass">@entry.LevelText</span>
-                <span class="log-cat">@entry.Category</span>
-                <span class="log-msg level-@entry.LevelClass">@entry.Message</span>
-            </div>
-        }
-        @if (_matchCount == 0)
-        {
-            <div class="empty-hint">暂无日志。注册路由、读写变量会写到这里。</div>
-        }
-    </div>
-    </div>
+    <div class="page-body flush">
+        <div class="log-panel">
 
-    @if (!string.IsNullOrEmpty(_exportText))
-    {
-        <div class="add-form-overlay" @onclick="() => _exportText = string.Empty">
-            <div class="add-form wide" @onclick:stopPropagation>
-                <div class="form-hd">
-                    <h3>导出日志</h3>
-                    <button class="close-btn" type="button" @onclick="() => _exportText = string.Empty">×</button>
+            <div class="log-toolbar">
+                @* 级别分段：带计数。计数是「按当前分类和关键字筛完之后」的数，
+                   不是全缓冲的数——否则点进去看到的条数和按钮上写的对不上。
+                   计数为 0 的档不禁用：操作员需要看到「ERR 0」这个事实，
+                   置灰会让人以为是功能坏了。 *@
+                <div class="seg lv">
+                    @* 变量名不能叫 code：@code 在 Razor 里是块指令，写在标记里会被当成
+                       指令起始而不是表达式，报的还是「code 指令必须在行首」这种看不出因果的错。 *@
+                    @foreach ((string lv, string name) in LevelTabs)
+                    {
+                        <button type="button" class="@LevelCss(lv) @(_level == lv ? "on" : null)"
+                                title="@name" @onclick="() => _level = lv">
+                            <b>@lv</b><span class="c">@view.LevelCount(lv)</span>
+                        </button>
+                    }
                 </div>
-                <textarea class="export-box" readonly>@_exportText</textarea>
+
+                @* 分类清单从缓冲里现取，不写死：分类字符串是各服务自己传进来的，
+                   写死一份清单会在新增一个日志分类时静默漏掉它。 *@
+                <select class="log-select" @bind="_category" aria-label="按分类筛选">
+                    <option value="">全部分类</option>
+                    @foreach (string c in view.Categories)
+                    {
+                        <option value="@c">@c</option>
+                    }
+                </select>
+
+                <input class="log-search" placeholder="搜索正文 / 分类" aria-label="搜索日志"
+                       @bind="_search" @bind:event="oninput" />
+
+                <div class="seg tools">
+                    <button type="button" class="@(_follow ? "on" : null)"
+                            title="有新日志时自动滚到底部" @onclick="() => _follow = !_follow">自动滚动</button>
+                    <button type="button" class="@(_showMs ? "on" : null)"
+                            title="时间戳显示到毫秒。排查时序问题时秒级不够用" @onclick="() => _showMs = !_showMs">毫秒</button>
+                    @* 暂停只停「往屏幕上刷」，不停记录：后台照收，缓冲照进。
+                       现场经常是「看到一条可疑的，想读完它」，而这时新日志正把它顶走。 *@
+                    <button type="button" class="pause @(_paused ? "on" : null)"
+                            title="@(_paused ? "已暂停刷新，后台仍在记录。点此继续" : "冻结当前画面，方便看清某一条。后台记录不受影响")"
+                            @onclick="TogglePause">@(_paused ? "已暂停" : "暂停")</button>
+                </div>
+            </div>
+
+            <div class="log-area" id="log-area">
+                @if (view.Rows.Count == 0)
+                {
+                    <div class="empty-state">
+                        <div class="empty-hint">@view.EmptyHint</div>
+                    </div>
+                }
+                else
+                {
+                    @if (view.Truncated)
+                    {
+                        @* 不写的话，操作员会以为早先的日志丢了 *@
+                        <div class="log-more">
+                            命中 @view.MatchCount 条，只画最近 @view.Rows.Count 条。要完整记录请用顶栏「导出文本」。
+                        </div>
+                    }
+
+                    @foreach (AppLogEntry e in view.Rows)
+                    {
+                        @* 跨天分隔条。夜班交接、或设备半夜掉线时，
+                           没有这条就只能看着 03:12 猜它是今天还是昨天的。 *@
+                        @if (e.Timestamp.Date != day)
+                        {
+                            day = e.Timestamp.Date;
+                            <div class="day">@day.ToString("yyyy-MM-dd dddd")</div>
+                        }
+                        <div class="log-row @e.LevelClass">
+                            <span class="log-time">
+                                @e.Timestamp.ToString("HH:mm:ss")@if (_showMs)
+                                {
+                                    <span class="ms">@e.Timestamp.ToString(".fff")</span>
+                                }
+                            </span>
+                            <span class="log-level @e.LevelClass">@e.LevelText</span>
+                            <span class="log-cat" title="@e.Category">@e.Category</span>
+                            <span class="log-msg">
+                                @* 逐段渲染而不是拼 HTML 交给 MarkupString：正文里含 PLC 原始帧，
+                                   出现 < 与 & 是常态，当成标记会把整页结构撑坏，
+                                   而且日志正文可以由外部内容间接影响，绝不能当 HTML 执行。 *@
+                                @foreach ((string text, bool hit) in Highlight(e.Message))
+                                {
+                                    if (hit)
+                                    {
+                                        <mark>@text</mark>
+                                    }
+                                    else
+                                    {
+                                        @text
+                                    }
+                                }
+                            </span>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="log-ft">
+                <span>显示 <b>@view.Rows.Count</b> · 缓冲 <b>@view.BufferCount</b> / @AppLogStore.Capacity</span>
+                @* 缓冲进度：接近满就意味着最旧的正在被丢。
+                   在长时间无人值守的产线上，这是「你还能往回翻多久」的唯一指示。 *@
+                <span class="buf" title="缓冲已用 @view.BufferPercent%，满后自动丢弃最旧的">
+                    <i style="width:@(view.BufferPercent)%"></i>
+                </span>
+                @if (_paused)
+                {
+                    <span class="pause-note">已暂停 · 期间新增 <b>@view.SincePause</b> 条</span>
+                }
+                <span class="follow @(_follow && !_paused ? "on" : null)">
+                    <span class="led"></span>@(_paused ? "已冻结" : _follow ? "跟随中" : "手动滚动")
+                </span>
             </div>
         </div>
-    }
+    </div>
 </div>
 
 @code {
     /// <summary>级别筛选，"ALL" 表示不过滤；其余取值与 <c>AppLogEntry.LevelText</c> 一致。</summary>
-    private string FilterLevel { get; set; } = "ALL";
+    private string _level = "ALL";
+
+    /// <summary>分类筛选，空串表示全部分类。</summary>
+    private string _category = string.Empty;
 
     /// <summary>关键字筛选，同时匹配正文与分类。</summary>
-    private string FilterText { get; set; } = string.Empty;
+    private string _search = string.Empty;
 
     /// <summary>是否在有新日志时自动滚到底部。默认开——现场多是盯着最新的看。</summary>
-    private bool AutoScroll { get; set; } = true;
+    private bool _follow = true;
 
-    /// <summary>导出面板里的纯文本日志。</summary>
-    private string _exportText = string.Empty;
+    /// <summary>时间戳是否显示毫秒。默认关，窄屏上那三位会把分类列挤没。</summary>
+    private bool _showMs;
+
+    /// <summary>是否冻结画面。冻结只影响渲染，后台记录照常。</summary>
+    private bool _paused;
+
+    /// <summary>冻结时刻，用来数「暂停期间新增了多少条」。</summary>
+    private DateTime _pausedAt;
+
+    /// <summary>
+    /// 冻结时保存的行快照。
+    /// </summary>
+    /// <remarks>
+    /// 必须存下来，而不是暂停期间干脆不重绘：底部那个「新增 N 条」要持续走字，
+    /// 走字就得重绘，重绘又会把新日志带进来——除非行数据来自这份定格。
+    /// </remarks>
+    private List<AppLogEntry>? _frozen;
+
+    /// <summary>级别页签：代码 + 供 title 用的中文名。</summary>
+    /// <remarks>
+    /// DBG 必须在列。<c>AppLogEntry.LevelText</c> 会把 Trace/Debug 归到 DBG，
+    /// 这里少一档就意味着那些条目只能在「ALL」里混着看，筛不出来也数不清。
+    /// </remarks>
+    private static readonly (string Code, string Name)[] LevelTabs =
+    {
+        ("ALL", "全部级别"),
+        ("INF", "信息：正常动作的流水"),
+        ("WRN", "警告：重试、降级，尚未失败"),
+        ("ERR", "错误：动作已失败，需要处理"),
+        ("DBG", "调试：节拍与耗时等细节"),
+    };
+
+    /// <summary>级别页签的配色类名，与 theme.css 中 .seg.lv 下的修饰类对应。</summary>
+    private static string LevelCss(string code) => code switch
+    {
+        "INF" => "inf",
+        "WRN" => "wrn",
+        "ERR" => "err",
+        "DBG" => "dbg",
+        _ => "all",
+    };
 
     /// <summary>
     /// 一次渲染最多输出多少行。
@@ -98,16 +215,47 @@
     /// 但经内网穿透用手机看时，切到本页会明显卡一下。
     /// <para>
     /// 日志是"看最近发生了什么"的工具，往上翻几百条已经足够；
-    /// 真要全量分析走顶栏的「导出」，那条路不受此限制。
+    /// 真要全量分析走顶栏的「导出文本」，那条路不受此限制。
     /// </para>
     /// </remarks>
     private const int MaxRenderRows = 300;
 
-    /// <summary>本次筛选命中的总条数，不受 <see cref="MaxRenderRows"/> 影响。</summary>
-    private int _matchCount;
+    /// <summary>一帧渲染要用到的全部派生数据。</summary>
+    /// <param name="Rows">实际渲染的行，按时间升序，最新的在末尾。</param>
+    /// <param name="MatchCount">当前筛选命中的总条数，不受 <see cref="MaxRenderRows"/> 限制。</param>
+    /// <param name="BufferCount">缓冲里的总条数，与筛选无关。</param>
+    /// <param name="Categories">缓冲里出现过的分类，供下拉框枚举。</param>
+    /// <param name="Counts">各级别在「分类 + 关键字」筛选下的条数。</param>
+    /// <param name="SincePause">冻结之后新记录的条数。</param>
+    private sealed record LogViewData(
+        List<AppLogEntry> Rows,
+        int MatchCount,
+        int BufferCount,
+        List<string> Categories,
+        Dictionary<string, int> Counts,
+        int SincePause)
+    {
+        /// <summary>命中数超过渲染上限，页面只画了尾部一段。</summary>
+        public bool Truncated => MatchCount > Rows.Count;
+
+        /// <summary>缓冲已用百分比，钳在 0–100。</summary>
+        public int BufferPercent => Math.Clamp(BufferCount * 100 / AppLogStore.Capacity, 0, 100);
+
+        /// <summary>某个级别页签上显示的计数。</summary>
+        public int LevelCount(string code) => Counts.TryGetValue(code, out int n) ? n : 0;
+
+        /// <summary>空表提示：要分清「一条都还没有」与「被筛掉了」。</summary>
+        /// <remarks>
+        /// 两句指向的动作不同。缓冲是空的说明系统还没动过，该去点一次连接；
+        /// 缓冲有数据只是被筛没了，该去放宽筛选。给错方向会让人对着空页面干等。
+        /// </remarks>
+        public string EmptyHint => BufferCount == 0
+            ? "暂无日志。注册路由、连接设备、读写变量都会写到这里。"
+            : "缓冲里有 " + BufferCount + " 条，但没有一条符合当前筛选。放宽级别、分类或关键字试试。";
+    }
 
     /// <summary>
-    /// 应用两级筛选，返回要渲染的日志行（最多 <see cref="MaxRenderRows"/> 条，取最新的）。
+    /// 应用三级筛选并计算页面要用的全部派生量。
     /// </summary>
     /// <remarks>
     /// <b>每次渲染只调一次</b>，结果存进局部变量给整个模板用。
@@ -116,25 +264,111 @@
     /// 过滤本身很快，问题在于日志页订阅了变更通知——
     /// 轮询开着时每来一条新日志就重跑一整轮。
     /// <para>
+    /// 级别计数在「分类 + 关键字」筛完之后、按级别筛之前统计：
+    /// 页签上的数字必须等于点进去能看到的条数，否则数字就是在骗人。
+    /// </para>
+    /// <para>
     /// 关键字匹配用 <c>OrdinalIgnoreCase</c>：操作员搜 "plc" 应当能命中 "PLC-1"。
     /// </para>
     /// </remarks>
-    /// <returns>按时间升序的日志行，最新的在末尾。</returns>
-    private List<AppLogEntry> BuildRows()
+    private LogViewData BuildView()
     {
-        List<AppLogEntry> hit = Logs.Snapshot().Where(e =>
-            (FilterLevel == "ALL" || e.LevelText == FilterLevel) &&
-            (string.IsNullOrEmpty(FilterText) ||
-             e.Message.Contains(FilterText, StringComparison.OrdinalIgnoreCase) ||
-             e.Category.Contains(FilterText, StringComparison.OrdinalIgnoreCase))).ToList();
+        IReadOnlyList<AppLogEntry> all = Logs.Snapshot();
 
-        _matchCount = hit.Count;
+        List<string> cats = all.Select(e => e.Category)
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(c => c, StringComparer.Ordinal)
+            .ToList();
 
-        // 取末尾而非开头：快照是时间升序，最新的在后面，
-        // 而日志页默认滚到底部看最新——截掉开头才是对的。
-        return hit.Count > MaxRenderRows
-            ? hit.GetRange(hit.Count - MaxRenderRows, MaxRenderRows)
-            : hit;
+        // 分类与关键字先筛，级别计数据此统计
+        List<AppLogEntry> scoped = all.Where(e =>
+            (_category.Length == 0 || string.Equals(e.Category, _category, StringComparison.Ordinal)) &&
+            (_search.Length == 0 ||
+             e.Message.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+             e.Category.Contains(_search, StringComparison.OrdinalIgnoreCase))).ToList();
+
+        Dictionary<string, int> counts = new(StringComparer.Ordinal) { ["ALL"] = scoped.Count };
+        foreach (AppLogEntry e in scoped)
+        {
+            counts.TryGetValue(e.LevelText, out int n);
+            counts[e.LevelText] = n + 1;
+        }
+
+        List<AppLogEntry> hit = _level == "ALL"
+            ? scoped
+            : scoped.Where(e => e.LevelText == _level).ToList();
+
+        // 冻结期间行数据来自定格快照，但分类、缓冲量、级别计数仍取实时值——
+        // 底部那句「期间新增 N 条」正是靠这个差别走字的
+        List<AppLogEntry> rows = _frozen ?? Trim(hit);
+        int since = _paused ? all.Count(e => e.Timestamp > _pausedAt) : 0;
+
+        return new LogViewData(rows, _frozen?.Count ?? hit.Count, all.Count, cats, counts, since);
+    }
+
+    /// <summary>只保留末尾 <see cref="MaxRenderRows"/> 条。</summary>
+    /// <remarks>
+    /// 取末尾而非开头：快照是时间升序，最新的在后面，
+    /// 而日志页默认滚到底部看最新——截掉开头才是对的。
+    /// </remarks>
+    private static List<AppLogEntry> Trim(List<AppLogEntry> hit) =>
+        hit.Count > MaxRenderRows ? hit.GetRange(hit.Count - MaxRenderRows, MaxRenderRows) : hit;
+
+    /// <summary>
+    /// 把正文按关键字切成「命中 / 不命中」交替的片段，供模板给命中段套 &lt;mark&gt;。
+    /// </summary>
+    /// <param name="text">日志正文。</param>
+    /// <returns>片段序列，<c>Hit</c> 为真表示该段是关键字命中。</returns>
+    /// <remarks>
+    /// 返回片段而不是拼好的 HTML 字符串：日志正文里含 PLC 原始帧和用户填的设备名，
+    /// 当成标记渲染既会撑坏页面结构，也是一条从外部内容通到 DOM 的注入路径。
+    /// <para>
+    /// 空关键字直接整段返回，避免在没搜索时也走一遍分段循环——
+    /// 这个方法对每一行都要跑一次，而一屏有三百行。
+    /// </para>
+    /// </remarks>
+    private IEnumerable<(string Text, bool Hit)> Highlight(string text)
+    {
+        if (_search.Length == 0)
+        {
+            yield return (text, false);
+            yield break;
+        }
+
+        int from = 0;
+        while (true)
+        {
+            int at = text.IndexOf(_search, from, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) break;
+
+            if (at > from) yield return (text[from..at], false);
+            yield return (text.Substring(at, _search.Length), true);
+            from = at + _search.Length;
+        }
+
+        if (from < text.Length) yield return (text[from..], false);
+    }
+
+    /// <summary>切换冻结。</summary>
+    /// <remarks>
+    /// 冻结时立刻把当前筛选结果定格下来；解冻时丢掉定格并滚到底部，
+    /// 否则视口还停在旧位置，操作员会以为暂停期间的日志没收到。
+    /// </remarks>
+    private void TogglePause()
+    {
+        _paused = !_paused;
+
+        if (_paused)
+        {
+            _pausedAt = DateTime.Now;
+            _frozen = BuildView().Rows;
+        }
+        else
+        {
+            _frozen = null;
+            ScrollToEnd();
+        }
     }
 
     /// <summary>订阅日志缓冲的变更通知。</summary>
@@ -145,13 +379,12 @@
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 滚动必须在 <c>StateHasChanged</c> <b>之后</b>：新行还没渲染出来时滚动，
-    /// 滚到的是旧的底部，最新几行仍在视口外。
+    /// 冻结时照常重绘：行来自定格快照不会动，但底部的「新增 N 条」要跟着走。
+    /// 只是不滚动——滚动会把操作员正盯着的那一行带走，那正是他按暂停要避免的事。
     /// </para>
     /// <para>
-    /// JS 调用整体吞掉异常是有意的：Blazor Server 断线或组件正在销毁时
-    /// <c>InvokeVoidAsync</c> 会抛，而这只是个滚动效果——
-    /// 为它把整条日志链路搞崩不值得。
+    /// 滚动必须在 <c>StateHasChanged</c> <b>之后</b>：新行还没渲染出来时滚动，
+    /// 滚到的是旧的底部，最新几行仍在视口外。
     /// </para>
     /// </remarks>
     private void OnChanged()
@@ -160,28 +393,72 @@
         {
             StateHasChanged();
 
-            if (AutoScroll)
-            {
-                try { await Js.InvokeVoidAsync("ck.scrollToBottom", "log-area"); }
-                catch (Exception) { }
-            }
+            if (_follow && !_paused)
+                await ScrollToEndAsync().ConfigureAwait(false);
         });
     }
 
+    /// <summary>滚到日志区底部，不等待结果。</summary>
+    private void ScrollToEnd() => _ = InvokeAsync(async () => await ScrollToEndAsync().ConfigureAwait(false));
+
     /// <summary>
-    /// 把<b>全部</b>日志导出为纯文本，供操作员复制。
+    /// 滚到日志区底部。
+    /// </summary>
+    /// <remarks>
+    /// JS 调用整体吞掉异常是有意的：Blazor Server 断线或组件正在销毁时
+    /// <c>InvokeVoidAsync</c> 会抛，而这只是个滚动效果——
+    /// 为它把整条日志链路搞崩不值得。
+    /// </remarks>
+    private async Task ScrollToEndAsync()
+    {
+        try { await Js.InvokeVoidAsync("ck.scrollToBottom", "log-area").ConfigureAwait(false); }
+        catch (Exception) { }
+    }
+
+    /// <summary>
+    /// 把<b>全部</b>日志直接存成文件。
     /// </summary>
     /// <remarks>
     /// 刻意导出全量而非当前筛选结果：导出多半是为了发给别人排查，
     /// 只给筛过的片段会漏掉上下文，而现场未必记得自己开着筛选。
-    /// 时间戳带毫秒——排查时序问题时秒级精度不够。
+    /// 时间戳带日期——文件会被带离本机，只有时分秒就对不上是哪天的事。
     /// </remarks>
-    private void Export()
+    private async Task ExportAsync()
     {
-        _exportText = string.Join(
-            Environment.NewLine,
-            Logs.Snapshot().Select(e =>
-                e.Timestamp.ToString("HH:mm:ss.fff") + " " + e.LevelText + " " + e.Category + " " + e.Message));
+        string text = string.Join(Environment.NewLine, Logs.Snapshot().Select(Format));
+        string name = "ck-log-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".log";
+
+        try { await Js.InvokeVoidAsync("ck.downloadText", name, text).ConfigureAwait(false); }
+        catch (Exception) { }
+    }
+
+    /// <summary>把当前筛选出来的行复制到剪贴板。</summary>
+    /// <remarks>
+    /// 与「导出」相反，这里<b>只给筛选结果</b>：复制是为了贴进聊天窗口问人，
+    /// 贴两千条没人看得下去，筛出来的那几条才是要问的东西。
+    /// </remarks>
+    private async Task CopyAsync()
+    {
+        string text = string.Join(Environment.NewLine, BuildView().Rows.Select(Format));
+
+        try { await Js.InvokeVoidAsync("ck.copyText", text).ConfigureAwait(false); }
+        catch (Exception) { }
+    }
+
+    /// <summary>导出与复制共用的一行纯文本格式。</summary>
+    private static string Format(AppLogEntry e) =>
+        e.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + e.LevelText + " " + e.Category + " " + e.Message;
+
+    /// <summary>清空缓冲，同时解除冻结。</summary>
+    /// <remarks>
+    /// 必须一起解冻：定格快照是清空前的行，留着会让页面在清空后
+    /// 仍旧显示满屏日志，而缓冲计数已经归零，两边自相矛盾。
+    /// </remarks>
+    private void ClearAll()
+    {
+        _paused = false;
+        _frozen = null;
+        Logs.Clear();
     }
 
     /// <summary>退订日志事件；AppLogStore 是单例，漏退会泄漏本组件。</summary>

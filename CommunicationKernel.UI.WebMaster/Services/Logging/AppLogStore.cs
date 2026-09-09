@@ -66,8 +66,12 @@ public sealed class AppLogStore
     /// 必须有上限：一台设备离线后轮询会持续产生失败日志，
     /// 无上限的缓冲会在无人值守的产线上稳步吃光内存。
     /// 2000 条约能覆盖数小时的正常运行，足够回溯一次班次内的异常。
+    /// <para>
+    /// 公开是为了让日志页把「已用 / 上限」如实画出来。写死一个 2000 在页面上，
+    /// 改了这里而忘了改那边，界面会一直照着旧上限报进度，且不会有任何报错。
+    /// </para>
     /// </remarks>
-    private const int Capacity = 2000;
+    public const int Capacity = 2000;
 
     /// <summary>条目队列，先进先出。</summary>
     private readonly ConcurrentQueue<AppLogEntry> _entries = new();
