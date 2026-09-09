@@ -235,9 +235,12 @@ button:disabled { cursor: not-allowed; }
     gap: 12px;
 }
 
-/* 变量配置这类自带左右分栏的页面，主体要贴边、由内部面板各自滚动 */
+/* 自带分栏、由内部面板各自滚动的页面（变量、模板、日志、设置）。
+   仍然保留四周的留白：贴边时面板会和侧边栏、状态栏焊在一起，
+   整屏是一整片深色，看不出哪里是一块可滚动的区域。
+   gap 归零是因为这些页面只有一个子元素，间距由各自的布局容器管。 */
 .page-body.flush {
-    padding: 0;
+    padding: var(--space);
     gap: 0;
     overflow: hidden;
 }
@@ -643,15 +646,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .set-layout {
     display: grid;
     grid-template-columns: 240px 1fr;
-    gap: 12px;
+    gap: var(--space);
     align-items: start;
     min-height: 0;
+    max-height: 100%;
 }
+/* 两块面板各自滚，而不是让整页滚：外层 .page-body.flush 是 overflow:hidden，
+   不给这里开滚动的话，反代那一节在矮屏上会被直接截掉，且没有滚动条提示。 */
 .set-nav, .set-content {
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    overflow: hidden;
+    max-height: 100%;
+    overflow: auto;
 }
 .set-nav-hd {
     padding: 12px 16px;
@@ -1012,7 +1019,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     flex: 1;
     min-height: 0;
     gap: var(--space);
-    padding: var(--space);
     overflow: hidden;
 }
 

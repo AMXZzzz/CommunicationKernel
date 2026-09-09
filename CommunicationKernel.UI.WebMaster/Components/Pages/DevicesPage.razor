@@ -161,21 +161,25 @@
                 }
                 else
                 {
-                    <label>显示名称</label>
+                    @* 显示名称成了必填：路由 ID 现在是随机的，名字空着时
+                       整个界面就只能拿一串十六进制来称呼这台设备。 *@
+                    <label>显示名称 *</label>
                     <input @bind="_name" placeholder="例如 贴片机-1" />
 
-                    <label>路由 ID *</label>
-                    @if (IsEditing)
-                    {
-                        @* 路由 ID 是设备的身份，改了等于换一台设备：
-                           宿主侧已注册的那条会变成没人认领的孤儿路由。
-                           要改就删掉重建。 *@
-                        <input value="@_routeId" readonly title="路由 ID 是设备身份，不可修改；如需更改请删除后重建" />
-                    }
-                    else
-                    {
-                        <input @bind="_routeId" placeholder="plc-001" />
-                    }
+                    @* 路由 ID 一律自动分配、只读。
+
+                       它只是宿主侧路由表的键，不承载任何含义——认设备靠上面的显示名称。
+                       让人自己编会带来两个真实问题：新增时撞了 ID 会直接覆盖另一台设备的
+                       配置；而想改 ID 时又不允许改——它已经是宿主上那条路由的身份，
+                       改了等于凭空多出一条没人认领的孤儿路由。
+
+                       调试场景下更是如此：一天要建删十几条，每次还要想一个不重样的
+                       名字，纯属白费功夫。 *@
+                    <label>路由 ID</label>
+                    <input class="mono" value="@_routeId" readonly
+                           title="@(IsEditing
+                               ? "路由 ID 是设备身份，不可修改；如需更改请删除后重建"
+                               : "自动分配，不用填。它只是宿主侧的键，认设备请看上面的显示名称")" />
 
                     <label>协议 *</label>
                     <select value="@_protocolId" @onchange="OnProtocolChanged">
@@ -601,11 +605,43 @@
     private List<DeviceView> BuildRows() =>
         DeviceViewBuilder.Build(Session.Routes, Store.GetAll());
 
+    /// <summary>
+    /// 生成一个未被占用的路由 ID。
+    /// </summary>
+    /// <returns>八位小写十六进制，例如 <c>a3f9c21e</c>。</returns>
+    /// <remarks>
+    /// 用 GUID 的前八位而不是自增序号：序号在「删掉 3 号再新建」时会重复利用，
+    /// 而宿主上那条旧路由未必已经注销干净，新设备会接管到别人的连接上。
+    /// <para>
+    /// 八位十六进制约 43 亿种，几十台设备下撞的概率可以忽略；仍然做了重试，
+    /// 因为撞一次的后果是覆盖掉另一台设备的配置，不是可以听天由命的那类。
+    /// 极端情况下退回完整 GUID——难看，但一定不重复。
+    /// </para>
+    /// <para>
+    /// 只在本地配置里查重。宿主侧可能还有本机没有的路由（别的上位机注册的），
+    /// 真撞上时注册会被宿主拒绝并给出明确错误，比在这里静默覆盖要好。
+    /// </para>
+    /// </remarks>
+    private string NewRouteId()
+    {
+        HashSet<string> used = new(
+            Store.GetAll().Select(d => d.RouteId), StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < 32; i++)
+        {
+            string id = Guid.NewGuid().ToString("n")[..8];
+            if (!used.Contains(id)) return id;
+        }
+
+        return Guid.NewGuid().ToString("n");
+    }
+
     /// <summary>打开新增表单：清空字段、拉取协议与串口清单、给一份默认选择。</summary>
     private async Task OpenAdd()
     {
         ResetForm();
         _editingRouteId = string.Empty;
+        _routeId = NewRouteId();
         _showForm = true;
 
         await LoadFormChoicesAsync().ConfigureAwait(true);
@@ -779,9 +815,19 @@
     /// </remarks>
     private async Task SaveAsync(bool thenConnect)
     {
+        // 名称接替了原来「路由 ID 必填」的位置：ID 现在是自动分配的，
+        // 名字才是这台设备在界面上唯一能被认出来的东西
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _banner = "请填写显示名称";
+            _bannerClass = "status-error";
+            return;
+        }
         if (string.IsNullOrWhiteSpace(_routeId))
         {
-            _banner = "路由 ID 为必填";
+            // 正常路径下不会走到：新增时已自动分配，编辑时从配置回填。
+            // 留着是为了万一将来有别的入口打开这个表单而忘了给 ID
+            _banner = "路由 ID 缺失，请关闭表单重新添加";
             _bannerClass = "status-error";
             return;
         }
@@ -827,7 +873,7 @@
         WebDeviceRecord record = new()
         {
             RouteId = routeId,
-            Name = string.IsNullOrWhiteSpace(_name) ? routeId : _name.Trim(),
+            Name = _name.Trim(),
             ProtocolId = _protocolId,
             TransportKind = transport,
             Address = IsSerial ? string.Empty : _address.Trim(),
