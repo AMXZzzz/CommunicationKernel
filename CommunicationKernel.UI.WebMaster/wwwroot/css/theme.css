@@ -406,6 +406,13 @@ input, select, textarea {
     outline: none;
     width: 100%;
 }
+/* 勾选框和单选钮必须从上面那条 width:100% 里摘出来。
+   它们和文本框长得完全不是一回事：撑到 100%% 之后，
+   在 flex 的一行里会挤成一个宽得离谱的方块，把后面的文字推到半屏之外，
+   文字再被压成每列一两个字竖着排。表现是"排版乱了"，
+   根因却在一条给文本框写的通用规则上，很难往这边想。 */
+input[type="checkbox"], input[type="radio"] { width: auto; flex: none; }
+
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .data-table { width: 100%; border-collapse: collapse; }

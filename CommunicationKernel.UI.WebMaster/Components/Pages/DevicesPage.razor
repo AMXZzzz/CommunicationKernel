@@ -293,7 +293,10 @@
                     <label class="inline-check">
                         <input type="checkbox" checked="@_removeVars"
                                @onchange="e => _removeVars = e.Value is true" />
-                        同时删除它的 <span class="mono">@_pendingRemoveVars</span> 条变量
+                        @* 整句包在一个 span 里：label 是 flex 容器，裸文本会被拆成
+                           若干个匿名 flex 项，「同时删除它的」「1」「条变量」各自成列
+                           再各自换行，读起来是三竖条。 *@
+                        <span>同时删除它的 <span class="mono">@_pendingRemoveVars</span> 条变量</span>
                     </label>
                     <p class="setting-hint">
                         @(_removeVars
