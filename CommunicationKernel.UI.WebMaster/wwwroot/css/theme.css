@@ -1700,17 +1700,27 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .var-detail .ops { text-align: right; white-space: nowrap; }
 .var-detail .ops .btn-sm + .btn-sm { margin-left: 4px; }
 
-/* 底部图例：三条约定说明，最后一条推到右侧 */
+/* 底部条：左侧图例说明，右侧「添加变量」。
+   margin-top:auto 把它压在面板底边——空表时 .tbl-wrap 不渲染，
+   没有它这条会贴着提示文字浮在面板中间，下方留一大块空白。
+   有表格时 .tbl-wrap 的 flex:1 已经吃掉剩余高度，这行不起作用。 */
 .vars-ft {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 16px;
+    margin-top: auto;
     padding: 8px 14px;
     border-top: 1px solid var(--border);
     font-size: 11.5px;
     color: var(--text-dim);
 }
+/* 靠 margin-left:auto 推到右侧。既用在最后一条图例上，也用在「添加变量」按钮上——
+   空表时图例不渲染，按钮仍会被推到最右，位置不会跳。 */
 .vars-ft .push { margin-left: auto; }
+
+/* 按钮不跟随图例的 11.5px：那是说明文字的字号，落到操作按钮上会显得点不动 */
+.vars-ft .btn { font-size: 13px; }
 
 @media (max-width: 900px) {
     /* 窄屏：搜索占满一行，分段筛选跟在下面 */

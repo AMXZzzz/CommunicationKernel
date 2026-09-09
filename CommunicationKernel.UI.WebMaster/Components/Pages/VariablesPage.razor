@@ -20,8 +20,10 @@
 <div class="page page-var">
     <div class="toolbar">
         <h2 class="page-title">变量配置</h2>
+        @* 工具栏只放页面级操作。「添加变量」作用于当前选中的设备，
+           已移进右侧面板底部——与模板页的「＋ 添加功能」同一处理。
+           放在这里会和「导入/导出」并排，看不出它加到哪台设备上。 *@
         <button class="btn primary" type="button" @onclick="ReadVisibleAsync" disabled="@(_busy || Visible.Count == 0 || !Session.Online)">批量读取</button>
-        <button class="btn ghost" type="button" @onclick="OpenAdd">添加变量</button>
         @* 换 PLC 型号时用：设备记录改协议，变量只需重写地址 *@
         <button class="btn ghost" type="button" @onclick="OpenRewrite"
                 disabled="@(_busy || Store.GetAll().Count == 0)">
@@ -224,12 +226,21 @@
                         </table>
                     </div>
 
-                    <div class="vars-ft">
+                }
+
+                @* 底部条在<b>空表时也要在</b>：一台设备还没有任何变量时，
+                   它是唯一的添加入口。图例则只在有行时才有意义，单独判断。 *@
+                <div class="vars-ft">
+                    @if (Visible.Count > 0) {
                         <span>● 轮询开 / ○ 关，数字为周期 ms</span>
                         <span>模板生成的变量无「删」，到模板页维护</span>
-                        <span class="push">刷新超过 @StaleSeconds 秒变黄 = 值已陈旧</span>
-                    </div>
-                }
+                        <span>刷新超过 @StaleSeconds 秒变黄 = 值已陈旧</span>
+                    }
+                    <button class="btn primary push" type="button" @onclick="OpenAdd"
+                            title="@(string.IsNullOrEmpty(_filterRoute)
+                                ? "新变量的所属设备在表单里选"
+                                : "添加到「" + ScopeTitle + "」")">＋ 添加变量</button>
+                </div>
             </section>
         </div>
     </div>
@@ -723,10 +734,17 @@
     }
 
     /// <summary>空表时的提示：要区分「本来就没有」与「被筛掉了」。</summary>
+    /// <remarks>
+    /// 两句话指向的动作不同，不能合并：被筛掉时该做的是清筛选，
+    /// 真的没有时该做的是添加。给错了方向，操作员会去清一个本来就空的搜索框。
+    /// 后一句直接指下方那个按钮——它就在这段提示底下，不必再解释路由 ID 怎么填。
+    /// </remarks>
     private string EmptyHint =>
         _search.Length > 0 || _view != VarView.All
             ? "当前筛选下没有变量。清空搜索或切回「全部」。"
-            : "没有变量。添加时请选择已注册的路由 ID。";
+            : string.IsNullOrEmpty(_filterRoute)
+                ? "还没有任何变量。先在左栏选一台设备，再用下方「＋ 添加变量」。"
+                : "「" + ScopeTitle + "」还没有变量。用下方「＋ 添加变量」，或在上方选一个模板整套套用。";
 
     /// <summary>某路由的连接端点，供左栏副标题区分同协议的多台设备。</summary>
     private string EndpointOf(string routeId)
@@ -1016,11 +1034,19 @@
     /// 只在 <c>_routeId</c> 为空时才补默认路由——操作员刚在左侧点了某台设备，
     /// 那个选择应当被继承下来，而不是被重置回第一条。
     /// </remarks>
+    /// <remarks>
+    /// 优先预填<b>当前选中的设备</b>，而不是列表里的第一台。
+    /// 按钮就在那台设备的表格里，点它却给出别的设备，是明显的意外行为——
+    /// 而且这种错要等到保存之后、变量出现在另一台设备名下才会被发现。
+    /// 选的是「全部」时没有上下文，才退回第一台。
+    /// </remarks>
     private void OpenAdd () {
         ResetForm();
         _showForm = true;
 
-        if (RouteChoices.Count > 0 && string.IsNullOrEmpty(_routeId))
+        if (!string.IsNullOrEmpty(_filterRoute))
+            _routeId = _filterRoute;
+        else if (RouteChoices.Count > 0)
             _routeId = RouteChoices[0].RouteId;
     }
 
