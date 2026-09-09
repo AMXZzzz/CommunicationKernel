@@ -33,14 +33,21 @@
     --accent-2: #2f6fd0;
     --accent-dim: #1d2732;
     --accent-ink: #93c5fd;
+    /* 语义色分两档：不带后缀的是「实体」色——LED、开关、色条、边框；
+       -ink 是压在深色底上的<b>文字</b>色。两者不能合用一个值：
+       实心 LED 要够沉才像个灯，而同样的值当文字就偏暗。
+
+       ink 这三个取自视觉稿。此前用的是更浅的粉彩档(#86efac / #fbbf24 /
+       #fca5a5)，对比度更高，但整屏看下来发灰发粉，像是褪了色；
+       现在这组饱和度更足，在 --surface2 上仍有 6.6:1 以上，稳过 AA。 */
     --success: #22c55e;
-    --success-ink: #86efac;
-    --success-bg: #14532d;
+    --success-ink: #4ade80;
+    --success-bg: rgba(34, 197, 94, .12);
     --warning: #f59e0b;
-    --warning-ink: #fbbf24;
+    --warning-ink: #e3b341;
     --danger: #ef4444;
-    --danger-ink: #fca5a5;
-    --danger-bg: #450a0a;
+    --danger-ink: #ff7b72;
+    --danger-bg: rgba(239, 68, 68, .12);
     /* String / Hex 的类型徽标用紫色：它与蓝(整数)、绿(布尔)、橙(浮点)
        在深色底上都拉得开，且不与任何状态语义(成功/警告/危险)冲突 */
     --violet: #7c3aed;
@@ -585,11 +592,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     border-left-width: 3px;
     flex-shrink: 0;
 }
-.status-ok { background: #10271a; border-color: #166534; color: var(--success-ink); }
-.status-error { background: #2a1212; border-color: #7f1d1d; color: var(--danger-ink); }
-.status-info { background: #132433; border-color: var(--accent-dim); color: var(--accent-ink); }
-.status-warn { background: #2a1f08; border-color: #854d0e; color: var(--warning-ink); }
-.status-muted { background: #1f1f1f; border-color: var(--border); color: var(--text-muted); }
+/* 底色一律用半透明而不是调出来的深色实底：实底是按某一种背景配的，
+   横幅出现在卡片上(--surface2)和出现在页面底(--bg)时会差出一档，
+   两处摆在一起就露馅。半透明则自动贴合它压着的那一层。 */
+.status-ok { background: rgba(34, 197, 94, .12); border-color: rgba(34, 197, 94, .45); color: var(--success-ink); }
+.status-error { background: rgba(239, 68, 68, .12); border-color: rgba(239, 68, 68, .45); color: var(--danger-ink); }
+.status-info { background: rgba(61, 139, 253, .12); border-color: rgba(61, 139, 253, .45); color: var(--accent-ink); }
+.status-warn { background: rgba(245, 158, 11, .12); border-color: rgba(245, 158, 11, .45); color: var(--warning-ink); }
+.status-muted { background: rgba(255, 255, 255, .04); border-color: var(--border); color: var(--text-muted); }
 
 .val-green { color: var(--success); }
 .val-red { color: var(--danger); }
@@ -819,8 +829,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 /* 提示条。三档语气：info 只是说明，warn 要你留意，err 是拦你。 */
 .notice { padding: 9px 12px; border-radius: 4px; font-size: 12px; line-height: 1.6; border: 1px solid; }
 .notice.info { color: var(--text-muted); border-color: var(--border); background: var(--bg); }
-.notice.warn { color: var(--warning-ink); border-color: rgba(245, 158, 11, .4); background: rgba(245, 158, 11, .08); }
-.notice.err { color: var(--danger-ink); border-color: rgba(239, 68, 68, .4); background: rgba(239, 68, 68, .08); }
+.notice.warn { color: var(--warning-ink); border-color: rgba(245, 158, 11, .45); background: rgba(245, 158, 11, .1); }
+.notice.err { color: var(--danger-ink); border-color: rgba(239, 68, 68, .45); background: rgba(239, 68, 68, .1); }
 .notice .mono { color: var(--text); }
 
 /* 设置页里的状态条是嵌在有内边距的节体里的，不像模板页那样贴着面板顶边，

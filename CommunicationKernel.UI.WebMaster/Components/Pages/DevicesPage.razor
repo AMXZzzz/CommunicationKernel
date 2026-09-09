@@ -161,14 +161,14 @@
                 }
                 else
                 {
-                    @* 显示名称成了必填：路由 ID 现在是随机的，名字空着时
+                    @* 设备名称成了必填：路由 ID 现在是随机的，名字空着时
                        整个界面就只能拿一串十六进制来称呼这台设备。 *@
-                    <label>显示名称 *</label>
+                    <label>设备名称 *</label>
                     <input @bind="_name" placeholder="例如 贴片机-1" />
 
                     @* 路由 ID 一律自动分配、只读。
 
-                       它只是宿主侧路由表的键，不承载任何含义——认设备靠上面的显示名称。
+                       它只是宿主侧路由表的键，不承载任何含义——认设备靠上面的设备名称。
                        让人自己编会带来两个真实问题：新增时撞了 ID 会直接覆盖另一台设备的
                        配置；而想改 ID 时又不允许改——它已经是宿主上那条路由的身份，
                        改了等于凭空多出一条没人认领的孤儿路由。
@@ -179,7 +179,7 @@
                     <input class="mono" value="@_routeId" readonly
                            title="@(IsEditing
                                ? "路由 ID 是设备身份，不可修改；如需更改请删除后重建"
-                               : "自动分配，不用填。它只是宿主侧的键，认设备请看上面的显示名称")" />
+                               : "自动分配，不用填。它只是宿主侧的键，认设备请看上面的设备名称")" />
 
                     <label>协议 *</label>
                     <select value="@_protocolId" @onchange="OnProtocolChanged">
@@ -815,11 +815,11 @@
     /// </remarks>
     private async Task SaveAsync(bool thenConnect)
     {
-        // 名称接替了原来「路由 ID 必填」的位置：ID 现在是自动分配的，
+        // 设备名称接替了原来「路由 ID 必填」的位置：ID 现在是自动分配的，
         // 名字才是这台设备在界面上唯一能被认出来的东西
         if (string.IsNullOrWhiteSpace(_name))
         {
-            _banner = "请填写显示名称";
+            _banner = "请填写设备名称";
             _bannerClass = "status-error";
             return;
         }

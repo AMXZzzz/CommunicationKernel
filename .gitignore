@@ -52,3 +52,7 @@ installer/output/
 
 # 压测采样结果（体积大且是运行产物）
 tools/SoakHarness/results/
+
+# 界面视觉稿的本地草稿。只是给人看的静态 HTML，不参与构建，
+# 也不是任何页面的真实来源——真正的样式在 theme.css 里。
+ui-preview/
