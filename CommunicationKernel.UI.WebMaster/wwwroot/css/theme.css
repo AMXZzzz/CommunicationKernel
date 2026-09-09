@@ -1962,6 +1962,43 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 /* 「全部」那一行没有在线概念，藏起来但保留占位，三列不至于错位 */
 .dev .led.none { visibility: hidden; }
 
+/* 残留路由：设备配置已删、变量还挂在它名下。
+   整条压暗一档并把灯换成琥珀空心圈——它既不是在线也不是离线，
+   而是「这台设备根本不存在了」，用离线那颗灰灯会被误当成正常的未连接。 */
+.dev.orphan .t { color: var(--text-muted); }
+.dev.orphan .led { background: transparent; box-shadow: inset 0 0 0 1.5px var(--warning); }
+.dev .t .tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    font-size: 10px;
+    font-weight: 400;
+    vertical-align: 1px;
+    color: var(--text-dim);
+}
+.dev .t .tag.warn { color: var(--warning-ink); border-color: rgba(245, 158, 11, .45); }
+
+/* 残留路由的清理条，横在表头与表格之间。
+   条状而不是弹窗：它不阻断操作——那些变量留着也不会出事，
+   只是没用；但也不能只是一行小灰字，否则永远不会有人去处理。 */
+.orphan-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(245, 158, 11, .08);
+    color: var(--warning-ink);
+    font-size: 12px;
+    line-height: 1.6;
+}
+.orphan-bar > span { flex: 1; min-width: 240px; }
+.orphan-bar .mono { color: var(--text); }
+.orphan-bar .btn { flex: none; }
+
 .dev .body { min-width: 0; }
 .dev .t {
     display: block;

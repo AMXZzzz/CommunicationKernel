@@ -83,13 +83,27 @@
                 </button>
 
                 @foreach (RouteChoice r in RouteChoices) {
-                    <button class="dev @(_filterRoute == r.RouteId ? "active" : null) @(Session.IsRouteOnline(r.RouteId) ? "on" : null)"
-                            type="button" @onclick="() => SelectRoute(r.RouteId)">
+                    <button class="dev @(_filterRoute == r.RouteId ? "active" : null) @(Session.IsRouteOnline(r.RouteId) ? "on" : null) @(r.Orphan ? "orphan" : null)"
+                            type="button" @onclick="() => SelectRoute(r.RouteId)"
+                            title="@(r.Orphan ? "残留：设备配置已删除，只剩这些变量还挂在路由 " + r.RouteId + " 名下" : r.Name)">
                         <span class="led"></span>
                         <span class="body">
-                            <span class="t">@r.Name</span>
+                            <span class="t">
+                                @r.Name
+                                @* 孤儿要一眼看得出来：不标的话它和正常设备长得几乎一样，
+                                   只是少了副标题——而"少了点什么"是最不容易被注意到的差别。 *@
+                                @if (r.Orphan) {
+                                    <span class="tag warn">残留</span>
+                                }
+                            </span>
                             @* 副标题带上端点：同一协议下挂多台时，光看协议名分不出是哪台 *@
-                            <span class="s">@r.ProtocolId@(EndpointOf(r.RouteId) is { Length: > 0 } ep ? " · " + ep : "")</span>
+                            <span class="s">
+                                @if (r.Orphan) {
+                                    @:设备已删除
+                                } else {
+                                    @r.ProtocolId@(EndpointOf(r.RouteId) is { Length: > 0 } ep ? " · " + ep : "")
+                                }
+                            </span>
                         </span>
                         @* 只显示变量数。错误数曾并在这里（「4 · 2 错」），去掉了：
                            设备离线时它下面每条变量都会报错，这个数字就等同于变量总数，
@@ -123,6 +137,24 @@
                                 @onclick="() => _view = VarView.Error">有错误</button>
                     </div>
                 </div>
+
+                @* 残留路由的清理入口。
+
+                   没有这一条时，清掉一批残留变量的唯一办法是把顶部「模板」下拉
+                   切到「（不使用模板）」——因为残留下来的行几乎都是模板生成的，
+                   行尾的「删」是灰的。那条路径既猜不到，名字听起来也不像是在删东西。
+
+                   而且它只删模板行：手工加的那几条会留下来，路由依旧残留在左栏，
+                   看起来像是没删干净。所以这里给的是「整条路由全清」。 *@
+                @if (CurrentIsOrphan) {
+                    <div class="orphan-bar">
+                        <span>
+                            <b>残留路由。</b>设备 <span class="mono">@_filterRoute</span> 的配置已经删掉了，
+                            只剩这 @CountOf(_filterRoute) 条变量还挂在它名下——它们不会被轮询，也读写不了。
+                        </span>
+                        <button class="btn ghost danger" type="button" @onclick="AskPurgeRoute">清空这些变量</button>
+                    </div>
+                }
 
                 @if (Visible.Count == 0) {
                     <div class="empty-state">
@@ -367,6 +399,32 @@
                 <div class="form-actions">
                     <button class="btn ghost" type="button" @onclick="() => _pendingRemove = null">取消</button>
                     <button class="btn danger" type="button" @onclick="ConfirmRemove">确认删除</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ================= 清空残留路由确认 ================= *@
+    @* 比解除模板那个更狠：那个只删模板行，这个把该路由名下的全部变量都删掉，
+       包括手工加的、包括已经填好地址的。所以要单独说清楚。 *@
+    @if (_pendingPurge > 0) {
+        <div class="add-form-overlay center" @onclick="CancelPurgeRoute">
+            <div class="add-form confirm-box" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>清空残留变量</h3>
+                    <button class="close-btn" type="button" @onclick="CancelPurgeRoute">×</button>
+                </div>
+                <p>
+                    将删除路由 <span class="mono">@_filterRoute</span> 名下的全部
+                    <span class="mono">@_pendingPurge</span> 条变量，模板行与手工添加的都在内。
+                </p>
+                <p class="setting-hint">
+                    这条路由已经没有对应的设备配置，这些变量不会被轮询、也无法读写。
+                    此操作不可恢复；想留个底的话先用工具栏的「导出 JSON」。
+                </p>
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="CancelPurgeRoute">取消</button>
+                    <button class="btn danger" type="button" @onclick="ConfirmPurgeRoute">确认清空</button>
                 </div>
             </div>
         </div>
@@ -900,6 +958,45 @@
         _bannerClass = n == 0 ? "status-info" : "status-ok";
     }
 
+    /// <summary>当前选中的是不是一条残留路由（设备配置已删、变量还在）。</summary>
+    /// <remarks>
+    /// 选「全部」时恒为假：那不是某一条路由，没有「清空这条」可言。
+    /// </remarks>
+    private bool CurrentIsOrphan =>
+        !string.IsNullOrEmpty(_filterRoute) &&
+        RouteChoices.FirstOrDefault(r => r.RouteId == _filterRoute)?.Orphan == true;
+
+    /// <summary>待清空的变量条数；大于 0 表示确认框正开着。</summary>
+    /// <remarks>
+    /// 用条数而不是布尔：确认框里要如实报出会删几条，
+    /// 而这个数必须是<b>点按钮那一刻</b>的快照——弹框期间轮询仍在跑，
+    /// 现算的话数字会在框里跳。
+    /// </remarks>
+    private int _pendingPurge;
+
+    /// <summary>请求清空当前残留路由的全部变量。</summary>
+    private void AskPurgeRoute() => _pendingPurge = CountOf(_filterRoute);
+
+    /// <summary>确认清空。</summary>
+    /// <remarks>
+    /// 清完把筛选切回「全部」：那条路由随最后一条变量一起从左栏消失了，
+    /// 停在一个已经不存在的选中项上，右侧会是一片空白加一句莫名其妙的提示。
+    /// </remarks>
+    private void ConfirmPurgeRoute()
+    {
+        string routeId = _filterRoute;
+        int n = Store.RemoveByRoute(routeId);
+
+        _pendingPurge = 0;
+        SelectRoute(string.Empty);
+
+        _banner = "已清空残留路由 " + routeId + " 的 " + n + " 条变量。";
+        _bannerClass = "status-ok";
+    }
+
+    /// <summary>取消清空。</summary>
+    private void CancelPurgeRoute() => _pendingPurge = 0;
+
     /// <summary>
     /// 请求解除当前设备的模板（下拉切到「（不使用模板）」时）。
     /// </summary>
@@ -1013,7 +1110,7 @@
             if (map.ContainsKey(v.RouteId)) continue;
 
             // 协议未知，留空字符串；至少让这些变量在左侧有个可见的归属
-            map[v.RouteId] = new RouteChoice(v.RouteId, v.RouteId, string.Empty);
+            map[v.RouteId] = new RouteChoice(v.RouteId, v.RouteId, string.Empty, Orphan: true);
         }
 
         return map.Values.ToList();
@@ -1587,5 +1684,13 @@
     /// <param name="RouteId">路由 Id，作为去重键与提交值。</param>
     /// <param name="Name">显示名；无本地配置时回落为 RouteId。</param>
     /// <param name="ProtocolId">协议 Id，仅用于左侧列表的副标题；来源不明时为空。</param>
-    private sealed record RouteChoice (string RouteId, string Name, string ProtocolId);
+    /// <summary>左侧设备列表与表单下拉框共用的一项。</summary>
+    /// <param name="RouteId">路由 Id。</param>
+    /// <param name="Name">显示名。取不到设备配置时回落为 RouteId 本身。</param>
+    /// <param name="ProtocolId">协议 Id。孤儿路由无从得知，为空串。</param>
+    /// <param name="Orphan">
+    /// 孤儿：宿主没有这条路由，本地也没有对应的设备配置，只有变量还挂在它名下。
+    /// 多半是设备被删了而变量没跟着删。
+    /// </param>
+    private sealed record RouteChoice (string RouteId, string Name, string ProtocolId, bool Orphan = false);
 }

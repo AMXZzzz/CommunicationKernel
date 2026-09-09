@@ -9,6 +9,7 @@
 @page "/devices"
 @inject EngineSession Session
 @inject WebDeviceStore Store
+@inject WebVariableStore Variables
 @inject IWebDeviceService Devices
 @inject AppLogStore Log
 @inject ILogger<DevicesPage> Logger
@@ -279,6 +280,28 @@
                     将删除 <span class="mono">@_pendingRemove.RouteId</span> 的本地配置@(_pendingRemove.OnHost ? "，并从宿主注销该路由" : "")。
                     此操作不可恢复。
                 </p>
+
+                @* 变量不会自动跟着走：它们按 RouteId 挂在变量表里，与设备配置是两份数据。
+                   以前删完设备什么都不说，那些变量就留在一条不存在的路由名下，
+                   在变量页表现为一个没有协议、没有地址的幽灵设备，
+                   而且它们的行多半来自模板、单条删不掉，得绕模板下拉才清得掉。
+
+                   路由 ID 改成随机分配之后更要问这一句：以前删了再建、
+                   把 ID 原样填回去就能接上，现在重建拿到的是新 ID，接不回来了。 *@
+                @if (_pendingRemoveVars > 0)
+                {
+                    <label class="inline-check">
+                        <input type="checkbox" checked="@_removeVars"
+                               @onchange="e => _removeVars = e.Value is true" />
+                        同时删除它的 <span class="mono">@_pendingRemoveVars</span> 条变量
+                    </label>
+                    <p class="setting-hint">
+                        @(_removeVars
+                            ? "变量会一并删除。地址是逐条填的，删掉无法恢复。"
+                            : "变量会保留，但届时挂在一条已不存在的路由下——变量页会把它列成一个残留设备。")
+                    </p>
+                }
+
                 <p class="setting-hint">只是想让它下线的话，用卡片上的「断开」——配置会保留。</p>
                 <div class="form-actions">
                     <button class="btn ghost" type="button" @onclick="() => _pendingRemove = null">取消</button>
@@ -920,16 +943,33 @@
         await Session.RefreshRoutesAsync().ConfigureAwait(true);
     }
 
+    /// <summary>待删设备名下的变量条数，用于确认框如实报出连带影响。</summary>
+    private int _pendingRemoveVars;
+
+    /// <summary>删除设备时是否连它的变量一起删。</summary>
+    /// <remarks>
+    /// 默认<b>勾上</b>：删设备的人几乎都是不要这台设备了，留着一堆指向
+    /// 不存在路由的变量没有意义，而且不勾的后果（幽灵设备、模板行删不掉）
+    /// 要到另一个页面才看得出来。想留就手动取消，那是明确的选择。
+    /// </remarks>
+    private bool _removeVars = true;
+
     /// <summary>请求删除设备，置入待确认状态而非直接删除。</summary>
-    private void AskRemove(DeviceView row) => _pendingRemove = row;
+    private void AskRemove(DeviceView row)
+    {
+        _pendingRemove = row;
+        _pendingRemoveVars = Variables.CountByRoute(row.RouteId);
+        _removeVars = true;
+    }
 
     /// <summary>确认删除。先清空待删引用再执行，避免确认框重复点击触发两次删除。</summary>
     private async Task ConfirmRemoveAsync()
     {
         if (_pendingRemove is null) return;
         DeviceView row = _pendingRemove;
+        bool alsoVars = _removeVars && _pendingRemoveVars > 0;
         _pendingRemove = null;
-        await RemoveAsync(row).ConfigureAwait(true);
+        await RemoveAsync(row, alsoVars).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -939,7 +979,7 @@
     /// 顺序不能颠倒。先删本地会让界面上设备消失、而宿主仍持有连接与该 RouteId，
     /// 此后既看不到它也无法重新注册——只能重启宿主。
     /// </remarks>
-    private async Task RemoveAsync(DeviceView row)
+    private async Task RemoveAsync(DeviceView row, bool alsoVars)
     {
         _busy = true;
         try
@@ -959,9 +999,17 @@
             }
 
             Store.Remove(row.RouteId);
-            _banner = "已删除 " + row.Name;
+
+            // 变量在设备配置之后删：反过来的话，注销失败提前 return 时
+            // 变量已经没了，而设备还在——用户看到的是"删除失败"，
+            // 却发现变量凭空少了一批
+            int vars = alsoVars ? Variables.RemoveByRoute(row.RouteId) : 0;
+
+            _banner = vars > 0
+                ? "已删除 " + row.Name + "，连同 " + vars + " 条变量。"
+                : "已删除 " + row.Name + "。";
             _bannerClass = "status-ok";
-            Log.Info("Devices", "删除设备 " + row.RouteId);
+            Log.Info("Devices", "删除设备 " + row.RouteId + (vars > 0 ? "，连带删除 " + vars + " 条变量" : ""));
             if (Session.Online)
                 await Session.RefreshRoutesAsync().ConfigureAwait(true);
         }

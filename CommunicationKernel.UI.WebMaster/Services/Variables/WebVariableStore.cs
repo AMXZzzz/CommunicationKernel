@@ -314,7 +314,7 @@ public sealed class WebVariableStore
                 if (name.Length == 0) continue;
 
                 WebVariable? existing = _items.FirstOrDefault(v =>
-                    v.RouteId == routeId &&
+                    SameRoute(v.RouteId, routeId) &&
                     string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase));
 
                 int length = ValueCodec.IsVariableLength(slot.DataType)
@@ -363,7 +363,7 @@ public sealed class WebVariableStore
             }
 
             changed += _items.RemoveAll(v =>
-                v.RouteId == routeId &&
+                SameRoute(v.RouteId, routeId) &&
                 v.FromTemplate &&
                 !names.Contains(v.Name));
 
@@ -376,6 +376,69 @@ public sealed class WebVariableStore
         return changed;
     }
 
+    /// <summary>判断两个路由 Id 是否指同一条路由。</summary>
+    /// <param name="a">其一。</param>
+    /// <param name="b">其二。</param>
+    /// <returns>忽略大小写相等则为真。</returns>
+    /// <remarks>
+    /// <b>必须忽略大小写。</b>界面上的路由清单是按 <c>OrdinalIgnoreCase</c> 去重的
+    /// （见 VariablesPage.BuildRouteChoices），而本类此前几处比较用的是区分大小写的
+    /// <c>==</c>。两边不一致时会出现这样的场景：配置里存的是 <c>B</c>、
+    /// 界面上选中的是 <c>b</c>，于是「解除模板」的确认框报出 0 条、点了也不会有任何变化，
+    /// 而界面上那几行明明还在——既没有报错，也看不出原因。
+    /// <para>
+    /// 收进一个具名方法而不是逐处写 <c>string.Equals</c>：这个规则要在本类里用五六处，
+    /// 散着写迟早会漏一处，而漏掉的那处正是上面那种查不出来的故障。
+    /// </para>
+    /// </remarks>
+    private static bool SameRoute(string a, string b) =>
+        string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 删除某路由名下的<b>全部</b>变量，不论是否来自模板。
+    /// </summary>
+    /// <param name="routeId">路由 Id。为空时不做任何事并返回 0。</param>
+    /// <returns>实际删除的条数。</returns>
+    /// <remarks>
+    /// 与 <see cref="DetachTemplate"/> 的区别：那个只删模板生成的行，留下手工加的；
+    /// 这个是「这条路由整个不要了」。两个场景确实不同——
+    /// 换模板时手工加的变量应当留着，而删设备或清理孤儿路由时不该留下任何残留。
+    /// <para>
+    /// 调用方<b>必须</b>先确认。这里不弹任何提示，也无法撤销。
+    /// </para>
+    /// </remarks>
+    public int RemoveByRoute(string routeId)
+    {
+        if (string.IsNullOrWhiteSpace(routeId)) return 0;
+
+        int removed;
+        lock (_lock)
+        {
+            removed = _items.RemoveAll(v => SameRoute(v.RouteId, routeId));
+            if (removed > 0)
+                Persist_NoLock();
+        }
+
+        if (removed > 0)
+            Changed?.Invoke();
+        return removed;
+    }
+
+    /// <summary>统计某路由名下的变量条数。</summary>
+    /// <param name="routeId">路由 Id。为空时返回 0。</param>
+    /// <returns>该路由的变量条数。</returns>
+    /// <remarks>
+    /// 供删除设备前的提示使用：要在确认框里如实写出「会连带删掉几条」，
+    /// 而不是事后才让人发现变量没了。
+    /// </remarks>
+    public int CountByRoute(string routeId)
+    {
+        if (string.IsNullOrWhiteSpace(routeId)) return 0;
+
+        lock (_lock)
+            return _items.Count(v => SameRoute(v.RouteId, routeId));
+    }
+
     /// <summary>统计某路由上的模板行，供解除模板前的确认提示使用。</summary>
     /// <param name="routeId">路由 Id。为空时返回全 0。</param>
     /// <returns>模板行总数，以及其中已填地址的条数。</returns>
@@ -386,7 +449,7 @@ public sealed class WebVariableStore
         lock (_lock)
         {
             List<WebVariable> rows = _items
-                .Where(v => v.RouteId == routeId && v.FromTemplate)
+                .Where(v => SameRoute(v.RouteId, routeId) && v.FromTemplate)
                 .ToList();
 
             return new TemplateRowSummary(
@@ -417,7 +480,7 @@ public sealed class WebVariableStore
         int removed;
         lock (_lock)
         {
-            removed = _items.RemoveAll(v => v.RouteId == routeId && v.FromTemplate);
+            removed = _items.RemoveAll(v => SameRoute(v.RouteId, routeId) && v.FromTemplate);
             if (removed > 0)
                 Persist_NoLock();
         }
