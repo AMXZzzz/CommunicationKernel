@@ -1,306 +1,404 @@
 @* -----------------------------------------------------------------------------
    文件: Components/Pages/Index.razor
    层级: UI 层 — MES 监控
-   作用: 以 Host 真实路由 + 本地配置为数据源展示在线状态。
-         整线健康由路由在线率推导，不做假的产线启停。
+   作用: 按产线展示工艺流、线内离散设备与活动报警。
+
+   数据来自 IMesDataSource，当前实现是 DemoMesDataSource（演示数据）。
+   页面不认识设备表也不认识变量表——产线、工站顺序、点位绑定这些概念
+   现在还没有落地，接进来之后换一个数据源实现即可，本文件不用改。
+
+   演示期间页面顶部有一条醒目横幅。它不可省：一屏看起来很真的产量、
+   良率、温度，被当成现场读数拿去做判断，后果比界面难看严重得多。
    ----------------------------------------------------------------------------- *@
 
 @page "/"
 @inject EngineSession Session
-@inject WebDeviceStore Devices
+@inject IMesDataSource Mes
 @implements IDisposable
 
 <PageTitle>MES 监控 — CommunicationKernel</PageTitle>
 
+@* 一次渲染只取一份快照：下面的汇总、产线、抽屉、弹窗都基于它。
+   分别去取会让同一帧里的各处数字来自不同时刻。 *@
+@{
+    MesSnapshot snap = Mes.Snapshot();
+    MesAlarm? detail = snap.Alarms.FirstOrDefault(a => a.Id == _detailId);
+}
+
 <div class="page page-mes">
     <div class="toolbar">
         <h2 class="page-title">MES 监控</h2>
-        <button class="btn ghost" type="button" @onclick="RefreshAsync" disabled="@_busy">刷新</button>
-        <div class="toolbar-right">
-            @if (Session.Online)
-            {
-                @* 脉冲徽标只在真的连着 Host 时出现——离线还闪「实时」是假信号 *@
-                <span class="live">实时</span>
-            }
-            <span class="toolbar-count">在线 @OnlineCount / @Cards.Count</span>
-        </div>
+
+        @* 启停控制会往 PLC 写值，在点位绑定做完之前一律禁用。
+           保留按钮而不是隐藏：它们是这个页面最终形态的一部分，
+           先占住位置，也让人看得出还差哪一块。 *@
+        <button class="btn primary" type="button" disabled
+                title="需要先在「配置产线」里绑定整线启停点位">开始监控</button>
+        <button class="btn ghost" type="button" disabled
+                title="需要先在「配置产线」里绑定整线启停点位">停止</button>
+        <button class="btn ghost" type="button" disabled
+                title="产线配置窗口待接入">配置产线</button>
+
+        <span class="spacer"></span>
+
+        <button class="btn-sm" type="button" @onclick="CollapseAll">收起离散设备</button>
+        <button class="btn-sm" type="button" @onclick="ExpandAll">展开离散设备</button>
+        @* 有未确认报警时才变红：常态下一个红按钮杵在工具栏里，
+           真出事时就没人再看它一眼了 *@
+        <button class="btn-sm @(snap.ActiveAlarmCount > 0 ? "alarm-open" : null)" type="button"
+                @onclick="() => _drawer = true">
+            @(snap.ActiveAlarmCount > 0 ? "! 活动报警 " + snap.ActiveAlarmCount : "报警记录 " + snap.Alarms.Count)
+        </button>
+
+        @if (Session.Online) {
+            @* 脉冲徽标只在真的连着 Host 时出现——离线还闪「实时」是假信号 *@
+            <span class="live">实时</span>
+        }
+        <span class="meta">周期 <b>@snap.PollText</b> · 上次 <b>@snap.LastUpdate</b></span>
     </div>
 
     <div class="page-body">
-    <div class="health-strip @HealthClass">
-        <div class="health-main">
-            <span class="health-dot"></span>
-            <span class="health-label">整线健康</span>
-            <span class="health-val">@HealthText</span>
-        </div>
-        <div class="health-meta">
-            在线 @OnlineCount / @Cards.Count
-            @if (!Session.Online)
-            {
-                <span>· Host 离线</span>
-            }
-        </div>
-    </div>
 
-    <div class="summary-bar">
-        <div class="summary-card">
-            <div class="summary-label">在线 / 总计</div>
-            <div class="summary-value">
-                <span class="val-green">@OnlineCount</span>
-                <span class="val-sep"> / </span>
-                <span>@Cards.Count</span>
+        @if (snap.IsDemo) {
+            @* 整条横幅通栏、常驻、不可关闭。可关闭的提示等于没有提示：
+               关掉之后这一屏就和真实数据长得一模一样了。 *@
+            <div class="demo-banner">
+                <span class="tagword">演示数据</span>
+                <span>
+                    本页的产线、工站状态、产量良率与报警<b>全部是写死的样例</b>，不是现场读数。
+                    产线划分与点位绑定做完之后，这条横幅会自动消失。
+                </span>
+            </div>
+        }
+
+        <div class="mes-sum">
+            <div><div class="k">产线</div><div class="v">@snap.LineCount</div></div>
+            <div><div class="k">离散设备</div><div class="v">@snap.SoloCount</div></div>
+            <div><div class="k">设备合计</div><div class="v">@snap.DeviceCount</div></div>
+            <div><div class="k">运行中</div><div class="v ok">@snap.RunningCount</div></div>
+            <div><div class="k">离线</div><div class="v wrn">@snap.OfflineCount</div></div>
+            <div class="@(snap.ActiveAlarmCount > 0 ? "alarm" : null)">
+                <div class="k">活动报警</div>
+                <div class="v @(snap.ActiveAlarmCount > 0 ? "err" : "ok")">@snap.ActiveAlarmCount</div>
             </div>
         </div>
-        <div class="summary-card">
-            <div class="summary-label">通讯引擎</div>
-            <div class="summary-value @(Session.Online ? "val-green" : "val-red")">
-                @(Session.Online ? "在线" : "离线")
-            </div>
-            <div class="summary-sub">本进程内嵌</div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-label">报警</div>
-            <div class="summary-value @(HasAlarm ? "val-red" : "val-green")">
-                @(HasAlarm ? OfflineCount + " 台离线" : "正常")
-            </div>
-        </div>
-        <div class="summary-card">
-            <div class="summary-label">协议</div>
-            <div class="summary-value">@ProtocolCount</div>
-            <div class="summary-sub">当前路由涉及</div>
-        </div>
-    </div>
 
-    @if (Alarms.Count > 0)
-    {
-        <div class="alarm-panel">
-            @* 标题只说事实。原文带着「不是模拟」——那是写给评审看的自辩，
-               对操作员没有任何信息量，反而让人怀疑别处是不是就是模拟的。 *@
-            <div class="alarm-hd">离线 / 故障（@Alarms.Count 台）</div>
-            @foreach (DeviceView card in Alarms)
-            {
-                RouteStatusDto? st = Session.GetStatus(card.RouteId);
-                <div class="alarm-row">
-                    <span class="alarm-name">@card.Name</span>
-                    <span class="mono">@card.RouteId</span>
-                    @* 从未连接过的设备没有任何状态事件，ErrorCode/Message 都是空，
-                       此前这一行就只剩名字和路由号，看起来像界面出了错。
-                       必须说清「为什么在报警里」，否则操作员无从下手。 *@
-                    <span class="alarm-msg">@AlarmReason(card, st)</span>
-                </div>
-            }
-        </div>
-    }
+        @foreach (MesLine line in snap.Lines) {
+            int lineAlarms = snap.Alarms.Count(a => a.LineName == line.Name && !a.Acked);
 
-    <div class="section-row">
-        <div class="section-title">设备状态</div>
-        <span class="toolbar-count">卡片来自宿主已注册的路由，以及本机已保存但尚未连接的设备</span>
-    </div>
+            <section class="line @(lineAlarms > 0 ? "alarm" : null)" @key="line.Id">
+                <div class="line-hd">
+                    <h2>@line.Name</h2>
+                    <span class="ctl">控制器 <b>@line.Controller</b> · @line.ControllerEndpoint</span>
+                    <span class="state @MesDisplay.Css(line.State)">@MesDisplay.Code(line.State)</span>
 
-    @if (Cards.Count == 0)
-    {
-        <div class="empty-state">
-            <div class="empty-title">暂无设备</div>
-            <div class="empty-hint">到「设备管理」添加并连接 PLC。本机保存的配置不会丢：宿主重启后会自动把这些设备重新连上。</div>
-            <a class="btn primary" href="/devices">去添加设备</a>
-        </div>
-    }
-    else
-    {
-        <div class="device-grid">
-            @foreach (DeviceView card in Cards)
-            {
-                RouteStatusDto? st = Session.GetStatus(card.RouteId);
-                bool online = st?.Online == true;
-                <div class="mes-card @(online ? "is-on" : "is-off")">
-                    <div class="mes-hd">
-                        <span class="proto-bar @UiHelpers.ProtocolBarClass(card.ProtocolId)"></span>
-                        <div class="mes-titles">
-                            <div class="card-name">@card.Name</div>
-                            <div class="card-proto">@card.ProtocolId</div>
-                        </div>
-                        <span class="card-status @(online ? "online" : "offline")">@(online ? "在线" : "离线")</span>
-                        <span class="card-led @(online ? "online" : "offline")"></span>
+                    @* 整线启停同样禁用。这三个按钮一旦生效就是直接往 PLC 写，
+                       在没有明确绑定之前让它们可点，等于给误操作开了个口子。 *@
+                    <div class="line-ops">
+                        <button class="btn ok" type="button" disabled title="未绑定启动点位">▶ 启动</button>
+                        <button class="btn stop" type="button" disabled title="未绑定停止点位">■ 停止</button>
+                        <button class="btn reset" type="button" disabled title="未绑定复位点位">↺ 复位</button>
                     </div>
-                    <div class="mes-body">
-                        <div class="kv"><span>路由</span><span class="mono">@card.RouteId</span></div>
-                        <div class="kv"><span>连接</span><span class="addr">@card.Endpoint</span></div>
-                        <div class="kv"><span>传输</span><span>@card.TransportKind</span></div>
-                        @* 本页是只读监控，没有连接按钮，因此文案要指路。
-                           不要写成「本地待对账」——记账术语，操作员看不懂，
-                           也看不出该去哪儿做什么。 *@
-                        @if (!card.OnHost)
-                        {
-                            <div class="kv warn">
-                                <span>状态</span>
-                                <span title="配置已保存在本机，但宿主上还没有这条路由，所以读写都不会发生。到「设备管理」页点该设备的「连接」即可。">
-                                    未连接 · 去「设备管理」连接
-                                </span>
+
+                    @if (lineAlarms > 0) {
+                        MesAlarm top = snap.Alarms.First(a => a.LineName == line.Name && !a.Acked);
+                        <button class="alarm-chip" type="button" @onclick="() => _drawer = true">
+                            <span class="ic">!</span>
+                            <span class="body">
+                                <span class="t">@top.Title</span>
+                                <span class="s">@lineAlarms 条活动报警 · 点击处理</span>
+                            </span>
+                        </button>
+                    }
+                </div>
+
+                <div class="line-kpi">
+                    <span>班次产量<b>@line.Kpi.Output.ToString("N0")</b></span>
+                    <span>目标<b>@line.Kpi.Target.ToString("N0")</b></span>
+                    <span>良率<b>@line.Kpi.YieldText</b></span>
+                    <span>节拍<b>@line.Kpi.CycleText</b></span>
+                    <span>停机<b>@line.Kpi.DowntimeText</b></span>
+                </div>
+
+                <div class="flow-t">工艺流 · @line.Stations.Count 站</div>
+                <div class="flow">
+                    @foreach (MesStation st in line.Stations) {
+                        <div class="st @MesDisplay.Css(st.State)" @key="st.Id">
+                            @if (st.AlarmCount > 0) {
+                                <span class="alm" title="@st.AlarmCount 条未确认报警">@st.AlarmCount</span>
+                            }
+                            <span class="led"></span>
+                            <div class="nm">@st.Name</div>
+                            <div class="md">@st.Model</div>
+                            <div class="stt">@MesDisplay.Code(st.State)</div>
+                            @* 主显值那行始终占位：空着时不留高度的话，
+                               同一排卡片会高低不齐，工艺流看起来像断了 *@
+                            <div class="sub">@(st.SubText.Length > 0 ? st.SubText : "—")</div>
+                            <div class="ops">
+                                <button class="btn-sm ok" type="button" disabled title="未绑定启动点位">启</button>
+                                <button class="btn-sm stop" type="button" disabled title="未绑定停止点位">停</button>
+                                <button class="btn-sm reset" type="button" disabled title="未绑定复位点位">复</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @* 离散设备可折叠：它们只是监视，不参与节拍。
+                   盯产线的时候这一块是干扰，排查某台变频器时才需要展开。 *@
+                <div class="solo @(_collapsed.Contains(line.Id) ? "collapsed" : null)">
+                    <div class="solo-hd" @onclick="() => ToggleSolo(line.Id)">
+                        <span class="tgl">▼</span>
+                        <h3>离散设备</h3>
+                        <span class="cnt">@line.Solo.Count</span>
+                        <span class="d">归属本线但不在工艺流中的伺服 / 变频器 / 传感器 · 仅监视，值随变量轮询更新</span>
+                        <div class="r" @onclick:stopPropagation>
+                            <button class="btn-sm" type="button" disabled title="产线配置窗口待接入">＋ 添加设备</button>
+                            <button class="btn-sm" type="button" disabled title="产线配置窗口待接入">编辑</button>
+                        </div>
+                    </div>
+
+                    <div class="solo-grid">
+                        @foreach (MesSoloDevice d in line.Solo) {
+                            <div class="dc @(d.Stale ? "stale" : null)" @key="d.Id">
+                                <div class="top">
+                                    <span class="led" title="@(d.Stale ? "读取失败或超时未更新" : "在线")"></span>
+                                    <span class="nm" title="@d.Name">@d.Name</span>
+                                    <span class="poll">@d.PollText</span>
+                                </div>
+                                <div class="md">@d.Meta</div>
+                                <div class="vals">
+                                    @foreach (MesValue v in d.Values) {
+                                        <div class="kv">
+                                            <span class="k">@v.Label</span>
+                                            <span class="v">
+                                                @v.Text
+                                                @if (v.Unit.Length > 0) {
+                                                    <span class="u">@v.Unit</span>
+                                                }
+                                            </span>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
-                        @if (st is not null && !string.IsNullOrWhiteSpace(st.ErrorMessage) && !online)
-                        {
-                            <div class="kv err"><span>错误</span><span>@st.ErrorCode · @st.ErrorMessage</span></div>
-                        }
+                        <button class="dc add" type="button" disabled title="产线配置窗口待接入">
+                            <span class="plus">＋</span>添加离散设备
+                        </button>
                     </div>
                 </div>
-            }
+            </section>
+        }
+
+        <div class="mes-hint">
+            产线工站与离散设备均来自「设备管理」。离散设备只显示变量值，不参与报警与整线控制；
+            绿灯为连接在线，读取失败时灯变灰、数值变灰并标「陈旧」。
+        </div>
+    </div>
+
+    @* ================= 报警抽屉 ================= *@
+    @if (_drawer) {
+        @* 抽屉不带遮罩：处理报警时经常要一边看抽屉一边看工艺流上哪一站在闪，
+           盖一层黑纱会把那条线索遮掉。 *@
+        <aside class="drawer">
+            <div class="dr-hd">
+                <span class="ic">!</span>
+                <div class="body">
+                    <div class="t">活动报警</div>
+                    <div class="s">
+                        共 @snap.Alarms.Count 条 ·
+                        严重 @snap.Alarms.Count(a => a.Severity == MesSeverity.Critical) ·
+                        预警 @snap.Alarms.Count(a => a.Severity == MesSeverity.Warning)
+                    </div>
+                </div>
+                <button class="x" type="button" @onclick="() => _drawer = false" aria-label="关闭">✕</button>
+            </div>
+
+            <div class="dr-list">
+                @if (snap.Alarms.Count == 0) {
+                    <div class="empty-state"><div class="empty-hint">当前没有报警。</div></div>
+                }
+                @foreach (MesAlarm a in snap.Alarms) {
+                    <div class="al @(a.Severity == MesSeverity.Warning ? "warn" : null) @(a.Acked ? "acked" : null)" @key="a.Id">
+                        <div class="t">
+                            <i></i>@a.Title
+                            @if (a.Acked) {
+                                <span class="ack-tag">已确认</span>
+                            }
+                        </div>
+                        <div class="s">@a.LineName · @a.StationName · @a.RaisedAt · 持续 @a.DurationText</div>
+                        <div class="ops">
+                            <button class="btn danger-fill" type="button" disabled="@a.Acked"
+                                    @onclick="() => Ack(a.Id)">@(a.Acked ? "已确认" : "确认")</button>
+                            <button class="btn ghost" type="button" @onclick="() => _detailId = a.Id">详情</button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="dr-ft">
+                @* 复位的前提是全部确认：还没人看过就允许复位，等于把报警按掉，
+                   下一班接手时什么记录都没有 *@
+                <span class="cnt">
+                    @(snap.ActiveAlarmCount > 0
+                        ? "需全部确认后方可整线复位"
+                        : "已全部确认")
+                </span>
+                <button class="btn ghost" type="button" disabled="@(snap.ActiveAlarmCount == 0)"
+                        @onclick="AckAll">全部确认</button>
+                <button class="btn primary" type="button" disabled title="未绑定复位点位">↻ 整线复位</button>
+            </div>
+        </aside>
+    }
+
+    @* ================= 报警详情 ================= *@
+    @if (detail is not null) {
+        <div class="mask" @onclick="() => _detailId = string.Empty">
+            <div class="detail" @onclick:stopPropagation>
+                <div class="dt-hd">
+                    <div class="row">
+                        <span class="ic">!</span>
+                        <span class="sev @(detail.Severity == MesSeverity.Warning ? "warn" : null)">
+                            @MesDisplay.SeverityText(detail.Severity) · @(detail.Acked ? "已确认" : "未确认")
+                        </span>
+                    </div>
+                    <h3>@detail.Title</h3>
+                    <div class="when">
+                        发生时间 <b>@detail.RaisedAt</b> · 持续 <b>@detail.DurationText</b> · 代码 <b>@detail.Code</b>
+                    </div>
+                    <button class="x" type="button" @onclick="() => _detailId = string.Empty" aria-label="关闭">✕</button>
+                </div>
+
+                <div class="dt-body">
+                    <div class="facts">
+                        @foreach (MesValue f in detail.Facts) {
+                            <div>
+                                <div class="k">@f.Label</div>
+                                <div class="v @(f.Label == "报警代码" ? "err" : null)">@f.Text</div>
+                            </div>
+                        }
+                    </div>
+
+                    <div>
+                        <div class="sec-t">报警描述</div>
+                        <div class="desc">@detail.Description</div>
+                    </div>
+
+                    <div>
+                        <div class="sec-t">关联实时数据</div>
+                        <div class="tbl-wrap">
+                            <table class="al-table">
+                                <thead>
+                                    <tr><th>名称</th><th>地址</th><th>当前值</th><th>单位</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (MesRelatedValue r in detail.Related) {
+                                        <tr>
+                                            <td>@r.Name</td>
+                                            <td class="mono">@r.Address</td>
+                                            <td class="mono @(r.Abnormal ? "err" : null)">@r.Value</td>
+                                            <td>@r.Unit</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="sec-t">处理建议</div>
+                        <div class="advice">
+                            <ol>
+                                @foreach (string s in detail.Advice) {
+                                    <li>@s</li>
+                                }
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="sec-t">事件时间线</div>
+                        <ul class="tl">
+                            @{ bool first = true; }
+                            @foreach (MesTimelineItem t in detail.Timeline) {
+                                <li class="@(first ? "first" : null)">
+                                    <i></i><span class="t">@t.Time</span><span class="m">@t.Text</span>
+                                </li>
+                                first = false;
+                            }
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="dt-ft">
+                    <button class="btn ghost" type="button" @onclick="() => _detailId = string.Empty">关闭</button>
+                    <span class="spacer"></span>
+                    <button class="btn danger-fill" type="button" disabled="@detail.Acked"
+                            @onclick="() => Ack(detail.Id)">@(detail.Acked ? "已确认" : "确认报警")</button>
+                    <button class="btn reset" type="button" disabled title="未绑定复位点位">↺ 复位该设备</button>
+                </div>
+            </div>
         </div>
     }
-    </div>
 </div>
 
 @code {
-    /// <summary>是否有刷新在途，用于禁用刷新按钮。</summary>
-    private bool _busy;
+    /// <summary>报警抽屉是否展开。</summary>
+    private bool _drawer;
+
+    /// <summary>正在看详情的报警 Id；空串表示弹窗关闭。</summary>
+    /// <remarks>
+    /// 存 Id 而不是对象：确认之后数据源会给出新的快照，
+    /// 存着旧对象的话弹窗里还显示「未确认」，而抽屉里已经变了。
+    /// </remarks>
+    private string _detailId = string.Empty;
 
     /// <summary>
-    /// 当前卡片集合的物化快照。
+    /// 已折叠的产线 Id。
     /// </summary>
     /// <remarks>
-    /// 物化而非每次现算：本页多个统计属性（在线数、离线数、协议数、告警列表）
-    /// 都要遍历它，每个属性各算一遍会在一次渲染里重复构建同一份数据。
-    /// 只在 <see cref="Rebuild"/> 里更新。
+    /// 存「折叠的」而不是「展开的」：新加一条产线时默认应当是展开的，
+    /// 存展开集合的话新产线不在集合里，一出现就是收起状态，看起来像没加上。
     /// </remarks>
-    private List<DeviceView> _cards = new();
+    private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
 
-    /// <summary>整线设备卡片。</summary>
-    private IReadOnlyList<DeviceView> Cards => _cards;
-
-    /// <summary>当前离线的设备，渲染为告警列表。</summary>
-    private IReadOnlyList<DeviceView> Alarms => _cards.Where(c => !Session.IsRouteOnline(c.RouteId)).ToList();
-
-    /// <summary>在线设备数。</summary>
-    private int OnlineCount => _cards.Count(c => Session.IsRouteOnline(c.RouteId));
-
-    /// <summary>离线设备数（含已配置但从未连接的）。</summary>
-    private int OfflineCount => _cards.Count - OnlineCount;
-
-    /// <summary>
-    /// 是否存在告警。
-    /// </summary>
-    /// <remarks>
-    /// 必须同时要求 <c>_cards.Count &gt; 0</c>：一台设备都没配的空系统里，
-    /// 离线数为 0，但若不加这个条件，某些边界下会把「什么都没有」显示成告警。
-    /// </remarks>
-    private bool HasAlarm => OfflineCount > 0 && _cards.Count > 0;
-
-    /// <summary>在用协议种数，忽略空值并去重。</summary>
-    private int ProtocolCount => _cards.Select(c => c.ProtocolId).Where(p => p.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-
-    /// <summary>
-    /// 整线健康状态文案。
-    /// </summary>
-    /// <remarks>
-    /// 判断顺序即优先级，不能调换：宿主离线时所有设备状态都是陈旧的，
-    /// 此刻报「运行」或「告警」都是在拿过期数据下结论。
-    /// 「待命」与「运行」也要分开——一台设备都没配的系统不该显示成正常运行。
-    /// <para>
-    /// 健康状态由真实路由在线率推导，<b>没有</b>任何假的产线启停开关。
-    /// </para>
-    /// </remarks>
-    /// <summary>
-    /// 说明某台设备为什么出现在报警列表里。
-    /// </summary>
-    /// <remarks>
-    /// 三种情况的处置完全不同，不能都显示成「离线」：
-    /// <list type="bullet">
-    ///   <item>宿主上没有这条路由 → 去连接，不是设备坏了；</item>
-    ///   <item>有错误码 → 现场故障，照错误码排查；</item>
-    ///   <item>路由在但没有任何状态事件 → 刚注册完还没收到首帧，等一下即可。</item>
-    /// </list>
-    /// </remarks>
-    private static string AlarmReason(DeviceView card, RouteStatusDto? st)
+    /// <summary>折叠 / 展开某条产线的离散设备区。</summary>
+    private void ToggleSolo(string lineId)
     {
-        if (!card.OnHost) return "未连接 · 去「设备管理」连接";
-
-        if (st is not null && !string.IsNullOrWhiteSpace(st.ErrorMessage))
-            return st.ErrorCode + " · " + st.ErrorMessage;
-
-        return st is null ? "等待首次状态上报" : "已断开";
+        if (!_collapsed.Add(lineId))
+            _collapsed.Remove(lineId);
     }
 
-    private string HealthText
+    /// <summary>收起全部产线的离散设备区。</summary>
+    private void CollapseAll()
     {
-        get
-        {
-            if (!Session.Online) return "Host 离线";
-            if (Cards.Count == 0) return "待命";
-            if (OfflineCount == 0) return "运行";
-            return "告警";
-        }
+        foreach (MesLine l in Mes.Snapshot().Lines)
+            _collapsed.Add(l.Id);
     }
 
-    /// <summary>健康状态对应的 CSS 类，判断顺序与 <see cref="HealthText"/> 严格一致。</summary>
-    private string HealthClass
-    {
-        get
-        {
-            if (!Session.Online) return "is-down";
-            if (Cards.Count == 0) return "is-idle";
-            if (OfflineCount == 0) return "is-run";
-            return "is-alarm";
-        }
-    }
+    /// <summary>展开全部产线的离散设备区。</summary>
+    private void ExpandAll() => _collapsed.Clear();
 
-    /// <summary>订阅会话变化并构建首屏卡片。</summary>
-    protected override void OnInitialized()
-    {
-        Session.Changed += OnChanged;
-        Rebuild();
-    }
+    /// <summary>确认一条报警。</summary>
+    private void Ack(string alarmId) => Mes.Acknowledge(alarmId);
 
     /// <summary>
-    /// 会话变化时重建卡片并重绘。
+    /// 确认当前全部未确认的报警。
     /// </summary>
     /// <remarks>
-    /// 重建必须放在 <c>InvokeAsync</c> 内部：它读 <c>Session.Routes</c> 与本地配置，
-    /// 在后台线程上直接做会与渲染争用 <see cref="_cards"/>。
+    /// 逐条调用而不是给数据源加一个「全确认」方法：这样确认逻辑只有一处，
+    /// 将来接真实数据要往设备写确认位时，不必再实现第二条路径。
     /// </remarks>
-    private void OnChanged() => _ = InvokeAsync(() =>
+    private void AckAll()
     {
-        Rebuild();
-        StateHasChanged();
-    });
-
-    /// <summary>
-    /// 手动刷新：先探测宿主，在线才拉路由清单。
-    /// </summary>
-    /// <remarks>
-    /// 离线时跳过拉取，避免叠加一次必然失败的 RPC 和随之而来的错误日志——
-    /// 探测已经给出结论了。
-    /// </remarks>
-    private async Task RefreshAsync()
-    {
-        _busy = true;
-        try
-        {
-            await Session.ProbeAsync().ConfigureAwait(true);
-
-            if (Session.Online)
-                await Session.RefreshRoutesAsync().ConfigureAwait(true);
-
-            Rebuild();
-        }
-        finally
-        {
-            _busy = false;
-        }
+        foreach (MesAlarm a in Mes.Snapshot().Alarms.Where(a => !a.Acked))
+            Mes.Acknowledge(a.Id);
     }
 
-    /// <summary>重建卡片快照。</summary>
-    private void Rebuild() => _cards = BuildCards();
+    /// <summary>订阅会话变化，用于「实时」徽标随 Host 上下线切换。</summary>
+    protected override void OnInitialized() => Session.Changed += OnChanged;
 
-    /// <summary>
-    /// 合并宿主路由与本地配置，构造整线卡片。
-    /// </summary>
-    /// <remarks>
-    /// 合并规则收敛在 <see cref="DeviceViewBuilder"/>——设备管理页做的是同一件事，
-    /// 两边各写一份的话，改端点拼法时漏改一处会让两个页面显示不同的连接信息，
-    /// 而且不报任何错。
-    /// </remarks>
-    private List<DeviceView> BuildCards() =>
-        DeviceViewBuilder.Build(Session.Routes, Devices.GetAll());
+    /// <summary>会话变化时重绘；事件来自后台线程，必须经 InvokeAsync 切回渲染上下文。</summary>
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
 
     /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>
     public void Dispose() => Session.Changed -= OnChanged;

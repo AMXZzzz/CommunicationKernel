@@ -189,6 +189,11 @@ try {
     builder.Services.AddSingleton<WebVariableStore>();
     builder.Services.AddSingleton<WebTemplateStore>();
 
+    // MES 监控的数据来源。当前是演示数据——产线、工站顺序、点位绑定这些概念
+    // 现在还没有落地，页面先靠它撑起框架。接真实数据时换掉这一行即可，
+    // 页面认的是 IMesDataSource，不认具体实现。
+    builder.Services.AddSingleton<IMesDataSource, DemoMesDataSource>();
+
     // 本进程带上 Hosting.App：同一份组合根，gRPC 对外，UI 经 HostingClient 走回环。
     HostingComposition.AddServices(builder.Services, builder.Configuration);
     string localGrpc = "http://127.0.0.1:" + grpcPort;

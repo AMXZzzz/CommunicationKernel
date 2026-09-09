@@ -97,7 +97,7 @@ button:disabled { cursor: not-allowed; }
 }
 
 /* 数值稠密区一律等宽数字：实时值刷新时列宽不抖，扫视一列数字才对得齐。 */
-.mono, .addr, .summary-value, .kv span:last-child, .data-table tbody td, .log-time {
+.mono, .addr, .kv span:last-child, .data-table tbody td, .log-time {
     font-variant-numeric: tabular-nums;
 }
 
@@ -354,9 +354,6 @@ button:disabled { cursor: not-allowed; }
     border-radius: 50%;
     background: var(--success-ink);
 }
-.section-row { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 12px; }
-.section-title { font-size: 14px; font-weight: 650; }
-
 /* 桌面按钮最低 32px：带手套或在触摸一体机上，30px 以下的按钮点不准。
    手机断点里再抬到 40px。 */
 .btn {
@@ -386,7 +383,7 @@ button:disabled { cursor: not-allowed; }
 .btn:disabled { opacity: 0.45; }
 /* 表格行内的读 / 写 / 删。原来 22px 高、11px 字，是全站最小的可点目标，
    却承担写 PLC 这种不可撤销的操作。抬到 28px、12px。 */
-.btn-sm { min-height: 28px; padding: 4px 10px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); }
+.btn-sm { min-height: 28px; padding: 4px 10px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); white-space: nowrap; }
 .btn-sm.primary { background: #1b3358; color: #93c5fd; border-color: #2c4a7a; }
 /* 空心而非实底：一张表里每行都有一个「删」，实心红块会让整列红成一条，
    把视线从真正要看的数据上拉走。红字 + 常规边框已经足够表达危险，
@@ -431,27 +428,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .data-table tbody tr:hover td { background: #1c1c1c; }
 .data-table tbody tr.row-error td { background: #2a1212; }
 .empty-cell { text-align: center; color: var(--text-dim); padding: 28px !important; }
-
-.summary-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; }
-.summary-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-    position: relative;
-    overflow: hidden;
-}
-/* 顶部一条极细的强调线，让四张摘要卡在深色背景上形成一排可读的节奏 */
-.summary-card::before {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; top: 0;
-    height: 2px;
-    background: var(--accent-dim);
-}
-.summary-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.04em; }
-.summary-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
-.summary-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min)), 1fr)); gap: 14px; }
 
@@ -609,8 +585,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .status-muted { background: rgba(255, 255, 255, .04); border-color: var(--border); color: var(--text-muted); }
 
 .val-green { color: var(--success); }
-.val-red { color: var(--danger); }
-.val-sep { color: var(--text-muted); }
 .mono { font-family: var(--font-mono); }
 .addr { font-family: var(--font-mono); color: #93c5fd; }
 .route-id { font-weight: 650; }
@@ -1094,67 +1068,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .export-box { width: 100%; min-height: 240px; font-family: var(--font-mono); font-size: 12px; }
 
 @media (max-width: 860px) {
-    .summary-bar { grid-template-columns: 1fr 1fr; }
     .var-layout { flex-direction: column; }
     .device-panel { width: 100%; max-height: 160px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--border); }
 }
-
-/* ============================================================================
-   MES 整线健康（由真实路由在线率推导，没有假启停）
-   ============================================================================ */
-
-.health-strip {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 10px 14px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--surface);
-    flex-shrink: 0;
-}
-.health-main { display: flex; align-items: center; gap: 8px; }
-.health-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim); }
-.health-label { font-size: 12px; color: var(--text-muted); }
-.health-val { font-size: 14px; font-weight: 700; }
-.health-meta { color: var(--text-muted); font-size: 12px; }
-.health-strip .btn { margin-left: auto; }
-
-.health-strip.is-run { border-color: #166534; background: #102418; }
-.health-strip.is-run .health-dot { background: var(--success); box-shadow: 0 0 8px rgba(34, 197, 94, 0.55); }
-.health-strip.is-run .health-val { color: #86efac; }
-
-.health-strip.is-alarm { border-color: #7f1d1d; background: #2a1212; }
-.health-strip.is-alarm .health-dot { background: var(--danger); animation: pulse 1s infinite; }
-.health-strip.is-alarm .health-val { color: var(--danger-ink); }
-
-.health-strip.is-down { border-color: #3f3f46; }
-.health-strip.is-down .health-val { color: var(--text-muted); }
-
-.health-strip.is-idle { border-color: #1e3a5f; background: #132433; }
-.health-strip.is-idle .health-dot { background: var(--accent); }
-.health-strip.is-idle .health-val { color: #93c5fd; }
-
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-
-.alarm-panel {
-    background: #2a1212;
-    border: 1px solid #7f1d1d;
-    border-radius: var(--radius);
-    padding: 10px 12px;
-    flex-shrink: 0;
-}
-.alarm-hd { font-size: 12px; color: var(--danger-ink); font-weight: 650; margin-bottom: 8px; }
-.alarm-row {
-    display: grid;
-    grid-template-columns: 140px 140px 1fr;
-    gap: 10px;
-    font-size: 12px;
-    padding: 4px 0;
-    border-top: 1px solid #3b1515;
-}
-.alarm-name { font-weight: 650; }
-.alarm-msg { color: var(--danger-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .add-form-overlay.center {
     justify-content: center;
@@ -1163,7 +1079,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .confirm-box p { color: var(--text-muted); margin: 8px 0 4px; line-height: 1.5; }
 
-/* 顶栏在线灯常亮不闪：理由同 .live，闪烁只留给 .health-strip.is-alarm。 */
+/* 顶栏在线灯常亮不闪：理由同 .live，闪烁只留给 MES 页那个 .state.alarm。 */
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #111; }
@@ -1305,14 +1221,12 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 
     .toolbar { overflow-x: auto; scrollbar-width: none; padding: 0 12px; gap: 6px; }
     .toolbar::-webkit-scrollbar { display: none; }
-    .toolbar .btn, .toolbar .file-btn { min-height: 36px; flex-shrink: 0; }
+    /* 工具栏在窄屏横向滚动，里面的按钮一律不许被压缩：
+       被压之后中文会一个字一行竖着排，宽度还不够点。 */
+    .toolbar .btn, .toolbar .btn-sm, .toolbar .file-btn { min-height: 36px; flex-shrink: 0; }
     .page-body { padding: var(--space); }
-    .summary-bar { gap: var(--space); }
     .device-grid { --card-min: 100%; gap: var(--space); }
     .title-status { font-size: var(--title-fs); }
-    .health-strip { flex-wrap: wrap; gap: 8px; }
-    .health-strip .btn { margin-left: 0; }
-    .alarm-row { grid-template-columns: 1fr; gap: 2px; }
 
     input, select, textarea { font-size: 16px; padding: 10px 12px; }
     .btn { min-height: 40px; padding: 8px 14px; }
@@ -1524,7 +1438,6 @@ html.is-phone .titlebar {
 }
 html.is-phone .title-status { font-size: 15px; font-weight: 650; color: var(--text); }
 html.is-phone .device-grid { grid-template-columns: 1fr; }
-html.is-phone .summary-bar { grid-template-columns: 1fr 1fr; }
 html.is-phone .page-body { padding: 12px; }
 html.is-phone input, html.is-phone select, html.is-phone textarea { font-size: 16px; }
 html.is-phone .btn { min-height: 40px; }
@@ -1536,7 +1449,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 }
 
 @media (max-width: 420px) {
-    .summary-bar { grid-template-columns: 1fr; }
     .tab-item { font-size: 9px; }
 }
 
@@ -2234,3 +2146,607 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
    一眼看出"这里本来有个输入框，只是现在不让填" */
 .var-detail .w input:disabled,
 .var-detail .w button:disabled { opacity: .45; }
+
+/* ============================================================================
+   MES 监控页
+   ----------------------------------------------------------------------------
+   结构：演示横幅 → 六格汇总 → 逐条产线（线头 / KPI / 工艺流 / 离散设备）
+        → 报警抽屉 → 报警详情弹窗
+
+   本块内的类名多数很短（.st .dc .al .tl），因此<b>一律挂在 .page-mes 之下</b>。
+   不加这层限定的话，.kv .led .k .v 这些会和设备卡、设置页的同名类互相串——
+   而串起来的表现是「某一页的某个角落忽然错位」，最难查。
+   ============================================================================ */
+
+/* 演示数据横幅。常驻、不可关闭。
+   可关闭的提示等于没有提示：关掉之后这一屏和真实数据长得一模一样，
+   而这一屏上全是看起来很可信的产量、良率、温度。 */
+.page-mes .demo-banner {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    border: 1px solid rgba(245, 158, 11, .45);
+    border-left-width: 3px;
+    border-radius: var(--radius);
+    background: rgba(245, 158, 11, .1);
+    color: var(--warning-ink);
+    font-size: 12.5px;
+    line-height: 1.6;
+}
+.page-mes .demo-banner .tagword {
+    flex: none;
+    padding: 2px 9px;
+    border-radius: 3px;
+    background: var(--warning);
+    color: #1a1400;
+    font-weight: 700;
+    font-size: 11.5px;
+    letter-spacing: .04em;
+}
+.page-mes .demo-banner b { color: var(--text); }
+
+/* 工具栏右侧的周期 / 上次更新 */
+.page-mes .meta { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.page-mes .meta b { font-family: var(--font-mono); color: var(--text-muted); font-weight: 500; }
+
+/* 语义色按钮。启 / 停 / 复三个动作在设备面板上本来就是绿红黄，
+   沿用这套颜色，操作员不用重新学一遍。都是描边不是实底——
+   一屏十几个实心色块会把工艺流糊成一片。 */
+.page-mes .btn.ok { color: var(--success-ink); border-color: rgba(34, 197, 94, .5); background: transparent; }
+.page-mes .btn.stop { color: var(--danger-ink); border-color: rgba(239, 68, 68, .5); background: transparent; }
+.page-mes .btn.reset { color: var(--warning-ink); border-color: rgba(245, 158, 11, .5); background: transparent; }
+.page-mes .btn.danger-fill { background: rgba(239, 68, 68, .15); border-color: var(--danger); color: var(--danger-ink); }
+.page-mes .btn-sm.ok { color: var(--success-ink); }
+.page-mes .btn-sm.stop { color: var(--danger-ink); }
+.page-mes .btn-sm.reset { color: var(--warning-ink); }
+.page-mes .btn-sm.alarm-open { color: var(--danger-ink); border-color: rgba(239, 68, 68, .5); }
+
+/* 六格汇总。顶边一道 2px 色条：格子之间只靠边框分隔时，
+   六个等宽方块会读成一张表格而不是六个独立指标。 */
+.page-mes .mes-sum {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+}
+.page-mes .mes-sum > div {
+    position: relative;
+    overflow: hidden;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.page-mes .mes-sum > div::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    background: var(--accent);
+}
+.page-mes .mes-sum > div.alarm::before { background: var(--danger); }
+.page-mes .mes-sum .k { font-size: 11px; color: var(--text-dim); letter-spacing: .04em; }
+.page-mes .mes-sum .v {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.page-mes .mes-sum .v.ok { color: var(--success-ink); }
+.page-mes .mes-sum .v.wrn { color: var(--warning-ink); }
+.page-mes .mes-sum .v.err { color: var(--danger-ink); }
+
+/* ---------------------------------------------------------------- 产线 */
+/* flex:none 是必需的。.page-body 是 flex 纵向容器，产线是它的子项；
+   而本块用了 overflow:hidden（为了让圆角切住内部的表头），
+   overflow 非 visible 会把 flex 子项的自动最小尺寸从"内容高"降为 0，
+   于是整条产线被压扁，离散设备那一片直接被裁掉且没有任何滚动条。
+   页面滚动由 .page-body 负责，各分块不该参与伸缩。 */
+.page-mes .line {
+    flex: none;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+.page-mes .line.alarm { border-color: rgba(239, 68, 68, .45); }
+
+.page-mes .line-hd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    background: var(--surface3);
+    border-bottom: 1px solid var(--border);
+}
+.page-mes .line-hd h2 { font-size: 15px; font-weight: 600; }
+.page-mes .line-hd .ctl { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+.page-mes .line-hd .ctl b { color: var(--text-muted); font-weight: 500; }
+
+.page-mes .state {
+    padding: 2px 10px;
+    border-radius: 3px;
+    border: 1px solid;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .05em;
+}
+.page-mes .state.run { color: var(--success-ink); border-color: rgba(34, 197, 94, .5); background: rgba(34, 197, 94, .1); }
+.page-mes .state.stop { color: var(--warning-ink); border-color: rgba(245, 158, 11, .5); background: rgba(245, 158, 11, .1); }
+.page-mes .state.off { color: var(--text-dim); border-color: var(--border); }
+/* 报警态闪烁。这是全站唯一允许闪的东西——闪烁是注意力资源，
+   常态也闪就等于没闪。prefers-reduced-motion 下停掉：
+   前庭敏感的人看着闪烁界面会头晕，而这里的信息靠颜色已经传达到了。 */
+.page-mes .state.alarm {
+    color: var(--danger-ink);
+    border-color: var(--danger);
+    background: rgba(239, 68, 68, .12);
+    animation: mes-blink 1s steps(1) infinite;
+}
+@keyframes mes-blink { 50% { background: rgba(239, 68, 68, .3); } }
+@media (prefers-reduced-motion: reduce) { .page-mes .state.alarm { animation: none; } }
+
+.page-mes .line-ops { display: flex; gap: 6px; }
+
+/* 报警胶囊：线头右端，点进抽屉。做成一整块可点区域而不是一个小按钮，
+   因为这是报警时最该被点到的东西。 */
+.page-mes .alarm-chip {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--danger);
+    background: rgba(239, 68, 68, .1);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+}
+.page-mes .alarm-chip:hover { background: rgba(239, 68, 68, .18); }
+.page-mes .alarm-chip .ic {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--danger);
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    display: grid;
+    place-items: center;
+}
+.page-mes .alarm-chip .t { display: block; font-size: 13px; font-weight: 600; line-height: 1.2; }
+.page-mes .alarm-chip .s { display: block; font-size: 11px; color: var(--text-dim); }
+
+.page-mes .line-kpi {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-dim);
+}
+.page-mes .line-kpi b {
+    margin-left: 4px;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- 工艺流 */
+.page-mes .flow-t { padding: 10px 16px 0; font-size: 11.5px; color: var(--text-dim); letter-spacing: .04em; }
+.page-mes .flow { display: flex; align-items: stretch; padding: 16px; overflow-x: auto; }
+
+.page-mes .st {
+    position: relative;
+    flex: 1;
+    min-width: 132px;
+    max-width: 170px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 10px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-align: center;
+}
+/* 站与站之间那根连线就是工艺顺序本身。断开（灰）表示这一段流不过去，
+   比在卡片上多写一行字直观得多。 */
+.page-mes .st + .st { margin-left: 22px; }
+.page-mes .st + .st::before {
+    content: "";
+    position: absolute;
+    left: -23px;
+    top: 50%;
+    width: 22px;
+    height: 2px;
+    background: var(--success);
+}
+.page-mes .st.off + .st::before,
+.page-mes .st + .st.off::before { background: var(--border); }
+.page-mes .st + .st.alarm::before { background: var(--danger); }
+
+.page-mes .st .nm { font-size: 13.5px; font-weight: 600; }
+.page-mes .st .md { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+.page-mes .st .led {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+}
+.page-mes .st.run .led { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.page-mes .st.alarm .led { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.page-mes .st.stop .led { background: var(--warning); }
+.page-mes .st .stt {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .08em;
+}
+.page-mes .st.run .stt { color: var(--success-ink); }
+.page-mes .st.stop .stt { color: var(--warning-ink); }
+.page-mes .st.alarm .stt { color: var(--danger-ink); }
+.page-mes .st.off .stt { color: var(--text-dim); }
+.page-mes .st .sub { min-height: 16px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.page-mes .st.alarm { border-color: var(--danger); background: rgba(239, 68, 68, .06); }
+.page-mes .st.alarm .sub { color: var(--danger-ink); }
+.page-mes .st.off { opacity: .55; }
+.page-mes .st .ops {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    width: 100%;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border);
+}
+.page-mes .st .alm {
+    position: absolute;
+    left: 8px;
+    top: 6px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* ------------------------------------------------------- 线内离散设备 */
+.page-mes .solo { margin: 0 16px 14px; border-top: 1px dashed var(--border); }
+.page-mes .solo.collapsed .solo-grid { display: none; }
+.page-mes .solo.collapsed .tgl { transform: rotate(-90deg); }
+
+.page-mes .solo-hd {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 0 8px;
+    cursor: pointer;
+    user-select: none;
+}
+.page-mes .solo-hd .tgl { width: 14px; font-size: 11px; color: var(--text-dim); transition: transform .15s; }
+.page-mes .solo-hd h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); letter-spacing: .04em; }
+.page-mes .solo-hd .cnt {
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.page-mes .solo-hd .d { font-size: 11.5px; color: var(--text-dim); }
+.page-mes .solo-hd .r { margin-left: auto; display: flex; gap: 6px; }
+
+.page-mes .solo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 12px;
+}
+.page-mes .dc {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.page-mes .dc .top { display: flex; align-items: center; gap: 8px; }
+.page-mes .dc .top .led {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+}
+.page-mes .dc .top .nm {
+    flex: 1;
+    min-width: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.page-mes .dc .top .poll { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.page-mes .dc .md { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+.page-mes .dc .vals { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 2px; }
+/* 全站的 .kv 是「标签左、值右、行间虚线」的两端对齐样式，这里要的是
+   上下两行的小指标块，因此把继承来的那几条全部改掉——
+   不改的话值会被推到右边并强制不换行，四个格子挤成一团。 */
+.page-mes .dc .kv {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 0;
+    border-bottom: 0;
+    font-size: inherit;
+}
+.page-mes .dc .kv .k { font-size: 10.5px; color: var(--text-dim); }
+.page-mes .dc .kv .v {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.page-mes .dc .kv .v .u { margin-left: 2px; font-size: 10px; font-weight: 400; color: var(--text-dim); }
+/* 陈旧：灯灭、值转灰、周期标黄。三处一起变，才不会被当成「这台就是 0」 */
+.page-mes .dc.stale .top .led { background: var(--text-dim); box-shadow: none; }
+.page-mes .dc.stale .top .poll { color: var(--warning-ink); }
+.page-mes .dc.stale .kv .v { color: var(--text-dim); }
+
+.page-mes .dc.add {
+    align-items: center;
+    justify-content: center;
+    min-height: 110px;
+    border-style: dashed;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 13px;
+}
+.page-mes .dc.add:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.page-mes .dc.add:disabled { opacity: .5; }
+.page-mes .dc.add .plus { font-size: 26px; line-height: 1; }
+
+.page-mes .mes-hint { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+/* ---------------------------------------------------------- 报警抽屉 */
+/* 不带遮罩：处理报警时经常要一边看抽屉、一边看工艺流上哪一站在闪，
+   盖一层黑纱会把那条线索遮掉。 */
+.page-mes .drawer {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(440px, 100%);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface2);
+    border-left: 1px solid var(--danger);
+    box-shadow: -12px 0 40px rgba(0, 0, 0, .55);
+}
+.page-mes .dr-hd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: rgba(239, 68, 68, .12);
+    border-bottom: 1px solid rgba(239, 68, 68, .4);
+}
+.page-mes .dr-hd .ic {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--danger);
+    color: var(--danger-ink);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+.page-mes .dr-hd .body { flex: 1; min-width: 0; }
+.page-mes .dr-hd .t { font-size: 15px; font-weight: 600; }
+.page-mes .dr-hd .s { font-size: 12px; color: var(--text-dim); }
+.page-mes .dr-hd .x,
+.page-mes .dt-hd .x {
+    border: 0;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 16px;
+    padding: 4px 6px;
+    line-height: 1;
+}
+.page-mes .dr-hd .x:hover, .page-mes .dt-hd .x:hover { color: var(--text); }
+
+.page-mes .dr-list { flex: 1; min-height: 0; overflow: auto; }
+.page-mes .al { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.page-mes .al .t { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.page-mes .al .t i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+.page-mes .al.warn .t i { background: var(--warning); }
+/* 已确认的整条压暗：它还留在列表里（要等复位），但不再需要人去看 */
+.page-mes .al.acked { opacity: .6; }
+.page-mes .al .ack-tag {
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 10.5px;
+    font-weight: 400;
+    color: var(--text-dim);
+}
+.page-mes .al .s { margin: 4px 0 8px 16px; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+.page-mes .al .ops { display: flex; gap: 6px; margin-left: 16px; }
+
+.page-mes .dr-ft {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+}
+.page-mes .dr-ft .cnt { margin-right: auto; font-size: 12px; color: var(--text-dim); }
+
+/* ------------------------------------------------------ 报警详情弹窗 */
+/* z-index 高于抽屉：详情是从抽屉里点开的，压在下面就白开了 */
+.page-mes .mask {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, .55);
+}
+.page-mes .detail {
+    display: flex;
+    flex-direction: column;
+    width: 620px;
+    max-width: 100%;
+    max-height: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .7);
+    overflow: hidden;
+}
+.page-mes .dt-hd {
+    position: relative;
+    flex: none;
+    padding: 14px 16px 12px;
+    background: linear-gradient(180deg, rgba(239, 68, 68, .22), rgba(239, 68, 68, .08));
+    border-bottom: 1px solid rgba(239, 68, 68, .4);
+}
+.page-mes .dt-hd .row { display: flex; align-items: center; gap: 10px; }
+.page-mes .dt-hd .ic {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--danger);
+    color: var(--danger-ink);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+.page-mes .sev {
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--danger);
+    color: var(--danger-ink);
+    font-size: 11px;
+    font-weight: 600;
+}
+.page-mes .sev.warn { border-color: rgba(245, 158, 11, .6); color: var(--warning-ink); }
+.page-mes .dt-hd h3 { margin: 8px 0 2px; font-size: 17px; }
+.page-mes .dt-hd .when { font-size: 12px; color: var(--text-muted); }
+.page-mes .dt-hd .when b { font-family: var(--font-mono); font-weight: 500; color: var(--text); }
+.page-mes .dt-hd .x { position: absolute; right: 14px; top: 12px; }
+
+.page-mes .dt-body { padding: 14px 16px; display: grid; gap: 14px; overflow: auto; }
+.page-mes .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.page-mes .facts > div { padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+.page-mes .facts .k { font-size: 11px; color: var(--text-dim); }
+.page-mes .facts .v {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    word-break: break-all;
+}
+.page-mes .facts .v.err { color: var(--danger-ink); }
+.page-mes .sec-t { margin-bottom: 4px; font-size: 12px; color: var(--text-dim); }
+.page-mes .desc { font-size: 13.5px; line-height: 1.6; }
+
+.page-mes .al-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.page-mes .al-table th {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-align: left;
+}
+.page-mes .al-table td { padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, .04); }
+.page-mes .al-table td.mono { font-size: 12.5px; }
+.page-mes .al-table td.err { color: var(--danger-ink); }
+
+.page-mes .advice {
+    padding: 8px 12px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: rgba(61, 139, 253, .06);
+    font-size: 13px;
+}
+.page-mes .advice ol { margin: 0; padding-left: 20px; line-height: 1.7; }
+
+/* 时间线。第一条（触发点）标红并带光晕——排查时第一眼要找的就是它。 */
+.page-mes .tl { position: relative; list-style: none; margin: 0; padding: 0 0 0 6px; }
+.page-mes .tl::before {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 8px;
+    bottom: 8px;
+    width: 1px;
+    background: var(--border);
+}
+.page-mes .tl li {
+    display: grid;
+    grid-template-columns: 8px 68px 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 13px;
+}
+.page-mes .tl li i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); z-index: 1; }
+.page-mes .tl li.first i { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.page-mes .tl li .t { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-muted); }
+.page-mes .tl li .m { color: var(--text-muted); }
+.page-mes .tl li.first .m { color: var(--text); }
+
+.page-mes .dt-ft { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--border); flex: none; }
+
+@media (max-width: 1200px) {
+    .page-mes .mes-sum { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+    .page-mes .mes-sum { grid-template-columns: repeat(2, 1fr); }
+    .page-mes .alarm-chip { margin-left: 0; width: 100%; }
+    /* 工艺流在窄屏改竖排：横向滚动看工艺顺序，滚一下丢一半，
+       还得来回推。竖排时连接线也跟着转 90°。 */
+    .page-mes .flow { flex-direction: column; }
+    .page-mes .st { max-width: none; }
+    .page-mes .st + .st { margin-left: 0; margin-top: 22px; }
+    .page-mes .st + .st::before {
+        left: 50%;
+        top: -23px;
+        width: 2px;
+        height: 22px;
+    }
+    .page-mes .facts { grid-template-columns: 1fr; }
+}
