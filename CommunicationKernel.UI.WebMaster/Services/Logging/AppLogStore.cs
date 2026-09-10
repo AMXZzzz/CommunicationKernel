@@ -28,6 +28,16 @@ public sealed class AppLogEntry
     public string Message { get; init; } = string.Empty;
 
     /// <summary>
+    /// 单调递增的序号，全进程唯一。
+    /// </summary>
+    /// <remarks>
+    /// 给增量渲染用：托盘日志窗每 400ms 刷一次，只想追加「上次之后新来的那几条」。
+    /// 不能靠条数判断——缓冲是环形的，满了之后每来一条就丢一条，
+    /// 条数纹丝不动而内容已经换了，按条数追加会静默漏掉整段日志。
+    /// </remarks>
+    public long Seq { get; init; }
+
+    /// <summary>
     /// 列表里显示的三字母级别标签。
     /// </summary>
     /// <remarks>
@@ -85,6 +95,9 @@ public sealed class AppLogStore
     /// </remarks>
     private int _count;
 
+    /// <summary>序号发号器。见 <see cref="AppLogEntry.Seq"/>。</summary>
+    private long _seq;
+
     /// <summary>有新条目时在写入线程触发，订阅方必须 <c>InvokeAsync</c> 回 UI 线程。</summary>
     public event Action? Changed;
 
@@ -112,6 +125,7 @@ public sealed class AppLogStore
     {
         var entry = new AppLogEntry
         {
+            Seq = Interlocked.Increment(ref _seq),
             Timestamp = DateTime.Now,
             Level = level,
             // Protobuf 与部分调用方可能传 null，统一归一避免下游到处判空
