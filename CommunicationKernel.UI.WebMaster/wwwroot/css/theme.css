@@ -1722,7 +1722,7 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
    只是建议值，浏览器会把列压到内容装得下为止——「字节」被压成「字/节」
    两行、「可读写」压成三行，整表的行高被这一列撑起来。
    min-width 让装不下时横向滚动，而不是继续压。 */
-.tpl-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 820px; }
+.tpl-table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 880px; }
 .tpl-table th {
     position: sticky;
     top: 0;
@@ -3240,3 +3240,22 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     .page-lines .toolbar .hint { display: none; }
     .solo-dlg .slots { grid-template-columns: 1fr; }
 }
+
+/* 变量表里紧跟类型徽标的小数位标记，例如 Int16 .1
+   配了换算的点位必须在表上看得出来：值显示成 50.4 时，
+   看不出设备里存的是 50.4 还是 504——排查时这两个数差十倍。 */
+.var-detail .dec {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 4px;
+    border: 1px solid rgba(245, 158, 11, .45);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 15px;
+    color: var(--warning-ink);
+    vertical-align: 1px;
+}
+
+/* 模板表「小数」列里的占位横杠与不可选提示 */
+.tpl-table .dim { color: var(--text-dim); }

@@ -193,7 +193,14 @@
                                             }
                                         </td>
                                         <td class="mono" data-label="地址">@row.Address</td>
-                                        <td data-label="类型"><span class="type @TypeClass(row.DataType)">@row.DataType</span></td>
+                                        <td data-label="类型">
+                                            <span class="type @TypeClass(row.DataType)">@row.DataType</span>
+                                            @* 配了小数位就必须标出来：值显示成 50.4 时，看不出
+                                               设备里存的是 50.4 还是 504——而排查时这两个数差十倍 *@
+                                            @if (VariableScale.IsActive(row.DataType, row.Decimals)) {
+                                                <span class="dec" title="@VariableScale.Hint(row.DataType, row.Decimals)">.@row.Decimals</span>
+                                            }
+                                        </td>
                                         <td class="mono r" data-label="字节">@row.Length</td>
 
                                         @* 值单元格：错误红、未读灰、陈旧灰、正常亮。
@@ -216,7 +223,8 @@
                                                非法参数而报警停机 *@
                                             <div class="w">
                                                 <input @bind="row.WriteText"
-                                                       placeholder="@(row.CanWrite ? "值" : "只读")"
+                                                       placeholder="@WritePlaceholder(row)"
+                                                       title="@WritePlaceholder(row)"
                                                        disabled="@(!row.CanWrite)" />
                                                 <button class="btn-sm primary" type="button"
                                                         title="@(row.CanWrite ? "写入" : "该变量为只读，不能写入")"
@@ -320,6 +328,35 @@
                             ? "按设备里那段文本区域的实际字节数填。读回后遇 NUL 即截断。"
                             : "按需要读取的字节数填，原样以十六进制显示。")
                     </p>
+                }
+                @* 小数位只对整数类型出现。Float / Double 自带小数，再配一个「小数位」
+                   会被理解成「保留几位显示」——那是格式化，和这里的换算是两回事；
+                   Bool / String / Hex 更没有小数可言。 *@
+                @if (VariableScale.Supports(_dataType)) {
+                    <label>
+                        小数位
+                        @if (_editingFromTemplate) {
+                            <span class="label-note">（由模板维护）</span>
+                        } else {
+                            <span class="label-note">（0 = 不换算）</span>
+                        }
+                    </label>
+                    <select @bind="_decimals" disabled="@_editingFromTemplate">
+                        @for (int d = 0; d <= VariableScale.MaxDecimals; d++) {
+                            <option value="@d">@DecimalsLabel(d)</option>
+                        }
+                    </select>
+                    @if (_decimals > 0) {
+                        @* 举个具体的数比讲规则有用：现场看一眼就知道自己填对没有 *@
+                        <p class="hint-line">
+                            设备里存整数，界面按工程量显示与输入。
+                            读回 <span class="mono">@ScaleExampleRaw()</span> 显示为
+                            <span class="mono">@ScaleExampleDisplay()</span>；
+                            输入 <span class="mono">@ScaleExampleDisplay()</span> 写下去的是
+                            <span class="mono">@ScaleExampleRaw()</span>。
+                            多填的位数按四舍五入处理。
+                        </p>
+                    }
                 }
                 <label>扫描周期 (ms)</label>
                 <input type="number" @bind="_scan" min="200" />
@@ -694,6 +731,39 @@
     /// 避免让人白填一次再莫名其妙丢掉。
     /// </remarks>
     private bool _editingFromTemplate;
+
+    /// <summary>行内写入框的占位文字。</summary>
+    /// <remarks>
+    /// 配了小数位的点位要把分辨率写出来。写「值」的话，操作员按整数填 504，
+    /// 实际写下去的是 5040——这类错在读回之前完全看不出来。
+    /// </remarks>
+    private static string WritePlaceholder(WebVariable row)
+    {
+        if (!row.CanWrite) return "只读";
+
+        return VariableScale.IsActive(row.DataType, row.Decimals)
+            ? "值 · " + row.Decimals + " 位小数"
+            : "值";
+    }
+
+    /// <summary>表单：小数位。0 表示不换算，详见 <see cref="VariableScale"/>。</summary>
+    private int _decimals;
+
+    /// <summary>小数位下拉的文案。</summary>
+    private static string DecimalsLabel(int d) =>
+        d == 0 ? "0 — 不换算，按整数显示" : d + " 位 — 设备里存 ×" + VariableScale.Factor(d).ToString("0");
+
+    /// <summary>换算说明里那个「原始整数」示例。</summary>
+    /// <remarks>
+    /// 用 50.4 这类具体的数举例，而不是讲「除以 10 的 n 次方」：
+    /// 现场看一眼就能对照自己手里的图纸，规则讲得再准也要在脑子里换算一遍。
+    /// </remarks>
+    private string ScaleExampleRaw() =>
+        (504 * (int)(VariableScale.Factor(_decimals) / 10)).ToString();
+
+    /// <summary>换算说明里那个「显示值」示例，与 <see cref="ScaleExampleRaw"/> 配对。</summary>
+    private string ScaleExampleDisplay() =>
+        VariableScale.Display(ScaleExampleRaw(), _dataType, _decimals);
 
     /// <summary>表单：轮询扫描周期（毫秒）。</summary>
     private int _scan = 1000;
@@ -1155,6 +1225,7 @@
         _address = row.Address;
         _dataType = row.DataType;
         _length = row.Length;
+        _decimals = row.Decimals;
         _scan = row.ScanRateMs;
         _access = row.Access;
         _note = row.Note;
@@ -1176,6 +1247,7 @@
         _address = string.Empty;
         _dataType = "Int16";
         _length = ValueCodec.DefaultLength("Int16");
+        _decimals = 0;
         _scan = 1000;
         _access = VariableAccess.ReadWrite;
         _note = string.Empty;
@@ -1196,8 +1268,16 @@
     /// <remarks>
     /// String 与 Hex 是变长的，<c>DefaultLength</c> 对它们返回一个起始值，
     /// 操作员仍需按现场那段区域的实际大小手工调整。
+    /// <para>
+    /// 同时把小数位归零：只有整数类型支持换算，切到 Float 后那一项会从表单上
+    /// 消失，但值还在——存下去就成了一个看不见却仍在生效的换算。
+    /// </para>
     /// </remarks>
-    private void OnTypeChanged () => _length = ValueCodec.DefaultLength(_dataType);
+    private void OnTypeChanged () {
+        _length = ValueCodec.DefaultLength(_dataType);
+
+        if (!VariableScale.Supports(_dataType)) _decimals = 0;
+    }
 
     /// <summary>取某条变量所属设备的字节序；设备无配置时按大端。</summary>
     /// <remarks>
@@ -1249,6 +1329,9 @@
             // 下限保护：长度 0 会被部分协议判为非法请求；
             // 扫描周期过小会让轮询挤占整条链路，200ms 是经验下限
             existing.Length = Math.Max(1, _length);
+            // 小数位只对整数类型有意义：类型改成 Float 之后还留着旧值，
+            // 表单上看不到（那一项已隐藏），却仍在换算，读出来差十倍
+            existing.Decimals = VariableScale.Supports(existing.DataType) ? _decimals : 0;
             existing.ScanRateMs = Math.Max(200, _scan);
 
             // 模板行的备注与只读标记都归模板所有，本页不写回——
@@ -1273,6 +1356,7 @@
                 Address = _address.Trim(),
                 DataType = _dataType,
                 Length = Math.Max(1, _length),
+                Decimals = VariableScale.Supports(_dataType) ? _decimals : 0,
                 ScanRateMs = Math.Max(200, _scan),
                 Access = _access,
                 Note = _note.Trim(),

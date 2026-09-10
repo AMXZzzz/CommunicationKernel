@@ -46,6 +46,19 @@ public sealed class WebVariable
     public string Unit { get; set; } = string.Empty;
 
     /// <summary>
+    /// 小数位。0 表示不换算。
+    /// </summary>
+    /// <remarks>
+    /// PLC 寄存器只有整数，现场靠<b>约定</b>表达小数：填 1 时，
+    /// 设备里的 504 显示成 50.4，界面上输入 50.4 写下去的是 504。
+    /// 这个约定本来只存在于图纸上，落到这里之后读写两侧就自动对齐了。
+    /// <para>
+    /// 只对整数类型生效，换算规则见 <see cref="VariableScale"/>。
+    /// </para>
+    /// </remarks>
+    public int Decimals { get; set; }
+
+    /// <summary>
     /// 读写方向。详见 <see cref="VariableAccess"/>。
     /// </summary>
     /// <remarks>
@@ -332,6 +345,7 @@ public sealed class WebVariableStore
                         Length = length,
                         Note = slot.Note ?? string.Empty,
                         Access = slot.Access,
+                        Decimals = slot.Decimals,
                         TemplateId = template.Id,
                         ScanRateMs = 1000
                     });
@@ -358,6 +372,9 @@ public sealed class WebVariableStore
                 // 读写方向由模板统一管：一台变频器哪些能写、哪些只能读，
                 // 是设备的固有属性，随模板下发省得逐台逐条重标
                 existing.Access = slot.Access;
+                // 小数位同理：它是「这个寄存器怎么解释」的约定，属于设备型号，
+                // 不是某一台的现场设置
+                existing.Decimals = slot.Decimals;
                 existing.TemplateId = template.Id;
                 changed++;
             }

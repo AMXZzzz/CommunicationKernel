@@ -120,6 +120,11 @@ public sealed class WebVariableService : IWebVariableService
         string display = ValueCodec.Decode(
             result.Data ?? Array.Empty<byte>(), row.DataType, OrderOf(row.RouteId));
 
+        // 小数位换算也必须收在这里，理由与字节序完全相同：
+        // 页面手动读、后台轮询、将来的 MES 卡片都走这个方法，
+        // 谁漏乘一次除一次，同一个点位就会在两个页面上差十倍，而且两边都报成功
+        display = VariableScale.Display(display, row.DataType, row.Decimals);
+
         return new VariableReadOutcome(true, string.Empty, string.Empty, display);
     }
 
@@ -129,12 +134,25 @@ public sealed class WebVariableService : IWebVariableService
     {
         ArgumentNullException.ThrowIfNull(row);
 
+        // 先把工程量换算回设备里的整数：填 50.4、配了 1 位小数，写下去的是 504
+        if (!VariableScale.TryToRaw(
+                row.WriteText, row.DataType, row.Decimals, out string raw, out string scaleErr))
+        {
+            return HostingOperationResult.Fail("PARSE_ERROR", scaleErr);
+        }
+
         // 先编码再发起 I/O：格式错误就没必要打扰 PLC
         if (!ValueCodec.TryEncode(
-                row.WriteText, row.DataType, row.Length,
+                raw, row.DataType, row.Length,
                 out byte[] data, out string err, OrderOf(row.RouteId)))
         {
-            return HostingOperationResult.Fail("PARSE_ERROR", err);
+            // 换算过就把换算结果一并说出来。否则操作员填的是 50.4，
+            // 报错却在说 504000 超出范围，看不出这两个数是同一回事
+            string hint = VariableScale.IsActive(row.DataType, row.Decimals)
+                ? err + "（输入 " + row.WriteText.Trim() + " 按 " + row.Decimals + " 位小数换算为 " + raw + "）"
+                : err;
+
+            return HostingOperationResult.Fail("PARSE_ERROR", hint);
         }
 
         return await _session.Client

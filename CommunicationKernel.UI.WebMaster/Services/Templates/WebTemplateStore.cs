@@ -27,6 +27,13 @@ public sealed class WebDeviceTemplateSlot
     /// <summary>读写方向，随同步下发到变量。详见 <see cref="VariableAccess"/>。</summary>
     public VariableAccess Access { get; set; } = VariableAccess.ReadWrite;
 
+    /// <summary>小数位，随同步下发到变量。详见 <see cref="VariableScale"/>。</summary>
+    /// <remarks>
+    /// 和读写方向一样属于设备的固有属性：同一型号的位置寄存器都是一位小数，
+    /// 不因装在哪条线上而不同。放在模板里，套一次就全都对。
+    /// </remarks>
+    public int Decimals { get; set; }
+
     /// <summary>
     /// 兼容上一版的布尔字段，只用于读入旧配置。
     /// </summary>

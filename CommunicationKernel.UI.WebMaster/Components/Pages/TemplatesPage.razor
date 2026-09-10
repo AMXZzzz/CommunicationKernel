@@ -129,9 +129,9 @@
                                 @* 定宽列用 px、可伸缩列用 %，两者加起来正好铺满 880px 的
                                    min-width。原先的 330px + 75%% 在 860px 宽时超出近 120px，
                                    于是每列被等比压窄，表头「字节」都被折成了两行。 *@
-                                <col style="width:44px" /><col style="width:21%" /><col style="width:96px" />
-                                <col style="width:60px" /><col style="width:76px" /><col style="width:25%" />
-                                <col style="width:14%" /><col style="width:120px" />
+                                <col style="width:40px" /><col style="width:19%" /><col style="width:92px" />
+                                <col style="width:54px" /><col style="width:64px" /><col style="width:74px" />
+                                <col style="width:24%" /><col style="width:13%" /><col style="width:112px" />
                             </colgroup>
                             <thead>
                                 <tr>
@@ -139,6 +139,7 @@
                                     <th>名称</th>
                                     <th>类型</th>
                                     <th class="num">字节</th>
+                                    <th class="num">小数</th>
                                     <th class="ro">读写</th>
                                     <th>备注</th>
                                     <th>来源</th>
@@ -171,6 +172,21 @@
                                                 </select>
                                             </td>
                                             <td class="num mono">@SlotLength(r.Slot)</td>
+                                            <td class="num">
+                                                @* 只对整数类型可选。Float 自带小数，再配一个「小数位」
+                                                   会被当成「保留几位显示」——那是格式化，不是换算。 *@
+                                                @if (VariableScale.Supports(r.Slot.DataType)) {
+                                                    <select class="cell" value="@r.Slot.Decimals"
+                                                            title="设备里存整数，界面按工程量显示。1 位 = 存 504 显示 50.4"
+                                                            @onchange="e => SetSlot(ownIdx, decimals: e.Value?.ToString())">
+                                                        @for (int d = 0; d <= VariableScale.MaxDecimals; d++) {
+                                                            <option value="@d">@d</option>
+                                                        }
+                                                    </select>
+                                                } else {
+                                                    <span class="dim">—</span>
+                                                }
+                                            </td>
                                             <td class="ro">
                                                 <select class="cell" value="@r.Slot.Access"
                                                         @onchange="e => SetSlot(ownIdx, access: e.Value?.ToString())">
@@ -193,6 +209,9 @@
                                             <td>@r.Slot.Name</td>
                                             <td><span class="type @TypeClass(r.Slot.DataType)">@r.Slot.DataType</span></td>
                                             <td class="num mono">@SlotLength(r.Slot)</td>
+                                            @* 小数位为 0 时显示「—」而不是 0：一列 0 会被当成有效数据来读，
+                                               而「没有配」和「配成 0 位」在这里是同一件事 *@
+                                            <td class="num mono">@(VariableScale.IsActive(r.Slot.DataType, r.Slot.Decimals) ? r.Slot.Decimals.ToString() : "—")</td>
                                             @* 读写方向是设备的固有属性，标在模板上随同步下发，
                                                操作员不必逐台逐条重标一遍 *@
                                             <td class="ro">@VariableAccessInfo.Label(r.Slot.Access)</td>
@@ -326,15 +345,29 @@
     }
 
     private void SetSlot(
-        int i, string? name = null, string? type = null, string? note = null, string? access = null)
+        int i, string? name = null, string? type = null, string? note = null,
+        string? access = null, string? decimals = null)
     {
         if (_current is null || i < 0 || i >= _current.Slots.Count) return;
         WebDeviceTemplateSlot s = _current.Slots[i];
         if (name is not null) s.Name = name.Trim();
-        if (type is not null) s.DataType = type;
         if (note is not null) s.Note = note;
+
+        if (type is not null)
+        {
+            s.DataType = type;
+
+            // 换到不支持换算的类型时把小数位清掉：那一格会从表上消失，
+            // 值却还留着，于是变成一个看不见但仍在生效的换算
+            if (!VariableScale.Supports(type)) s.Decimals = 0;
+        }
+
         // 下拉给回的是枚举名字符串；解析失败保持原值，不静默改成可读写
         if (access is not null && Enum.TryParse(access, out VariableAccess parsed)) s.Access = parsed;
+
+        if (decimals is not null && int.TryParse(decimals, out int d))
+            s.Decimals = Math.Clamp(d, 0, VariableScale.MaxDecimals);
+
         Persist();
     }
 
