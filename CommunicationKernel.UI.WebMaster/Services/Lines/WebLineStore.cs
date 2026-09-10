@@ -1,0 +1,450 @@
+// -----------------------------------------------------------------------------
+// 文件: Services/Lines/WebLineStore.cs
+// 层级: UI 层 — Blazor Server
+// 作用: 持久化产线编排：哪些设备组成一条线、按什么顺序、各自的点位选择与报警规则。
+//
+// 这是 MES 监控页缺的那一半：
+//   设备表知道「有哪些设备、怎么连」，变量表知道「每台有哪些点位」，
+//   但没有任何地方记录「谁在哪条线上、排第几站、哪个点位代表运行状态」。
+//   本存储就是那份编排。它<b>只引用</b>设备与变量的标识，不复制它们的内容——
+//   复制一份名称或地址进来，改设备时这边就会悄悄过期。
+//
+// 与通讯层的关系：无。本层只写 json，不发任何 I/O。
+// 按这份配置去读写 PLC 是后续 MesDataSource 的事。
+// -----------------------------------------------------------------------------
+
+using System.Text.Json.Serialization;
+
+using CommunicationKernel.Hosting.Sdk;
+
+namespace CommunicationKernel.UI.WebMaster.Services;
+
+/// <summary>一个点位选择：指向某台设备上的某条变量。</summary>
+/// <remarks>
+/// 存变量 Id 而不是地址：地址会被「批量改地址」整表改写，
+/// 存地址的话改完之后这里指向的还是旧地址，而且不会报错。
+/// </remarks>
+public sealed class WebPointRef
+{
+    /// <summary>变量 Id。空串表示未选择。</summary>
+    public string VariableId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 写入值。
+    /// </summary>
+    /// <remarks>
+    /// 只对启动 / 停止 / 复位这类写点位有意义，状态点位是只读的。
+    /// 存字符串而不是数值：点位可能是 Bool、Int16、也可能是 Hex 字，
+    /// 用哪种数值类型都会在另外两种上失真。
+    /// </remarks>
+    public string WriteValue { get; set; } = "1";
+
+    /// <summary>
+    /// 脉冲时长（毫秒）。0 表示不脉冲，直接写入并保持。
+    /// </summary>
+    /// <remarks>
+    /// 脉冲＝写入后过这么久自动写 0。PLC 侧多用上升沿触发，
+    /// 一直保持 1 会让下一次触发丢失；而人手动写 0 又常常忘。
+    /// </remarks>
+    public int PulseMs { get; set; } = 300;
+
+    /// <summary>是否已选择变量。</summary>
+    /// <remarks>
+    /// 派生量，不落盘。写进 json 会让人以为它是可编辑的开关——
+    /// 手改成 true 却什么也不会发生，因为真正的依据是 VariableId 有没有值。
+    /// </remarks>
+    [JsonIgnore]
+    public bool Bound => !string.IsNullOrWhiteSpace(VariableId);
+}
+
+/// <summary>把状态点位的读值翻译成 RUN / STOP / ALARM。</summary>
+/// <remarks>
+/// 各家 PLC 的状态字取值毫无共性，必须逐线（或逐站）配。
+/// 存字符串是为了兼容 Bool（"true"）与数值（"2"）两种写法。
+/// </remarks>
+public sealed class WebStateMap
+{
+    /// <summary>判为运行的值。</summary>
+    public string Run { get; set; } = "1";
+
+    /// <summary>判为停止的值。</summary>
+    public string Stop { get; set; } = "0";
+
+    /// <summary>判为报警的值。</summary>
+    public string Alarm { get; set; } = "2";
+
+    /// <summary>深拷贝。工站「单独覆盖」时从整线复制一份，之后各改各的。</summary>
+    public WebStateMap Clone() => new() { Run = Run, Stop = Stop, Alarm = Alarm };
+}
+
+/// <summary>一条报警规则：某个变量满足条件时触发。</summary>
+public sealed class WebAlarmRule
+{
+    /// <summary>规则 Id，供界面增删定位。</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>被判断的变量 Id。</summary>
+    public string VariableId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 触发条件。
+    /// </summary>
+    /// <remarks>
+    /// 支持 <c>bit N</c> / <c>== v</c> / <c>!= v</c> / <c>&lt; v</c> / <c>&gt; v</c>。
+    /// 存原始文本而不是解析后的结构：现场要能一眼看懂自己填了什么，
+    /// 而解析放在求值那一侧，改语法时只改一处。
+    /// </remarks>
+    public string Condition { get; set; } = "bit 0";
+
+    /// <summary>报警名称，操作员一眼要看懂的那句话。</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>报警代码，用于查手册与统计。</summary>
+    public string Code { get; set; } = string.Empty;
+
+    /// <summary>是否为严重级别。false 为预警。</summary>
+    public bool Critical { get; set; } = true;
+
+    /// <summary>处理建议，出现在报警详情弹窗里。</summary>
+    public string Advice { get; set; } = string.Empty;
+}
+
+/// <summary>工艺流上的一个工站。</summary>
+public sealed class WebStation
+{
+    /// <summary>
+    /// 该工站对应的设备路由 Id。
+    /// </summary>
+    /// <remarks>
+    /// 名称、协议、连接一律不存——它们属于设备管理。
+    /// 存一份副本的话，设备改名后产线里还是旧名字，且没有任何提示。
+    /// </remarks>
+    public string RouteId { get; set; } = string.Empty;
+
+    /// <summary>状态点位（只读）。</summary>
+    public WebPointRef State { get; set; } = new();
+
+    /// <summary>启动点位。</summary>
+    public WebPointRef Start { get; set; } = new();
+
+    /// <summary>停止点位。</summary>
+    public WebPointRef Stop { get; set; } = new();
+
+    /// <summary>复位点位。</summary>
+    public WebPointRef Reset { get; set; } = new();
+
+    /// <summary>
+    /// 本站独有的状态映射；null 表示继承整线。
+    /// </summary>
+    /// <remarks>
+    /// 默认继承：一条线上的设备多数来自同一家、状态字约定相同，
+    /// 逐站填一遍既啰嗦又容易填错一个。确实不同的那台再单独覆盖。
+    /// </remarks>
+    public WebStateMap? StateMap { get; set; }
+
+    /// <summary>本站的报警规则。</summary>
+    public List<WebAlarmRule> Alarms { get; set; } = new();
+
+    /// <summary>报警详情弹窗里「关联实时数据」要列出的变量 Id。</summary>
+    public List<string> RelatedVariableIds { get; set; } = new();
+
+    /// <summary>MES 卡片状态下方那行数字取自哪条变量。空串表示不显示。</summary>
+    public string SubValueVariableId { get; set; } = string.Empty;
+
+    /// <summary>四个点位里已选择的个数，供界面显示 <c>2/4</c> 这样的进度。</summary>
+    /// <remarks>派生量，不落盘。</remarks>
+    [JsonIgnore]
+    public int BoundCount =>
+        (State.Bound ? 1 : 0) + (Start.Bound ? 1 : 0) + (Stop.Bound ? 1 : 0) + (Reset.Bound ? 1 : 0);
+}
+
+/// <summary>线内离散设备：只监视，不参与工艺流与控制。</summary>
+public sealed class WebSoloDevice
+{
+    /// <summary>设备路由 Id。</summary>
+    public string RouteId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 卡片上显示的变量 Id，最多四个。
+    /// </summary>
+    /// <remarks>
+    /// 上限四个是卡片版式定的：两行两列。再多就得缩字号或加高卡片，
+    /// 而这类卡片是用来扫一眼的，不是用来读表的——要看全部变量去变量配置页。
+    /// </remarks>
+    public List<string> FieldVariableIds { get; set; } = new();
+}
+
+/// <summary>产线 KPI 的一项：取自变量，或直接是个常量。</summary>
+public sealed class WebKpiItem
+{
+    /// <summary>变量 Id。空串表示用 <see cref="Constant"/>。</summary>
+    public string VariableId { get; set; } = string.Empty;
+
+    /// <summary>常量值，用于「目标产量」这类不来自 PLC 的指标。</summary>
+    public string Constant { get; set; } = string.Empty;
+
+    /// <summary>单位，直接显示在数值后面。</summary>
+    public string Unit { get; set; } = string.Empty;
+}
+
+/// <summary>一条产线的完整编排。</summary>
+public sealed class WebLine
+{
+    /// <summary>产线 Id。</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+
+    /// <summary>产线名，显示在 MES 页与本页左栏。</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>整线控制器的设备路由 Id。空串表示还没选。</summary>
+    public string ControllerRouteId { get; set; } = string.Empty;
+
+    /// <summary>整线状态点位（只读）。</summary>
+    public WebPointRef State { get; set; } = new();
+
+    /// <summary>整线启动点位。</summary>
+    public WebPointRef Start { get; set; } = new();
+
+    /// <summary>整线停止点位。</summary>
+    public WebPointRef Stop { get; set; } = new();
+
+    /// <summary>整线复位点位。</summary>
+    public WebPointRef Reset { get; set; } = new();
+
+    /// <summary>整线状态映射，工站默认继承这一份。</summary>
+    public WebStateMap StateMap { get; set; } = new();
+
+    /// <summary>产线级报警规则（安全门、急停、气压等）。</summary>
+    public List<WebAlarmRule> Alarms { get; set; } = new();
+
+    /// <summary>工艺流工站，<b>列表顺序即工艺顺序</b>。</summary>
+    /// <remarks>
+    /// 不另设 Order 字段：两份顺序信息迟早会打架，而列表顺序本身
+    /// 就是 json 里可读、可手改、可拖动重排的唯一真相。
+    /// </remarks>
+    public List<WebStation> Stations { get; set; } = new();
+
+    /// <summary>线内离散设备。</summary>
+    public List<WebSoloDevice> Solo { get; set; } = new();
+
+    /// <summary>班次产量。</summary>
+    public WebKpiItem Output { get; set; } = new() { Unit = "pcs" };
+
+    /// <summary>目标产量，通常是常量。</summary>
+    public WebKpiItem Target { get; set; } = new() { Constant = "1500" };
+
+    /// <summary>良率。</summary>
+    public WebKpiItem Yield { get; set; } = new() { Unit = "%" };
+
+    /// <summary>节拍。</summary>
+    public WebKpiItem Cycle { get; set; } = new() { Unit = "s" };
+
+    /// <summary>还有几处点位没选（整线四个 + 各站四个）。</summary>
+    /// <remarks>
+    /// 供左栏显示「1 未选择 / 完整」。没选完不算错——设备可能确实没有复位点位；
+    /// 但要让人看得见，免得到了 MES 页才发现按钮是灰的却不知道为什么。
+    /// </remarks>
+    [JsonIgnore]
+    public int UnboundCount
+    {
+        get
+        {
+            int n = 4 - ((State.Bound ? 1 : 0) + (Start.Bound ? 1 : 0) + (Stop.Bound ? 1 : 0) + (Reset.Bound ? 1 : 0));
+            foreach (WebStation s in Stations)
+                n += 4 - s.BoundCount;
+            return n;
+        }
+    }
+
+    /// <summary>报警规则总数（产线级 + 各工站）。</summary>
+    /// <remarks>派生量，不落盘。</remarks>
+    [JsonIgnore]
+    public int AlarmCount => Alarms.Count + Stations.Sum(s => s.Alarms.Count);
+}
+
+/// <summary>产线编排的持久化存储。单例。</summary>
+/// <remarks>
+/// 与 <see cref="WebDeviceStore"/>、<see cref="WebVariableStore"/> 同一套写法：
+/// 内存态加锁，落盘走 <c>JsonFileStore</c> 的原子替换，变更后广播 <see cref="Changed"/>。
+/// </remarks>
+public sealed class WebLineStore
+{
+    /// <summary>保护 <see cref="_lines"/> 的锁。</summary>
+    private readonly object _lock = new();
+
+    /// <summary>全部产线，顺序即左栏显示顺序。</summary>
+    private readonly List<WebLine> _lines = new();
+
+    /// <summary>框架日志器，用于报落盘失败。</summary>
+    private readonly ILogger<WebLineStore> _logger;
+
+    /// <summary>配置变化时触发，供页面重绘。</summary>
+    public event Action? Changed;
+
+    /// <param name="logger">框架日志器。</param>
+    public WebLineStore(ILogger<WebLineStore> logger)
+    {
+        _logger = logger;
+        Load();
+    }
+
+    /// <summary>配置文件的完整路径，显示在界面上供排查。</summary>
+    public static string FilePath => WebPaths.LinesFile;
+
+    /// <summary>取全部产线的快照。</summary>
+    /// <remarks>
+    /// 返回的是<b>内部对象本身</b>而非深拷贝：编辑页要直接改这些对象再调 <see cref="Save"/>，
+    /// 拷来拷去会让「改了但没生效」这种问题层出不穷。
+    /// 代价是调用方必须自觉——本存储只服务编辑页一个使用者。
+    /// </remarks>
+    public IReadOnlyList<WebLine> GetAll()
+    {
+        lock (_lock)
+            return _lines.ToList();
+    }
+
+    /// <summary>按 Id 取一条产线，找不到返回 null。</summary>
+    public WebLine? Get(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+
+        lock (_lock)
+            return _lines.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>新建一条产线并返回它。</summary>
+    /// <param name="name">产线名。留空时自动编号。</param>
+    public WebLine Add(string name)
+    {
+        WebLine line;
+        lock (_lock)
+        {
+            line = new WebLine
+            {
+                Name = string.IsNullOrWhiteSpace(name) ? "新产线 " + (_lines.Count + 1) : name.Trim(),
+            };
+            _lines.Add(line);
+            Persist_NoLock();
+        }
+
+        Changed?.Invoke();
+        return line;
+    }
+
+    /// <summary>
+    /// 复制一条产线。
+    /// </summary>
+    /// <param name="id">被复制的产线 Id。</param>
+    /// <returns>新产线；源不存在时返回 null。</returns>
+    /// <remarks>
+    /// 同型号的第二条线绝大部分配置是一样的，复制再改比从头选一遍快得多。
+    /// 复制的是<b>编排</b>——工站仍指向同一批设备，需要手动改成第二条线的设备。
+    /// 不自动改是有意的：猜错设备比留空更难发现。
+    /// </remarks>
+    public WebLine? Duplicate(string id)
+    {
+        WebLine copy;
+        lock (_lock)
+        {
+            WebLine? src = _lines.FirstOrDefault(l => l.Id == id);
+            if (src is null) return null;
+
+            // 经 json 往返做深拷贝：手写拷贝在加字段时必然漏，而漏掉的那个
+            // 字段会在两条线之间意外共享同一个对象引用
+            copy = JsonClone(src);
+            copy.Id = Guid.NewGuid().ToString("N")[..8];
+            copy.Name = src.Name + " 副本";
+            ReassignIds(copy);
+
+            _lines.Add(copy);
+            Persist_NoLock();
+        }
+
+        Changed?.Invoke();
+        return copy;
+    }
+
+    /// <summary>删除一条产线。</summary>
+    public void Remove(string id)
+    {
+        lock (_lock)
+        {
+            if (_lines.RemoveAll(l => l.Id == id) == 0) return;
+            Persist_NoLock();
+        }
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>把内存中的改动落盘并通知订阅方。</summary>
+    /// <remarks>
+    /// 编辑页直接改 <see cref="GetAll"/> 拿到的对象，改完调这里。
+    /// 每改一个字段就落一次盘代价太高（整份 json 重写），
+    /// 因此由页面在「保存」时统一调用。
+    /// </remarks>
+    public void Save()
+    {
+        lock (_lock)
+            Persist_NoLock();
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>丢弃内存改动，从磁盘重新读一遍。</summary>
+    /// <remarks>
+    /// 编辑页直接改的是 <see cref="GetAll"/> 返回的对象本身，
+    /// 所以「还原」必须真的重读文件——只把界面刷新一遍没有用，
+    /// 内存里已经是改过的样子了。
+    /// </remarks>
+    public void Reload()
+    {
+        Load();
+        Changed?.Invoke();
+    }
+
+    /// <summary>从磁盘装载。</summary>
+    private void Load()
+    {
+        List<WebLine> list = JsonFileStore.Load<WebLine>(WebPaths.LinesFile, out string error);
+
+        // 成功时 JsonFileStore 把 error 置为 null 而不是空串——直接取 .Length
+        // 会在首次启动（还没有这个配置文件）时抛空引用
+        if (!string.IsNullOrEmpty(error))
+            _logger.LogWarning("产线配置读取失败: {Error}", error);
+
+        lock (_lock)
+        {
+            _lines.Clear();
+            _lines.AddRange(list);
+        }
+    }
+
+    /// <summary>写盘。调用方必须已持有锁。</summary>
+    private void Persist_NoLock()
+    {
+        if (!JsonFileStore.Save(WebPaths.LinesFile, _lines, out string error))
+            _logger.LogError("产线配置写入失败: {Error}", error);
+    }
+
+    /// <summary>经 json 往返做深拷贝。</summary>
+    private static WebLine JsonClone(WebLine src)
+    {
+        string json = System.Text.Json.JsonSerializer.Serialize(src);
+        return System.Text.Json.JsonSerializer.Deserialize<WebLine>(json) ?? new WebLine();
+    }
+
+    /// <summary>给复制出来的产线里所有报警规则换新 Id。</summary>
+    /// <remarks>
+    /// 不换的话两条线上的规则共用同一个 Id，界面按 Id 删除时会命中错的那条，
+    /// 而且完全不报错。
+    /// </remarks>
+    private static void ReassignIds(WebLine line)
+    {
+        foreach (WebAlarmRule r in line.Alarms)
+            r.Id = Guid.NewGuid().ToString("N");
+
+        foreach (WebStation s in line.Stations)
+            foreach (WebAlarmRule r in s.Alarms)
+                r.Id = Guid.NewGuid().ToString("N");
+    }
+}

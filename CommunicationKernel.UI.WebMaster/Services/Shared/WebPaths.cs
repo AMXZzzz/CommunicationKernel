@@ -32,6 +32,9 @@ internal static class WebPaths
     /// <summary>设备功能模板库（名称 / 类型 / 备注，不含地址）。</summary>
     public static string TemplatesFile => Path.Combine(Root, "web-templates.json");
 
+    /// <summary>产线编排：工站顺序、点位选择、报警规则。只引用设备与变量的标识。</summary>
+    public static string LinesFile => Path.Combine(Root, "web-lines.json");
+
     /// <summary>反向代理（公网中转）设置。</summary>
     public static string ProxyFile => Path.Combine(Root, "web-proxy.json");
 

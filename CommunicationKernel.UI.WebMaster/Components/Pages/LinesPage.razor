@@ -1,0 +1,1120 @@
+@* -----------------------------------------------------------------------------
+   文件: Components/Pages/LinesPage.razor
+   层级: UI 层 — 产线配置
+   作用: 编排产线：哪些设备组成一条线、按什么顺序、各自的点位与报警规则。
+
+   这一页补的是 MES 监控缺的那一半。设备表知道「有哪些设备、怎么连」，
+   变量表知道「每台有哪些点位」，但没有地方记录「谁在哪条线上、排第几站、
+   哪个点位代表运行状态」——那份编排就落在这里，写进 web-lines.json。
+
+   本页<b>只写配置，不发任何 I/O</b>。按配置去读写 PLC 是后续 MesDataSource 的事。
+   设备与变量的下拉都取自真实的设备表与变量表，不是样例。
+   ----------------------------------------------------------------------------- *@
+
+@page "/lines"
+@inject WebLineStore Lines
+@inject WebDeviceStore Devices
+@inject WebVariableStore Variables
+@inject AppLogStore Log
+@implements IDisposable
+
+<PageTitle>产线配置 — CommunicationKernel</PageTitle>
+
+@{
+    IReadOnlyList<WebLine> all = Lines.GetAll();
+    WebLine? line = all.FirstOrDefault(l => l.Id == _lineId) ?? all.FirstOrDefault();
+    if (line is not null && _lineId != line.Id) _lineId = line.Id;
+}
+
+<div class="page page-lines">
+    <div class="toolbar">
+        <h2 class="page-title">产线配置</h2>
+        <span class="hint">拖动预览卡片排序，点击卡片编辑该设备。名称与连接继承设备管理；点位从该设备已配置的变量中选</span>
+        <span class="spacer"></span>
+        <a class="btn ghost" href="/">← MES 监控</a>
+        <button class="btn primary" type="button" @onclick="AddLine">＋ 新建产线</button>
+    </div>
+
+    <div class="page-body flush">
+        @if (all.Count == 0) {
+            <div class="empty-state">
+                <div class="empty-title">还没有产线</div>
+                <div class="empty-hint">
+                    产线把「设备管理」里的设备编成一条工艺流，并指定哪个点位代表运行、启动、停止。<br />
+                    配好之后 MES 监控页才能显示真实的工站状态，而不是现在那份演示数据。
+                </div>
+                <button class="btn primary" type="button" @onclick="AddLine">新建产线</button>
+            </div>
+        } else {
+            <div class="lines-layout">
+
+                @* ---------------------------------------------------- 左：产线列表 *@
+                <aside class="lines-panel">
+                    <div class="panel-hd">产线 <span class="count">@all.Count</span></div>
+                    @foreach (WebLine l in all) {
+                        <button class="ln @(l.Id == _lineId ? "active" : null)" type="button"
+                                @key="l.Id" @onclick="() => Select(l.Id)">
+                            <span class="t">@(l.Name.Length > 0 ? l.Name : l.Id)</span>
+                            @* 未选择数常驻：不显示的话，到了 MES 页才发现按钮是灰的，
+                               而那时已经看不出是哪一站缺了什么 *@
+                            <span class="b @(l.UnboundCount > 0 ? "warn" : null)">
+                                @(l.UnboundCount > 0 ? l.UnboundCount + " 未选择" : "完整")
+                            </span>
+                            <span class="s">@LineSub(l)</span>
+                        </button>
+                    }
+                    <div class="lines-ft">
+                        <span class="mono" title="@WebLineStore.FilePath">@ShortPath(WebLineStore.FilePath)</span>
+                    </div>
+                </aside>
+
+                @* ------------------------------------------------------ 右：编辑器 *@
+                <section class="editor">
+                    @if (line is null) {
+                        <div class="empty-state"><div class="empty-hint">左栏选一条产线。</div></div>
+                    } else {
+                        <div class="ed-hd">
+                            <input type="text" value="@line.Name" aria-label="产线名称"
+                                   @onchange="e => Rename(line, e.Value?.ToString())" />
+                            <span class="st">
+                                @line.Stations.Count 工站 ·
+                                @(line.UnboundCount > 0 ? line.UnboundCount + " 处未选择" : "点位已选全") ·
+                                @line.AlarmCount 条报警 · @line.Solo.Count 台离散设备
+                            </span>
+                            <div class="ops">
+                                <button class="btn ghost" type="button" @onclick="() => Duplicate(line)">复制产线</button>
+                                <button class="btn ghost danger" type="button" @onclick="() => _pendingDeleteLine = line.Id">删除产线</button>
+                            </div>
+                        </div>
+
+                        @* ================= 配置预览 ================= *@
+                        <div class="preview">
+                            <div class="pv-hd">
+                                <b>配置预览</b>
+                                点击整线头部 / 工站卡片编辑 · 拖动 ⋮⋮ 调整顺序
+                                @* 这条标签必须有：预览画的是「配置成什么样」，不读设备。
+                                   不写清楚的话，看到卡片上没有状态会以为设备掉线了。 *@
+                                <span class="tag">静态预览，不读设备</span>
+                            </div>
+
+                            <div class="pv-card">
+                                <button class="pv-line @(_panel == Panel.Line ? "sel" : null)" type="button"
+                                        @onclick="() => _panel = Panel.Line">
+                                    <span class="h3">@(line.Name.Length > 0 ? line.Name : line.Id)</span>
+                                    <span class="ctl">@ControllerText(line)</span>
+                                    <span class="alarms">产线报警 <b>@line.Alarms.Count</b></span>
+                                    <span class="edit">配置整线 ›</span>
+                                </button>
+
+                                <div class="pv-flow" @ondragover:preventDefault>
+                                    @for (int i = 0; i < line.Stations.Count; i++) {
+                                        int idx = i;
+                                        WebStation st = line.Stations[idx];
+                                        <div class="pst @(_panel == Panel.Station && _stationIndex == idx ? "sel" : null) @(st.BoundCount < 4 ? "warn" : null) @(_dragFrom == idx ? "dragging" : null)"
+                                             @key="st"
+                                             draggable="true"
+                                             @ondragstart="() => _dragFrom = idx"
+                                             @ondragend="() => _dragFrom = -1"
+                                             @ondrop="() => Drop(line, idx)"
+                                             @ondragover:preventDefault
+                                             @onclick="() => SelectStation(idx)">
+                                            <span class="grip" title="按住拖动可调整工艺顺序">⋮⋮</span>
+                                            <span class="n @(st.Alarms.Count > 0 ? "c" : null)" title="该站报警定义数">@st.Alarms.Count</span>
+                                            <div class="nm">@DeviceName(st.RouteId)</div>
+                                            <div class="sub">@DeviceSub(st.RouteId)</div>
+                                            <div class="ops">
+                                                <i class="@(st.Start.Bound ? null : "off")" title="启动点位">启</i>
+                                                <i class="@(st.Stop.Bound ? null : "off")" title="停止点位">停</i>
+                                                <i class="@(st.Reset.Bound ? null : "off")" title="复位点位">复</i>
+                                            </div>
+                                        </div>
+                                    }
+                                    <button class="pst ghost @(_panel == Panel.AddStation ? "sel" : null)" type="button"
+                                            @onclick="() => _panel = Panel.AddStation">
+                                        <div class="nm">＋</div>
+                                        <div class="sub">添加工站</div>
+                                    </button>
+                                </div>
+
+                                <div class="pv-ft">
+                                    <span>右上数字 = 该站报警定义数</span>
+                                    <span>卡片名称与连接继承设备管理</span>
+                                    @if (UnboundText(line) is { Length: > 0 } warn) {
+                                        <span class="warn">⚠ @warn</span>
+                                    }
+                                    <span class="push">映射 <b>RUN=@line.StateMap.Run STOP=@line.StateMap.Stop ALARM=@line.StateMap.Alarm</b></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* ================= 面板：整线控制器 ================= *@
+                        @if (_panel == Panel.Line) {
+                            <div class="det-hd">
+                                <span class="crumb">@line.Name › <b>整线控制器</b></span>
+                                <span class="devline">@ControllerText(line)</span>
+                                <div class="r">
+                                    <a class="btn-sm" href="/devices">设备管理 →</a>
+                                    <a class="btn-sm" href="/variables">该设备变量 →</a>
+                                </div>
+                            </div>
+                            <div class="det-bd">
+                                <div class="blk">
+                                    <div class="blk-t">控制器</div>
+                                    <div class="frow">
+                                        <label>控制器设备</label>
+                                        <select class="mono" value="@line.ControllerRouteId"
+                                                @onchange="e => SetController(line, e.Value?.ToString())">
+                                            <option value="">— 未选择 —</option>
+                                            @foreach (WebDeviceRecord d in Devices.GetAll()) {
+                                                <option value="@d.RouteId">@DeviceLabel(d)</option>
+                                            }
+                                        </select>
+                                        <span class="help">来自「设备管理」。更换后下方所有点位选择都要重新指定——旧选择指向的是另一台设备的变量</span>
+                                    </div>
+                                </div>
+
+                                <div class="blk">
+                                    <div class="blk-t">
+                                        整线控制与状态
+                                        <span class="r"><span class="tag @(LineBound(line) == 4 ? "ok" : "warn")">@LineBound(line)/4</span></span>
+                                    </div>
+                                    @if (line.ControllerRouteId.Length == 0) {
+                                        <div class="notice warn">先选控制器设备，才能从它的变量里挑点位。</div>
+                                    } else {
+                                        <div class="notice info">下拉只列出这台设备在「变量配置」里已有的变量。缺什么变量，先去那边加，再回来选。</div>
+                                        <div class="bind">
+                                            <span class="h">用途</span><span class="h">该设备变量</span><span class="h">写入值 / 方式</span>
+                                            @PointRow("整线状态", line.ControllerRouteId, line.State, readOnly: true)
+                                            @PointRow("启动", line.ControllerRouteId, line.Start, readOnly: false)
+                                            @PointRow("停止", line.ControllerRouteId, line.Stop, readOnly: false)
+                                            @PointRow("复位", line.ControllerRouteId, line.Reset, readOnly: false)
+                                        </div>
+                                    }
+                                    <div class="map">
+                                        <span class="lbl">状态映射（工站默认继承）</span>
+                                        <div><span class="stx run">RUN</span>=<input class="mono" value="@line.StateMap.Run" @onchange="e => Set(() => line.StateMap.Run = e.Value?.ToString() ?? string.Empty)" /></div>
+                                        <div><span class="stx stop">STOP</span>=<input class="mono" value="@line.StateMap.Stop" @onchange="e => Set(() => line.StateMap.Stop = e.Value?.ToString() ?? string.Empty)" /></div>
+                                        <div><span class="stx alarm">ALARM</span>=<input class="mono" value="@line.StateMap.Alarm" @onchange="e => Set(() => line.StateMap.Alarm = e.Value?.ToString() ?? string.Empty)" /></div>
+                                        <div><span class="stx off">OFFLINE</span><span class="tag">路由离线时</span></div>
+                                    </div>
+                                    <div class="notice">「脉冲」= 写入后按设定时长自动写 0。PLC 侧多用上升沿触发，一直保持 1 会让下一次触发丢失，而人手动写 0 又常常忘。</div>
+                                </div>
+
+                                @AlarmBlock("产线报警", line.ControllerRouteId, line.Alarms)
+
+                                <div class="blk">
+                                    <div class="blk-t">产线 KPI（可选）</div>
+                                    <div class="bind">
+                                        <span class="h">指标</span><span class="h">该设备变量</span><span class="h">单位 / 常量</span>
+                                        @KpiRow("班次产量", line.ControllerRouteId, line.Output)
+                                        @KpiRow("目标产量", line.ControllerRouteId, line.Target)
+                                        @KpiRow("良率", line.ControllerRouteId, line.Yield)
+                                        @KpiRow("节拍", line.ControllerRouteId, line.Cycle)
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @* ================= 面板：工站 ================= *@
+                        @if (_panel == Panel.Station && _stationIndex >= 0 && _stationIndex < line.Stations.Count) {
+                            WebStation st = line.Stations[_stationIndex];
+                            <div class="det-hd">
+                                <span class="crumb">@line.Name › 工站 @(_stationIndex + 1) › <b>@DeviceName(st.RouteId)</b></span>
+                                <span class="devline">@DeviceSub(st.RouteId) · @VarsOf(st.RouteId).Count 个变量</span>
+                                <span class="tag" title="名称与连接来自设备管理，此处不可改">继承设备管理</span>
+                                <div class="r">
+                                    <a class="btn-sm" href="/devices">设备管理 →</a>
+                                    <a class="btn-sm" href="/variables">该设备变量 →</a>
+                                    <button class="btn-sm danger" type="button" @onclick="() => RemoveStation(line, _stationIndex)">从产线移除</button>
+                                </div>
+                            </div>
+                            <div class="det-bd">
+                                <div class="blk">
+                                    <div class="blk-t">
+                                        控制与状态
+                                        <span class="r"><span class="tag @(st.BoundCount == 4 ? "ok" : "warn")">@st.BoundCount/4</span></span>
+                                    </div>
+                                    <div class="notice info">下拉只列出这台设备在「变量配置」里已有的变量。缺什么变量，先去那边加，再回来选。</div>
+                                    <div class="bind">
+                                        <span class="h">用途</span><span class="h">该设备变量</span><span class="h">写入值 / 方式</span>
+                                        @PointRow("状态", st.RouteId, st.State, readOnly: true)
+                                        @PointRow("启动", st.RouteId, st.Start, readOnly: false)
+                                        @PointRow("停止", st.RouteId, st.Stop, readOnly: false)
+                                        @PointRow("复位", st.RouteId, st.Reset, readOnly: false)
+                                    </div>
+                                    <div class="map">
+                                        <span class="lbl">状态映射</span>
+                                        @if (st.StateMap is null) {
+                                            <div><span class="tag">继承整线</span><span class="mono dim">RUN=@line.StateMap.Run STOP=@line.StateMap.Stop ALARM=@line.StateMap.Alarm</span></div>
+                                            <button class="btn-sm" type="button" @onclick="() => Set(() => st.StateMap = line.StateMap.Clone())">单独覆盖</button>
+                                        } else {
+                                            <div><span class="stx run">RUN</span>=<input class="mono" value="@st.StateMap.Run" @onchange="e => Set(() => st.StateMap!.Run = e.Value?.ToString() ?? string.Empty)" /></div>
+                                            <div><span class="stx stop">STOP</span>=<input class="mono" value="@st.StateMap.Stop" @onchange="e => Set(() => st.StateMap!.Stop = e.Value?.ToString() ?? string.Empty)" /></div>
+                                            <div><span class="stx alarm">ALARM</span>=<input class="mono" value="@st.StateMap.Alarm" @onchange="e => Set(() => st.StateMap!.Alarm = e.Value?.ToString() ?? string.Empty)" /></div>
+                                            <button class="btn-sm" type="button" @onclick="() => Set(() => st.StateMap = null)">改回继承</button>
+                                        }
+                                    </div>
+                                </div>
+
+                                @AlarmBlock("工站报警", st.RouteId, st.Alarms)
+
+                                <div class="blk">
+                                    <div class="blk-t">
+                                        报警详情 · 关联实时数据
+                                        <span class="r small">出现在 MES 报警详情弹窗的表格里</span>
+                                    </div>
+                                    <div class="chips">
+                                        @foreach (string vid in st.RelatedVariableIds.ToList()) {
+                                            <span class="chip on" @key="vid">
+                                                @VarName(vid)
+                                                <button class="chip-x" type="button" title="移除"
+                                                        @onclick="() => Set(() => st.RelatedVariableIds.Remove(vid))">✕</button>
+                                            </span>
+                                        }
+                                        <select class="chip add" value=""
+                                                @onchange="e => AddRelated(st, e.Value?.ToString())">
+                                            <option value="">＋ 从该设备变量添加</option>
+                                            @foreach (WebVariable v in VarsOf(st.RouteId).Where(v => !st.RelatedVariableIds.Contains(v.Id))) {
+                                                <option value="@v.Id">@VarLabel(v)</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="blk">
+                                    <div class="blk-t">卡片显示</div>
+                                    <div class="frow">
+                                        <label>卡片副值</label>
+                                        <select class="mono" value="@st.SubValueVariableId"
+                                                @onchange="e => Set(() => st.SubValueVariableId = e.Value?.ToString() ?? string.Empty)">
+                                            <option value="">— 不显示 —</option>
+                                            @foreach (WebVariable v in VarsOf(st.RouteId)) {
+                                                <option value="@v.Id">@VarLabel(v)</option>
+                                            }
+                                        </select>
+                                        <span class="help">MES 卡片状态下方那行数字，单位取自变量；名称与副标题继承设备管理</span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @* ================= 面板：添加工站 ================= *@
+                        @if (_panel == Panel.AddStation) {
+                            <div class="det-hd">
+                                <span class="crumb">@line.Name › <b>添加工站</b></span>
+                                <span class="devline">从「设备管理」中尚未加入本线的设备选择</span>
+                            </div>
+                            <div class="det-bd">
+                                @if (Available(line).Count == 0) {
+                                    <div class="notice warn">
+                                        没有可加入的设备了——「设备管理」里的设备都已经在本线上，或者一台都还没添加。
+                                    </div>
+                                } else {
+                                    <div class="frow">
+                                        <label>设备</label>
+                                        <select class="mono" value="@_addRouteId" @onchange="e => _addRouteId = e.Value?.ToString() ?? string.Empty">
+                                            <option value="">— 选择设备 —</option>
+                                            @foreach (WebDeviceRecord d in Available(line)) {
+                                                <option value="@d.RouteId">@DeviceLabel(d)</option>
+                                            }
+                                        </select>
+                                        <span class="help">名称、连接随设备管理；加入后再选点位</span>
+                                    </div>
+                                    <div class="frow">
+                                        <label>插入位置</label>
+                                        <select value="@_addAt" @onchange="AddAtChanged">
+                                            <option value="end">末尾</option>
+                                            <option value="before">选中卡片之前</option>
+                                            <option value="after">选中卡片之后</option>
+                                        </select>
+                                        <span class="help">加入后也可以直接在预览里拖动</span>
+                                    </div>
+                                    <div>
+                                        <button class="btn primary" type="button"
+                                                disabled="@(_addRouteId.Length == 0)"
+                                                @onclick="() => AddStation(line)">加入产线</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @* ================= 线内离散设备 ================= *@
+                        <div class="det-hd solo-hd-bar">
+                            <span class="crumb">@line.Name › <b>线内离散设备</b></span>
+                            <span class="devline">归属本线但不在工艺流中的伺服 / 变频器 / 传感器 · 仅监视，无报警、无控制</span>
+                            <div class="r">
+                                <button class="btn-sm" type="button" @onclick="OpenSolo">＋ 添加离散设备</button>
+                            </div>
+                        </div>
+                        <div class="det-bd">
+                            @if (line.Solo.Count == 0) {
+                                <div class="notice">还没有离散设备。它们只在 MES 页显示读数，不参与节拍与报警。</div>
+                            } else {
+                                <div class="solo-list">
+                                    @foreach (WebSoloDevice d in line.Solo.ToList()) {
+                                        <div class="solo-item" @key="d.RouteId">
+                                            <span class="nm">@DeviceName(d.RouteId)</span>
+                                            <span class="sub">@DeviceSub(d.RouteId)</span>
+                                            <span class="fields">@string.Join(" · ", d.FieldVariableIds.Select(VarName))</span>
+                                            <button class="btn-sm" type="button" @onclick="() => EditSolo(d)">编辑</button>
+                                            <button class="btn-sm danger" type="button" @onclick="() => Set(() => line.Solo.Remove(d))">移除</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <div class="ed-ft">
+                            <span class="msg @_msgClass">@_msg</span>
+                            <div class="right">
+                                <button class="btn ghost" type="button" @onclick="Reload">还原</button>
+                                <button class="btn primary" type="button" @onclick="SaveAll">保存</button>
+                            </div>
+                        </div>
+                    }
+                </section>
+            </div>
+        }
+    </div>
+
+    @* ================= 添加 / 编辑离散设备 ================= *@
+    @if (_soloOpen && line is not null) {
+        <div class="add-form-overlay center" @onclick="CloseSolo">
+            <div class="add-form solo-dlg" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>@(_soloEditing is null ? "添加离散设备" : "编辑离散设备")</h3>
+                    <span class="d">@line.Name</span>
+                    <button class="close-btn" type="button" @onclick="CloseSolo">×</button>
+                </div>
+
+                <div class="solo-bd">
+                    <div class="f">
+                        <span class="lb"><b>设备</b><span class="req">*</span><span class="opt">名称 / 协议 / 连接继承设备管理</span></span>
+                        <select class="mono" value="@_soloRouteId" disabled="@(_soloEditing is not null)"
+                                @onchange="e => SoloDeviceChanged(e.Value?.ToString())">
+                            <option value="">— 选择设备 —</option>
+                            @foreach (WebDeviceRecord d in SoloCandidates(line)) {
+                                <option value="@d.RouteId">@DeviceLabel(d)</option>
+                            }
+                        </select>
+                        @if (_soloEditing is null && SoloCandidates(line).Count == 0) {
+                            <span class="lb dim">没有可选设备：本线的设备都已在工艺流或离散列表里了。</span>
+                        }
+                    </div>
+
+                    <div class="sep"></div>
+                    <div class="grp">显示字段 · 4 格 · 来自该设备已配置的变量</div>
+                    <div class="slots">
+                        @for (int i = 0; i < 4; i++) {
+                            int slot = i;
+                            <div class="f">
+                                <span class="lb"><b>字段 @(slot + 1)</b></span>
+                                <select class="mono" value="@_soloFields[slot]"
+                                        @onchange="e => _soloFields[slot] = e.Value?.ToString() ?? string.Empty">
+                                    <option value="">— 不显示 —</option>
+                                    @foreach (WebVariable v in VarsOf(_soloRouteId)) {
+                                        <option value="@v.Id">@VarLabel(v)</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="sep"></div>
+                    <div class="grp">预览 · 值随「变量配置」的轮询周期更新 · 仅监视、无报警、无控制</div>
+                    @* 预览用真实的变量名与单位，但数值是占位符——本页不发 I/O，
+                       画一个假数字在这里只会让人以为已经读到了 *@
+                    <div class="pv">
+                        <div class="top">
+                            <span class="led"></span>
+                            <span class="nm">@(_soloRouteId.Length > 0 ? DeviceName(_soloRouteId) : "（未选择设备）")</span>
+                            <span class="poll">@SoloPollText()</span>
+                        </div>
+                        <div class="md">@(_soloRouteId.Length > 0 ? DeviceSub(_soloRouteId) : "—")</div>
+                        <div class="vals">
+                            @foreach (string vid in _soloFields.Where(x => x.Length > 0)) {
+                                WebVariable? v = VarById(vid);
+                                <div class="kv">
+                                    <span class="k">@(v?.Name ?? vid)</span>
+                                    <span class="v">
+                                        --@if (v is not null && v.Unit.Length > 0) { <span class="u">@v.Unit</span> }
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                        @if (_soloFields.All(x => x.Length == 0)) {
+                            <div class="md">还没有选字段，卡片上只会显示名称与连接。</div>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-actions solo-ft">
+                    <span class="hint">变量不够？去「变量配置」为该设备补充</span>
+                    <button class="btn ghost" type="button" @onclick="CloseSolo">取消</button>
+                    <button class="btn primary" type="button" disabled="@(_soloRouteId.Length == 0)"
+                            @onclick="() => SaveSolo(line)">@(_soloEditing is null ? "添加" : "保存")</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ================= 删除产线确认 ================= *@
+    @if (_pendingDeleteLine.Length > 0) {
+        <div class="add-form-overlay center" @onclick="() => _pendingDeleteLine = string.Empty">
+            <div class="add-form confirm-box" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>删除产线</h3>
+                    <button class="close-btn" type="button" @onclick="() => _pendingDeleteLine = string.Empty">×</button>
+                </div>
+                <p>将删除产线「@(Lines.Get(_pendingDeleteLine)?.Name)」的全部编排：工站顺序、点位选择、报警规则。</p>
+                <p class="setting-hint">设备与变量本身不受影响，它们属于「设备管理」和「变量配置」。此操作不可恢复。</p>
+                <div class="form-actions">
+                    <button class="btn ghost" type="button" @onclick="() => _pendingDeleteLine = string.Empty">取消</button>
+                    <button class="btn danger" type="button" @onclick="ConfirmDeleteLine">确认删除</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>右侧编辑器当前显示哪一个面板。</summary>
+    private enum Panel
+    {
+        /// <summary>整线控制器。</summary>
+        Line,
+
+        /// <summary>某个工站。</summary>
+        Station,
+
+        /// <summary>添加工站。</summary>
+        AddStation,
+    }
+
+    /// <summary>当前编辑的产线 Id。</summary>
+    private string _lineId = string.Empty;
+
+    /// <summary>当前面板。</summary>
+    private Panel _panel = Panel.Line;
+
+    /// <summary>当前编辑的工站下标；-1 表示没选中。</summary>
+    private int _stationIndex = -1;
+
+    /// <summary>拖动中的工站下标；-1 表示没在拖。</summary>
+    private int _dragFrom = -1;
+
+    /// <summary>「添加工站」面板里选中的设备。</summary>
+    private string _addRouteId = string.Empty;
+
+    /// <summary>「添加工站」的插入位置：end / before / after。</summary>
+    private string _addAt = "end";
+
+    /// <summary>待删除的产线 Id；非空表示确认框开着。</summary>
+    private string _pendingDeleteLine = string.Empty;
+
+    /// <summary>底部状态行文案。</summary>
+    private string _msg = "尚无修改";
+
+    /// <summary>底部状态行的样式类。</summary>
+    private string _msgClass = "status-muted";
+
+    // ========================================================================
+    // 离散设备弹窗
+    // ========================================================================
+
+    /// <summary>弹窗是否打开。</summary>
+    private bool _soloOpen;
+
+    /// <summary>正在编辑的离散设备；null 表示新增。</summary>
+    private WebSoloDevice? _soloEditing;
+
+    /// <summary>弹窗里选中的设备路由。</summary>
+    private string _soloRouteId = string.Empty;
+
+    /// <summary>
+    /// 弹窗里四个显示字段的变量 Id。
+    /// </summary>
+    /// <remarks>
+    /// 定长四格而不是可变列表：卡片版式就是两行两列，
+    /// 用列表的话「删掉第二个」之后剩下的会往前挤，与卡片上的格位对不上。
+    /// </remarks>
+    private readonly string[] _soloFields = new string[4];
+
+    // ========================================================================
+    // 片段：点位行 / 报警块 / KPI 行
+    // ========================================================================
+
+    /// <summary>
+    /// 一行点位选择：用途 | 变量下拉 | 写入值与方式。
+    /// </summary>
+    /// <param name="label">用途名，例如「启动」。</param>
+    /// <param name="routeId">该点位所属设备。</param>
+    /// <param name="p">被编辑的点位。</param>
+    /// <param name="readOnly">状态点位为只读，没有写入值与脉冲。</param>
+    /// <remarks>
+    /// 抽成片段而不是复制两遍：整线和工站的四行结构完全一样，
+    /// 复制之后加一个字段就得改两处，漏一处不会报错，只会在其中一个面板上少个控件。
+    /// </remarks>
+    private RenderFragment PointRow(string label, string routeId, WebPointRef p, bool readOnly) =>
+        @<text>
+            <span class="k">@label</span>
+            <select class="mono @(p.Bound ? null : "unbound")" value="@p.VariableId"
+                    @onchange="e => Set(() => p.VariableId = e.Value?.ToString() ?? string.Empty)">
+                <option value="">— 未选择 —</option>
+                @foreach (WebVariable v in VarsOf(routeId))
+                {
+                    <option value="@v.Id">@VarLabel(v)</option>
+                }
+            </select>
+            <span class="cell">
+                @if (readOnly)
+                {
+                    <span class="tag">只读</span>
+                }
+                else
+                {
+                    <input class="mono" value="@p.WriteValue" disabled="@(!p.Bound)" aria-label="@(label + "写入值")"
+                           @onchange="e => Set(() => p.WriteValue = e.Value?.ToString() ?? string.Empty)" />
+                    @* 脉冲开关做成按钮而不是复选框：这一格很窄，而「脉冲 300 ms」
+                       本身就要显示出来，按钮既是状态也是开关，省一个控件。 *@
+                    <button class="btn-sm @(p.PulseMs > 0 ? "pulse" : null)" type="button" disabled="@(!p.Bound)"
+                            title="脉冲：写入后按设定时长自动写 0。点击切换为一直保持"
+                            @onclick="() => Set(() => p.PulseMs = p.PulseMs > 0 ? 0 : 300)">
+                        @(p.PulseMs > 0 ? "脉冲 " + p.PulseMs + " ms" : "保持")
+                    </button>
+                }
+            </span>
+        </text>;
+
+    /// <summary>一行 KPI 绑定：指标 | 变量下拉（可选常量）| 单位或常量值。</summary>
+    /// <param name="label">指标名。</param>
+    /// <param name="routeId">控制器设备。</param>
+    /// <param name="k">被编辑的 KPI 项。</param>
+    private RenderFragment KpiRow(string label, string routeId, WebKpiItem k) =>
+        @<text>
+            <span class="k">@label</span>
+            <select class="mono @(k.VariableId.Length > 0 ? null : "unbound")" value="@k.VariableId"
+                    @onchange="e => Set(() => k.VariableId = e.Value?.ToString() ?? string.Empty)">
+                @* 「常量」不是「未选择」：目标产量这类指标本来就不来自 PLC，
+                   把它显示成未选择会让人一直去找那个不存在的变量 *@
+                <option value="">— 常量 —</option>
+                @foreach (WebVariable v in VarsOf(routeId))
+                {
+                    <option value="@v.Id">@VarLabel(v)</option>
+                }
+            </select>
+            <span class="cell">
+                @if (k.VariableId.Length > 0)
+                {
+                    <input value="@k.Unit" placeholder="单位" aria-label="@(label + "单位")"
+                           @onchange="e => Set(() => k.Unit = e.Value?.ToString() ?? string.Empty)" />
+                }
+                else
+                {
+                    <input class="mono" value="@k.Constant" placeholder="常量值" aria-label="@(label + "常量")"
+                           @onchange="e => Set(() => k.Constant = e.Value?.ToString() ?? string.Empty)" />
+                }
+            </span>
+        </text>;
+
+    /// <summary>报警规则块：整线与工站共用。</summary>
+    /// <param name="title">块标题。</param>
+    /// <param name="routeId">规则所属设备，决定变量下拉的范围。</param>
+    /// <param name="rules">被编辑的规则列表。</param>
+    private RenderFragment AlarmBlock(string title, string routeId, List<WebAlarmRule> rules) =>
+        @<div class="blk">
+            <div class="blk-t">
+                @title
+                <span class="r"><span class="tag @(rules.Count > 0 ? "sev-c" : null)">@rules.Count 条</span></span>
+            </div>
+
+            @if (routeId.Length == 0)
+            {
+                <div class="notice warn">先选好设备，才能从它的变量里挑判断依据。</div>
+            }
+            else
+            {
+                <div class="alm">
+                    <span class="h">该设备变量</span><span class="h">位 / 条件</span>
+                    <span class="h">报警名称 · 代码</span><span class="h">级别</span>
+                    <span class="h">处理建议</span><span class="h"></span>
+
+                    @foreach (WebAlarmRule r in rules.ToList())
+                    {
+                        <select class="mono @(r.VariableId.Length > 0 ? null : "unbound")" value="@r.VariableId" @key="r.Id"
+                                aria-label="判断变量"
+                                @onchange="e => Set(() => r.VariableId = e.Value?.ToString() ?? string.Empty)">
+                            <option value="">— 未选择 —</option>
+                            @foreach (WebVariable v in VarsOf(routeId))
+                            {
+                                <option value="@v.Id">@VarLabel(v)</option>
+                            }
+                        </select>
+                        <input class="mono" value="@r.Condition" aria-label="条件"
+                               @onchange="e => Set(() => r.Condition = e.Value?.ToString() ?? string.Empty)" />
+                        <span class="code">
+                            <input value="@r.Title" placeholder="报警名称" aria-label="报警名称"
+                                   @onchange="e => Set(() => r.Title = e.Value?.ToString() ?? string.Empty)" />
+                            <input class="mono" value="@r.Code" placeholder="代码" aria-label="报警代码"
+                                   @onchange="e => Set(() => r.Code = e.Value?.ToString() ?? string.Empty)" />
+                        </span>
+                        <select value="@(r.Critical ? "1" : "0")" aria-label="级别"
+                                @onchange="e => Set(() => r.Critical = IsCritical(e.Value))">
+                            <option value="1">严重</option>
+                            <option value="0">预警</option>
+                        </select>
+                        <input value="@r.Advice" placeholder="处理建议" aria-label="处理建议"
+                               @onchange="e => Set(() => r.Advice = e.Value?.ToString() ?? string.Empty)" />
+                        <button class="btn-sm danger" type="button" title="删除这条规则"
+                                @onclick="() => Set(() => rules.Remove(r))">✕</button>
+                    }
+                </div>
+
+                <div class="alm-add">
+                    <button class="btn-sm dashed" type="button"
+                            @onclick="() => Set(() => rules.Add(new WebAlarmRule()))">＋ 添加@(title)</button>
+                    条件支持 <code class="mono">bit N</code> · <code class="mono">== v</code> ·
+                    <code class="mono">!= v</code> · <code class="mono">&lt; v</code> · <code class="mono">&gt; v</code>
+                </div>
+            }
+        </div>;
+
+    // ========================================================================
+    // 查询辅助
+    // ========================================================================
+
+    /// <summary>某台设备已配置的变量，按名称排序。</summary>
+    /// <remarks>
+    /// 每次渲染都重新过滤。变量表通常只有几十到几百条，代价可忽略；
+    /// 而缓存会在「去变量页加了一条再回来」时显示不出新变量，
+    /// 那种「明明加了却选不到」比多过滤几遍难查得多。
+    /// </remarks>
+    private List<WebVariable> VarsOf(string routeId)
+    {
+        if (string.IsNullOrWhiteSpace(routeId)) return new List<WebVariable>();
+
+        return Variables.GetAll()
+            .Where(v => string.Equals(v.RouteId, routeId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>按 Id 找一条变量。</summary>
+    private WebVariable? VarById(string id) =>
+        string.IsNullOrWhiteSpace(id) ? null : Variables.GetAll().FirstOrDefault(v => v.Id == id);
+
+    /// <summary>变量在下拉里的显示文本：名称 · 地址 · 备注。</summary>
+    private static string VarLabel(WebVariable v)
+    {
+        string s = v.Name;
+        if (v.Address.Length > 0) s += " · " + v.Address;
+        if (v.Note.Length > 0) s += " · " + v.Note;
+        return s;
+    }
+
+    /// <summary>变量名；找不到时回落显示 Id，让人看得出是引用失效而不是空白。</summary>
+    private string VarName(string id) => VarById(id)?.Name ?? "(已删除 " + id[..Math.Min(6, id.Length)] + ")";
+
+    /// <summary>设备显示名。</summary>
+    private string DeviceName(string routeId)
+    {
+        WebDeviceRecord? d = Devices.Get(routeId);
+        if (d is null) return "(设备已删除)";
+        return d.Name.Length > 0 ? d.Name : d.RouteId;
+    }
+
+    /// <summary>设备副标题：协议 · 连接。</summary>
+    private string DeviceSub(string routeId)
+    {
+        WebDeviceRecord? d = Devices.Get(routeId);
+        if (d is null) return "路由 " + routeId + " 已不存在";
+
+        string ep = string.Equals(d.TransportKind, "Serial", StringComparison.OrdinalIgnoreCase)
+            ? d.SerialPort
+            : d.Address + ":" + d.Port;
+
+        return d.ProtocolId + " · " + ep;
+    }
+
+    /// <summary>设备在下拉里的完整文本。</summary>
+    private string DeviceLabel(WebDeviceRecord d) =>
+        (d.Name.Length > 0 ? d.Name : d.RouteId) + " · " + DeviceSub(d.RouteId);
+
+    /// <summary>整线控制器那行文字。</summary>
+    private string ControllerText(WebLine line) =>
+        line.ControllerRouteId.Length == 0
+            ? "未选择控制器设备"
+            : DeviceName(line.ControllerRouteId) + " · " + DeviceSub(line.ControllerRouteId)
+              + " · " + VarsOf(line.ControllerRouteId).Count + " 个变量";
+
+    /// <summary>整线四个点位已选几个。</summary>
+    private static int LineBound(WebLine l) =>
+        (l.State.Bound ? 1 : 0) + (l.Start.Bound ? 1 : 0) + (l.Stop.Bound ? 1 : 0) + (l.Reset.Bound ? 1 : 0);
+
+    /// <summary>左栏每条产线的副标题。</summary>
+    private string LineSub(WebLine l)
+    {
+        string ctl = l.ControllerRouteId.Length == 0 ? "无控制器" : DeviceName(l.ControllerRouteId);
+        return ctl + " · " + l.Stations.Count + " 工站 · " + l.AlarmCount + " 报警";
+    }
+
+    /// <summary>
+    /// 预览底部那条警告：哪一站的启停没选。
+    /// </summary>
+    /// <remarks>
+    /// 只报第一条。列全部会把这一行撑成一段话，而操作员一次也只会去处理一站；
+    /// 处理完这条，下一条自然会顶上来。
+    /// </remarks>
+    private string UnboundText(WebLine line)
+    {
+        foreach (WebStation s in line.Stations)
+        {
+            if (s.Start.Bound && s.Stop.Bound) continue;
+
+            string what = !s.Start.Bound && !s.Stop.Bound ? "启动 / 停止" : !s.Start.Bound ? "启动" : "停止";
+            return DeviceName(s.RouteId) + " " + what + "未选择 → MES 页该站按钮置灰";
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>还能加入本线工艺流的设备：排除已在本线（工站或离散）的。</summary>
+    /// <remarks>
+    /// 只排除<b>本线</b>已用的。一台设备理论上可以同时出现在两条线的编排里
+    /// （例如公用的上下料机械手），拦掉反而挡了真实场景。
+    /// </remarks>
+    private List<WebDeviceRecord> Available(WebLine line)
+    {
+        HashSet<string> used = new(
+            line.Stations.Select(s => s.RouteId).Concat(line.Solo.Select(s => s.RouteId)),
+            StringComparer.OrdinalIgnoreCase);
+
+        return Devices.GetAll().Where(d => !used.Contains(d.RouteId)).ToList();
+    }
+
+    /// <summary>离散设备弹窗里可选的设备。编辑时把自己也算进去，否则下拉是空的。</summary>
+    private List<WebDeviceRecord> SoloCandidates(WebLine line)
+    {
+        List<WebDeviceRecord> list = Available(line);
+
+        if (_soloEditing is not null)
+        {
+            WebDeviceRecord? self = Devices.Get(_soloEditing.RouteId);
+            if (self is not null) list.Insert(0, self);
+        }
+
+        return list;
+    }
+
+    /// <summary>离散设备预览里的轮询周期：取所选字段中最快的那个。</summary>
+    /// <remarks>
+    /// 卡片整体的刷新快慢由最快的那条决定——四个格子各有各的周期，
+    /// 但人看到的是「这张卡多久动一次」。
+    /// </remarks>
+    private string SoloPollText()
+    {
+        List<WebVariable> picked = _soloFields
+            .Where(x => x.Length > 0)
+            .Select(VarById)
+            .Where(v => v is not null)
+            .Select(v => v!)
+            .ToList();
+
+        if (picked.Count == 0) return "—";
+
+        int ms = picked.Min(v => v.ScanRateMs);
+        return ms >= 1000 ? (ms / 1000.0).ToString("0.#") + " s" : ms + " ms";
+    }
+
+    /// <summary>把配置文件的绝对路径缩成「上级目录/文件名」。</summary>
+    private static string ShortPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return string.Empty;
+
+        string file = Path.GetFileName(path);
+        string? dir = Path.GetDirectoryName(path);
+        string parent = string.IsNullOrEmpty(dir) ? string.Empty : Path.GetFileName(dir);
+
+        return parent.Length == 0 ? file : parent + "/" + file;
+    }
+
+    // ========================================================================
+    // 编辑动作
+    // ========================================================================
+
+    /// <summary>
+    /// 改一处配置并标记为「有未保存修改」。
+    /// </summary>
+    /// <param name="apply">实际的修改动作。</param>
+    /// <remarks>
+    /// 所有编辑都走这里，就不会出现「改了某个字段但忘了标脏、保存时漏掉」。
+    /// 改动直接落在 <see cref="WebLineStore"/> 的内存对象上——
+    /// 存储刻意返回对象本身而非拷贝，正是为了这个。
+    /// </remarks>
+    private void Set(Action apply)
+    {
+        apply();
+        _msg = "有未保存修改";
+        _msgClass = "status-warn";
+    }
+
+    /// <summary>「插入位置」下拉的处理。</summary>
+    /// <remarks>
+    /// 抽成方法而不是写内联 lambda：字符串字面量里的引号会和特性本身的引号打架，
+    /// Razor 在第一个内层引号处就把特性值截断了，报的还是「表达式项无效」这种看不出因果的错。
+    /// </remarks>
+    private void AddAtChanged(ChangeEventArgs e) =>
+        _addAt = e.Value?.ToString() is { Length: > 0 } s ? s : "end";
+
+    /// <summary>报警级别下拉的取值：1 为严重，其余为预警。</summary>
+    private static bool IsCritical(object? value) => value?.ToString() == "1";
+
+    /// <summary>切换当前产线。</summary>
+    /// <remarks>
+    /// 顺带把面板拨回整线：工站下标是针对上一条线的，
+    /// 不重置会指到新线上一个位置相同但完全无关的设备。
+    /// </remarks>
+    private void Select(string id)
+    {
+        _lineId = id;
+        _panel = Panel.Line;
+        _stationIndex = -1;
+    }
+
+    /// <summary>选中某个工站并切到工站面板。</summary>
+    private void SelectStation(int idx)
+    {
+        _stationIndex = idx;
+        _panel = Panel.Station;
+    }
+
+    /// <summary>新建产线。</summary>
+    private void AddLine()
+    {
+        WebLine l = Lines.Add(string.Empty);
+        Select(l.Id);
+        _msg = "已新建产线，先选控制器设备";
+        _msgClass = "status-ok";
+    }
+
+    /// <summary>复制当前产线。</summary>
+    private void Duplicate(WebLine line)
+    {
+        WebLine? copy = Lines.Duplicate(line.Id);
+        if (copy is null) return;
+
+        Select(copy.Id);
+        _msg = "已复制。工站仍指向原来那批设备，记得逐站改成本线的设备";
+        _msgClass = "status-warn";
+    }
+
+    /// <summary>改产线名。</summary>
+    private void Rename(WebLine line, string? name) =>
+        Set(() => line.Name = (name ?? string.Empty).Trim());
+
+    /// <summary>
+    /// 换整线控制器。
+    /// </summary>
+    /// <remarks>
+    /// 换设备时把四个点位一起清空。不清的话它们仍指向<b>旧设备</b>的变量 Id，
+    /// 界面上看还是「已选择」，实际却读不到——而这种错要等到现场按下启动才发现。
+    /// </remarks>
+    private void SetController(WebLine line, string? routeId) => Set(() =>
+    {
+        string id = routeId ?? string.Empty;
+        if (string.Equals(id, line.ControllerRouteId, StringComparison.Ordinal)) return;
+
+        line.ControllerRouteId = id;
+        line.State = new WebPointRef();
+        line.Start = new WebPointRef();
+        line.Stop = new WebPointRef();
+        line.Reset = new WebPointRef();
+        line.Alarms.Clear();
+        line.Output = new WebKpiItem { Unit = "pcs" };
+        line.Target = new WebKpiItem { Constant = "1500" };
+        line.Yield = new WebKpiItem { Unit = "%" };
+        line.Cycle = new WebKpiItem { Unit = "s" };
+    });
+
+    /// <summary>把拖动中的工站放到目标位置。</summary>
+    /// <remarks>
+    /// 列表顺序就是工艺顺序，所以这里改的是真配置，不只是界面。
+    /// 移动后跟着更新选中下标，否则详情面板会跳到别的站上。
+    /// </remarks>
+    private void Drop(WebLine line, int to)
+    {
+        if (_dragFrom < 0 || _dragFrom >= line.Stations.Count || _dragFrom == to) return;
+
+        Set(() =>
+        {
+            WebStation moving = line.Stations[_dragFrom];
+            line.Stations.RemoveAt(_dragFrom);
+            line.Stations.Insert(to, moving);
+        });
+
+        if (_stationIndex == _dragFrom) _stationIndex = to;
+        _dragFrom = -1;
+    }
+
+    /// <summary>把设备加入工艺流。</summary>
+    private void AddStation(WebLine line)
+    {
+        if (_addRouteId.Length == 0) return;
+
+        WebStation st = new() { RouteId = _addRouteId };
+
+        int at = _addAt switch
+        {
+            "before" when _stationIndex >= 0 => _stationIndex,
+            "after" when _stationIndex >= 0 => _stationIndex + 1,
+            _ => line.Stations.Count,
+        };
+        at = Math.Clamp(at, 0, line.Stations.Count);
+
+        Set(() => line.Stations.Insert(at, st));
+
+        _addRouteId = string.Empty;
+        SelectStation(at);
+    }
+
+    /// <summary>把工站移出产线。</summary>
+    /// <remarks>
+    /// 只移出编排，设备与变量本身不动——它们属于设备管理和变量配置。
+    /// </remarks>
+    private void RemoveStation(WebLine line, int idx)
+    {
+        if (idx < 0 || idx >= line.Stations.Count) return;
+
+        Set(() => line.Stations.RemoveAt(idx));
+        _panel = Panel.Line;
+        _stationIndex = -1;
+    }
+
+    /// <summary>把一条变量加进「关联实时数据」。</summary>
+    private void AddRelated(WebStation st, string? variableId)
+    {
+        if (string.IsNullOrWhiteSpace(variableId)) return;
+
+        Set(() =>
+        {
+            if (!st.RelatedVariableIds.Contains(variableId))
+                st.RelatedVariableIds.Add(variableId);
+        });
+    }
+
+    /// <summary>保存全部改动。</summary>
+    private void SaveAll()
+    {
+        Lines.Save();
+        _msg = "已保存到 " + ShortPath(WebLineStore.FilePath);
+        _msgClass = "status-ok";
+        Log.Info("Lines", "保存产线配置");
+    }
+
+    /// <summary>丢弃未保存的改动，从磁盘重新读一遍。</summary>
+    /// <remarks>
+    /// 编辑直接改的是内存对象，因此「还原」必须真的重读文件，
+    /// 光把界面刷新一遍是没用的——内存里已经是改过的样子了。
+    /// </remarks>
+    private void Reload()
+    {
+        Lines.Reload();
+        _stationIndex = -1;
+        _panel = Panel.Line;
+        _msg = "已还原到上次保存的状态";
+        _msgClass = "status-muted";
+    }
+
+    /// <summary>确认删除产线。</summary>
+    private void ConfirmDeleteLine()
+    {
+        Lines.Remove(_pendingDeleteLine);
+        _pendingDeleteLine = string.Empty;
+        _lineId = string.Empty;
+        _panel = Panel.Line;
+        _stationIndex = -1;
+        _msg = "已删除产线";
+        _msgClass = "status-ok";
+    }
+
+    // ========================================================================
+    // 离散设备弹窗
+    // ========================================================================
+
+    /// <summary>打开「添加离散设备」。</summary>
+    private void OpenSolo()
+    {
+        _soloEditing = null;
+        _soloRouteId = string.Empty;
+        Array.Fill(_soloFields, string.Empty);
+        _soloOpen = true;
+    }
+
+    /// <summary>打开「编辑离散设备」，回填已选字段。</summary>
+    private void EditSolo(WebSoloDevice d)
+    {
+        _soloEditing = d;
+        _soloRouteId = d.RouteId;
+
+        Array.Fill(_soloFields, string.Empty);
+        for (int i = 0; i < Math.Min(4, d.FieldVariableIds.Count); i++)
+            _soloFields[i] = d.FieldVariableIds[i];
+
+        _soloOpen = true;
+    }
+
+    /// <summary>关闭弹窗。</summary>
+    private void CloseSolo()
+    {
+        _soloOpen = false;
+        _soloEditing = null;
+    }
+
+    /// <summary>
+    /// 弹窗里换了设备。
+    /// </summary>
+    /// <remarks>
+    /// 必须清空四个字段：它们是<b>上一台设备</b>的变量 Id，
+    /// 留着的话下拉里选不中（不在新设备的变量里），预览却还画着旧名字。
+    /// </remarks>
+    private void SoloDeviceChanged(string? routeId)
+    {
+        _soloRouteId = routeId ?? string.Empty;
+        Array.Fill(_soloFields, string.Empty);
+    }
+
+    /// <summary>保存离散设备。</summary>
+    private void SaveSolo(WebLine line)
+    {
+        if (_soloRouteId.Length == 0) return;
+
+        List<string> fields = _soloFields.Where(x => x.Length > 0).ToList();
+
+        Set(() =>
+        {
+            if (_soloEditing is not null)
+            {
+                _soloEditing.FieldVariableIds = fields;
+            }
+            else
+            {
+                line.Solo.Add(new WebSoloDevice { RouteId = _soloRouteId, FieldVariableIds = fields });
+            }
+        });
+
+        CloseSolo();
+    }
+
+    // ========================================================================
+    // 生命周期
+    // ========================================================================
+
+    /// <summary>订阅存储变更，用于别处（例如另一个浏览器会话）改动时刷新。</summary>
+    protected override void OnInitialized() => Lines.Changed += OnChanged;
+
+    /// <summary>存储变化时重绘；事件可能来自别的电路，必须经 InvokeAsync 切回。</summary>
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>退订；WebLineStore 是单例，漏退会泄漏本组件。</summary>
+    public void Dispose() => Lines.Changed -= OnChanged;
+}

@@ -36,8 +36,7 @@
                 title="需要先在「配置产线」里绑定整线启停点位">开始监控</button>
         <button class="btn ghost" type="button" disabled
                 title="需要先在「配置产线」里绑定整线启停点位">停止</button>
-        <button class="btn ghost" type="button" disabled
-                title="产线配置窗口待接入">配置产线</button>
+        <a class="btn ghost" href="/lines">配置产线</a>
 
         <span class="spacer"></span>
 
@@ -152,8 +151,10 @@
                         <span class="cnt">@line.Solo.Count</span>
                         <span class="d">归属本线但不在工艺流中的伺服 / 变频器 / 传感器 · 仅监视，值随变量轮询更新</span>
                         <div class="r" @onclick:stopPropagation>
-                            <button class="btn-sm" type="button" disabled title="产线配置窗口待接入">＋ 添加设备</button>
-                            <button class="btn-sm" type="button" disabled title="产线配置窗口待接入">编辑</button>
+                            @* 离散设备的增删在「产线配置」里做——那边才有真实的设备与变量清单。
+                               本页当前是演示数据，就地编辑改不到任何真配置。 *@
+                            <a class="btn-sm" href="/lines">＋ 添加设备</a>
+                            <a class="btn-sm" href="/lines">编辑</a>
                         </div>
                     </div>
 
@@ -181,9 +182,9 @@
                                 </div>
                             </div>
                         }
-                        <button class="dc add" type="button" disabled title="产线配置窗口待接入">
+                        <a class="dc add" href="/lines">
                             <span class="plus">＋</span>添加离散设备
-                        </button>
+                        </a>
                     </div>
                 </div>
             </section>

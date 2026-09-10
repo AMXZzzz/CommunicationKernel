@@ -2750,3 +2750,493 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     }
     .page-mes .facts { grid-template-columns: 1fr; }
 }
+
+/* ============================================================================
+   产线配置页
+   ----------------------------------------------------------------------------
+   左：产线列表　右：编辑器（预览 + 详情面板 + 底部保存条）
+   与 MES 页一样，短类名一律限定在 .page-lines 之下。
+   ============================================================================ */
+.page-lines .hint { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.page-lines .lines-layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: var(--space);
+    min-height: 0;
+    max-height: 100%;
+}
+.page-lines .lines-panel,
+.page-lines .editor {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    max-height: 100%;
+    overflow: auto;
+}
+.page-lines .lines-panel { display: flex; flex-direction: column; }
+
+/* 左栏一项：名称 + 未选择数（右上）+ 副标题（跨两列） */
+.page-lines .ln {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 10px;
+    width: 100%;
+    padding: 11px 14px;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+.page-lines .ln:hover { background: var(--surface3); }
+.page-lines .ln.active { background: var(--accent-dim); border-left-color: var(--accent); }
+.page-lines .ln .t { font-weight: 600; font-size: 13px; }
+.page-lines .ln .b { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.page-lines .ln .b.warn { color: var(--warning-ink); }
+.page-lines .ln .s {
+    grid-column: 1 / 3;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.page-lines .lines-ft {
+    margin-top: auto;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 编辑器头：产线名 + 概要 + 复制/删除 */
+.page-lines .ed-hd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+}
+.page-lines .ed-hd input { width: 220px; font-weight: 600; }
+.page-lines .ed-hd .st { font-size: 12px; color: var(--text-dim); }
+.page-lines .ed-hd .ops { margin-left: auto; display: flex; gap: 8px; }
+
+/* ------------------------------------------------------------ 配置预览 */
+/* 淡淡的蓝色渐变把「预览」和下面的表单分开：两者都是深底面板，
+   不给点提示的话，滚动时分不清哪里是预览、哪里已经是在填表了。 */
+.page-lines .preview {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(61, 139, 253, .06), transparent);
+}
+.page-lines .pv-hd {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: var(--text-dim);
+}
+.page-lines .pv-hd b { color: var(--text-muted); font-weight: 600; font-size: 13px; }
+.page-lines .pv-hd .tag { margin-left: auto; }
+.page-lines .pv-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+.page-lines .pv-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    padding: 8px 14px;
+    border: 0;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface3);
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+}
+.page-lines .pv-line:hover { background: #2b2e33; }
+.page-lines .pv-line.sel { border-left-color: var(--accent); background: var(--accent-dim); }
+.page-lines .pv-line .h3 { font-size: 14px; font-weight: 600; }
+.page-lines .pv-line .ctl { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim); }
+.page-lines .pv-line .alarms { margin-left: auto; font-size: 11.5px; color: var(--text-dim); }
+.page-lines .pv-line .alarms b { color: var(--danger-ink); font-family: var(--font-mono); }
+.page-lines .pv-line .edit { font-size: 11px; color: var(--accent-ink); }
+
+.page-lines .pv-flow {
+    display: flex;
+    align-items: stretch;
+    gap: 16px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    min-height: 120px;
+}
+.page-lines .pst {
+    position: relative;
+    flex: 1;
+    min-width: 104px;
+    max-width: 138px;
+    padding: 7px 8px 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    text-align: center;
+    user-select: none;
+    transition: border-color .12s, transform .12s, opacity .12s;
+}
+.page-lines .pst:hover { border-color: #4a4d53; transform: translateY(-1px); }
+.page-lines .pst.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 6px 16px rgba(61, 139, 253, .25); }
+/* 选中卡片下方的小三角，指向下面那个详情面板——
+   否则一屏里有七张卡片和一个面板，看不出面板在讲哪一张 */
+.page-lines .pst.sel::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -13px;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--accent);
+}
+.page-lines .pst:not(:first-child)::before {
+    content: "";
+    position: absolute;
+    left: -17px;
+    top: 50%;
+    width: 16px;
+    height: 2px;
+    background: var(--border);
+}
+.page-lines .pst .grip {
+    position: absolute;
+    left: 5px;
+    top: 3px;
+    padding: 0 3px;
+    color: var(--text-dim);
+    font-size: 11px;
+    letter-spacing: -2px;
+    cursor: grab;
+}
+.page-lines .pst .grip:hover { color: var(--text); }
+.page-lines .pst .nm { margin-top: 2px; font-weight: 600; }
+.page-lines .pst .sub {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.page-lines .pst .n { position: absolute; right: 6px; top: 4px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+.page-lines .pst .n.c { color: var(--danger-ink); }
+/* 点位没选全的站描琥珀边：到了 MES 页这些站的按钮会是灰的，
+   在配置阶段就该看得出来是哪几站 */
+.page-lines .pst.warn { border-color: rgba(245, 158, 11, .5); }
+.page-lines .pst.dragging { opacity: .35; transform: scale(.96); }
+.page-lines .pst .ops {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px dashed var(--border);
+}
+.page-lines .pst .ops i {
+    width: 22px;
+    height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 14px;
+    color: var(--text-dim);
+    font-style: normal;
+}
+.page-lines .pst .ops i.off { opacity: .3; }
+/* 末尾那张「＋ 添加工站」是虚线占位，不参与拖动 */
+.page-lines .pst.ghost { border-style: dashed; opacity: .55; }
+.page-lines .pst.ghost:hover { opacity: 1; border-color: var(--accent); }
+
+.page-lines .pv-ft {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 6px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+.page-lines .pv-ft b { font-family: var(--font-mono); color: var(--text-muted); font-weight: 500; }
+.page-lines .pv-ft .warn { color: var(--warning-ink); }
+.page-lines .pv-ft .push { margin-left: auto; }
+
+/* ---------------------------------------------------------- 详情面板 */
+.page-lines .det-hd {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    background: var(--surface3);
+    border-bottom: 1px solid var(--border);
+}
+.page-lines .det-hd .crumb { font-size: 12px; color: var(--text-dim); }
+.page-lines .det-hd .crumb b { color: var(--text); font-weight: 600; font-size: 14px; }
+/* 类名不能叫 .dev：全局的 .dev 是变量页左栏那个三列 grid 的设备项，
+   套到这里会把整段文字塞进 8px 宽的第一列，逐字竖排。 */
+.page-lines .det-hd .devline {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.page-lines .det-hd .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.page-lines .solo-hd-bar { border-top: 1px solid var(--border); }
+
+.page-lines .det-bd { padding: 14px 16px; display: grid; gap: 16px; }
+.page-lines .blk { display: grid; gap: 8px; }
+.page-lines .blk-t {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--border);
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: .04em;
+}
+.page-lines .blk-t .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.page-lines .blk-t .r.small { font-size: 11px; }
+
+/* 表单行：标签 | 控件 | 说明。与设置页同一套版式。 */
+.page-lines .frow {
+    display: grid;
+    grid-template-columns: 120px minmax(220px, 420px) 1fr;
+    gap: 14px;
+    align-items: center;
+}
+.page-lines .frow > label { color: var(--text-muted); font-size: 13px; }
+.page-lines .frow .help { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+/* 点位绑定表：用途 | 变量 | 写入值与方式 */
+.page-lines .bind {
+    display: grid;
+    grid-template-columns: 110px minmax(200px, 300px) minmax(180px, 260px);
+    gap: 8px 12px;
+    align-items: center;
+    font-size: 13px;
+}
+.page-lines .bind .h {
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: .04em;
+}
+.page-lines .bind .k { color: var(--text-muted); }
+.page-lines .bind .cell { display: flex; gap: 6px; align-items: center; }
+.page-lines .bind .cell input { width: 72px; flex: none; }
+/* 未选择的下拉：虚线 + 灰字。实线时它和「已选好」的下拉长得一样，
+   得逐个点开才知道哪个还空着。 */
+.page-lines .unbound { color: var(--text-dim) !important; border-style: dashed !important; }
+
+/* 状态映射 */
+.page-lines .map { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.page-lines .map > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+}
+.page-lines .map input { width: 64px; }
+.page-lines .map .lbl { font-size: 12px; color: var(--text-dim); }
+.page-lines .map .dim { color: var(--text-dim); font-size: 11.5px; }
+.page-lines .stx { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: .08em; min-width: 56px; }
+.page-lines .stx.run { color: var(--success-ink); }
+.page-lines .stx.stop { color: var(--warning-ink); }
+.page-lines .stx.alarm { color: var(--danger-ink); }
+.page-lines .stx.off { color: var(--text-dim); }
+
+/* 报警规则表 */
+.page-lines .alm {
+    display: grid;
+    grid-template-columns: minmax(140px, 180px) 84px minmax(220px, 1fr) 84px minmax(180px, 1fr) 32px;
+    gap: 6px 10px;
+    align-items: center;
+    font-size: 13px;
+}
+.page-lines .alm .h {
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: .04em;
+}
+.page-lines .alm input, .page-lines .alm select { min-height: 28px; font-size: 12.5px; }
+.page-lines .alm .code { display: flex; gap: 6px; }
+.page-lines .alm .code input:first-child { flex: 1; min-width: 0; }
+.page-lines .alm .code input:last-child { width: 110px; flex: none; }
+.page-lines .alm-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); }
+.page-lines .alm-add code { font-family: var(--font-mono); color: var(--text-muted); }
+.page-lines .btn-sm.dashed { border-style: dashed; }
+/* 脉冲开关按钮：亮着＝会自动写 0 */
+.page-lines .btn-sm.pulse { color: var(--accent-ink); border-color: rgba(61, 139, 253, .5); }
+
+/* 关联实时数据的胶囊。.chip / .chip-x 直接复用模板页那一套，
+   这里只补两处差异：等宽字（显示的是变量名）与选中态描边。 */
+.page-lines .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.page-lines .chip { font-family: var(--font-mono); }
+.page-lines .chip.on { border-color: var(--accent); color: var(--text); }
+.page-lines select.chip.add {
+    width: auto;
+    min-height: 26px;
+    padding: 2px 8px;
+    border-style: dashed;
+    color: var(--text-dim);
+    font-family: inherit;
+}
+
+/* 提示条。三档语气与设置页一致。 */
+.page-lines .notice { padding: 8px 12px; border-radius: 4px; font-size: 12px; line-height: 1.6; border: 1px solid var(--border); background: var(--bg); color: var(--text-muted); }
+.page-lines .notice.warn { color: var(--warning-ink); border-color: rgba(245, 158, 11, .45); background: rgba(245, 158, 11, .1); }
+.page-lines .notice.info { color: var(--text-muted); border-color: rgba(61, 139, 253, .35); background: rgba(61, 139, 253, .06); }
+
+/* 状态标签 */
+.page-lines .tag {
+    display: inline-block;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 18px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+.page-lines .tag.ok { color: var(--success-ink); border-color: rgba(34, 197, 94, .4); }
+.page-lines .tag.warn { color: var(--warning-ink); border-color: rgba(245, 158, 11, .4); }
+.page-lines .tag.sev-c { color: var(--danger-ink); border-color: rgba(239, 68, 68, .5); }
+
+/* 线内离散设备清单 */
+.page-lines .solo-list { display: grid; gap: 8px; }
+.page-lines .solo-item {
+    display: grid;
+    grid-template-columns: minmax(120px, 200px) minmax(160px, 1fr) minmax(160px, 1.4fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+}
+.page-lines .solo-item .nm { font-weight: 600; }
+.page-lines .solo-item .sub,
+.page-lines .solo-item .fields {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 底部保存条 */
+.page-lines .ed-ft {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    position: sticky;
+    bottom: 0;
+    background: var(--surface2);
+}
+.page-lines .ed-ft .msg { font-size: 12px; color: var(--text-dim); }
+.page-lines .ed-ft .msg.status-ok { background: none; border: 0; padding: 0; color: var(--success-ink); }
+.page-lines .ed-ft .msg.status-warn { background: none; border: 0; padding: 0; color: var(--warning-ink); }
+.page-lines .ed-ft .msg.status-muted { background: none; border: 0; padding: 0; color: var(--text-dim); }
+.page-lines .ed-ft .right { margin-left: auto; display: flex; gap: 8px; }
+
+/* -------------------------------------------------- 添加离散设备弹窗 */
+.add-form.solo-dlg { width: 460px; max-width: 100%; }
+.solo-dlg .form-hd .d { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+.solo-dlg .solo-bd { display: grid; gap: 14px; }
+.solo-dlg .f { display: grid; gap: 5px; font-size: 12px; color: var(--text-dim); }
+.solo-dlg .f .lb { display: flex; align-items: center; gap: 6px; }
+.solo-dlg .f .lb b { color: var(--text-muted); font-weight: 500; }
+.solo-dlg .f .lb .req { color: var(--danger-ink); }
+.solo-dlg .f .lb .opt { color: var(--text-dim); margin-left: auto; }
+.solo-dlg .f .lb.dim { color: var(--text-dim); }
+.solo-dlg .sep { border-top: 1px dashed var(--border); margin: 2px 0; }
+.solo-dlg .grp { font-size: 11px; color: var(--text-dim); letter-spacing: .04em; }
+.solo-dlg .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* 预览卡：结构与 MES 页那张离散设备卡一致，改一处这里也要跟着改。
+   数值是占位符 --：本页不发 I/O，画个假数字会让人以为已经读到了。 */
+.solo-dlg .pv {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.solo-dlg .pv .top { display: flex; align-items: center; gap: 8px; }
+.solo-dlg .pv .top .led { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
+.solo-dlg .pv .top .nm { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.solo-dlg .pv .top .poll { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.solo-dlg .pv .md { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+.solo-dlg .pv .vals { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.solo-dlg .pv .kv {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 0;
+    border-bottom: 0;
+}
+.solo-dlg .pv .kv .k { font-size: 10.5px; color: var(--text-dim); }
+.solo-dlg .pv .kv .v { font-family: var(--font-mono); font-size: 14px; font-weight: 600; text-align: left; }
+.solo-dlg .pv .kv .v .u { margin-left: 2px; font-size: 10px; font-weight: 400; color: var(--text-dim); }
+.solo-dlg .solo-ft { align-items: center; }
+.solo-dlg .solo-ft .hint { margin-right: auto; font-size: 12px; color: var(--text-dim); }
+
+@media (max-width: 1100px) {
+    .page-lines .lines-layout { grid-template-columns: 1fr; }
+    .page-lines .lines-panel { flex-direction: row; overflow-x: auto; }
+    .page-lines .ln { border-bottom: 0; border-left: 0; border-top: 3px solid transparent; min-width: 190px; }
+    .page-lines .ln.active { border-top-color: var(--accent); }
+    .page-lines .lines-ft { display: none; }
+    .page-lines .frow { grid-template-columns: 1fr; gap: 6px; }
+    /* 绑定表与报警表在窄屏改为纵向堆叠：这两张表列多且都不能压，
+       硬塞进手机宽度会把每个下拉压成一条缝。 */
+    .page-lines .bind, .page-lines .alm { grid-template-columns: 1fr; }
+    .page-lines .bind .h, .page-lines .alm .h { display: none; }
+    .page-lines .solo-item { grid-template-columns: 1fr; }
+    .page-lines .toolbar .hint { display: none; }
+    .solo-dlg .slots { grid-template-columns: 1fr; }
+}
