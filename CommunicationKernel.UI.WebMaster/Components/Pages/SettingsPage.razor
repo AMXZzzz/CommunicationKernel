@@ -98,7 +98,7 @@
                     <section class="set-sec">
                         <div class="sec-hd">
                             <h3>本机 Web 地址</h3>
-                            <span class="desc mono" title="@Settings.ListenFilePath">@ShortPath(Settings.ListenFilePath)</span>
+                            <span class="desc mono" title="@Settings.ListenFilePath">@WebPaths.Short(Settings.ListenFilePath)</span>
                             <span class="pill restart">需重启</span>
                         </div>
                         <div class="sec-body">
@@ -149,7 +149,7 @@
                     <section class="set-sec">
                         <div class="sec-hd">
                             <h3>访问口令</h3>
-                            <span class="desc mono" title="@Auth.FilePath">@ShortPath(Auth.FilePath)</span>
+                            <span class="desc mono" title="@Auth.FilePath">@WebPaths.Short(Auth.FilePath)</span>
                             <span class="pill @(_authEnabled ? "on" : "off")">@(_authEnabled ? "已启用" : "关闭")</span>
                         </div>
                         <div class="sec-body">
@@ -200,7 +200,7 @@
                     <section class="set-sec">
                         <div class="sec-hd">
                             <h3>外地访问（反向代理）</h3>
-                            <span class="desc mono" title="@Proxy.FilePath">@ShortPath(Proxy.FilePath)</span>
+                            <span class="desc mono" title="@Proxy.FilePath">@WebPaths.Short(Proxy.FilePath)</span>
                             <span class="pill restart">需重启</span>
                         </div>
                         <div class="sec-body">
@@ -302,7 +302,7 @@
                     <section class="set-sec">
                         <div class="sec-hd">
                             <h3>内网穿透（frpc）</h3>
-                            <span class="desc mono" title="@Tunnel.FilePath">@ShortPath(Tunnel.FilePath)</span>
+                            <span class="desc mono" title="@Tunnel.FilePath">@WebPaths.Short(Tunnel.FilePath)</span>
                             <span class="pill restart">需重启</span>
                         </div>
                         <div class="sec-body">
@@ -448,27 +448,6 @@
             TunnelPill, TunnelPillClass),
         new("about", "关于", "版本与目录", string.Empty, "off"),
     };
-
-    /// <summary>把配置文件的绝对路径缩成「上级目录/文件名」。</summary>
-    /// <param name="path">完整路径。</param>
-    /// <returns>形如 <c>config/web-proxy.json</c> 的短路径。</returns>
-    /// <remarks>
-    /// 节标题那行放不下开发机上那种一百多字符的绝对路径，硬塞进去会把右边
-    /// 「需重启」的胶囊挤到第二行。这里只留最后两段——真正需要辨认的是
-    /// 「是哪个 json」，而不是它在哪个盘。完整路径挂在 title 上，鼠标一停就有。
-    /// </remarks>
-    private static string ShortPath(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return string.Empty;
-
-        // 用 Path 的方法而不是自己按分隔符切：配置路径在 Windows 上是反斜杠、
-        // 在树莓派上是正斜杠，硬编码任何一种都会在另一个平台上整条路径原样返回。
-        string file = Path.GetFileName(path);
-        string? dir = Path.GetDirectoryName(path);
-        string parent = string.IsNullOrEmpty(dir) ? string.Empty : Path.GetFileName(dir);
-
-        return parent.Length == 0 ? file : parent + "/" + file;
-    }
 
     /// <summary>穿透节的胶囊文字。</summary>
     /// <remarks>

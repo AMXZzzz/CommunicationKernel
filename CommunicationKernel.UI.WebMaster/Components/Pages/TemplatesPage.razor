@@ -50,6 +50,10 @@
                         <span class="sub">@SubtitleOf(t)</span>
                     </button>
                 }
+                @* 同变量页：这一页的配置落在哪个文件，排障与备份时要先找到它 *@
+                <div class="devs-ft">
+                    <span class="cfg-path mono" title="@WebPaths.TemplatesFile">@WebPaths.Short(WebPaths.TemplatesFile)</span>
+                </div>
             </aside>
             <section class="var-panel tpl-detail">
                 @if (_current is null)

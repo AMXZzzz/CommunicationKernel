@@ -20,6 +20,31 @@ internal static class WebPaths
         }
     }
 
+    /// <summary>
+    /// 把配置文件的绝对路径缩成「上级目录/文件名」，例如 <c>config/web-lines.json</c>。
+    /// </summary>
+    /// <param name="path">完整路径。</param>
+    /// <returns>短路径；传空串时原样返回。</returns>
+    /// <remarks>
+    /// 界面上要告诉操作员「这一页的配置落在哪个文件」，但开发机上那种一百多字符的
+    /// 绝对路径塞不进侧栏，硬塞会把旁边的东西挤走。真正要辨认的是「是哪个 json」，
+    /// 不是它在哪个盘——完整路径交给 title，鼠标一停就有。
+    /// <para>
+    /// 用 <see cref="Path"/> 的方法而不是自己按分隔符切：Windows 上是反斜杠、
+    /// 树莓派上是正斜杠，硬编码任何一种都会在另一个平台上原样返回整条路径。
+    /// </para>
+    /// </remarks>
+    public static string Short(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return string.Empty;
+
+        string file = Path.GetFileName(path);
+        string? dir = Path.GetDirectoryName(path);
+        string parent = string.IsNullOrEmpty(dir) ? string.Empty : Path.GetFileName(dir);
+
+        return parent.Length == 0 ? file : parent + "/" + file;
+    }
+
     /// <summary>本端保存的 Web 监听端口。</summary>
     public static string ListenFile => Path.Combine(Root, "web-listen.json");
 

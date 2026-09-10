@@ -116,6 +116,9 @@
                 @* 设备的增删改在设备管理页，这里给一个去处，省得操作员在导航栏来回找 *@
                 <div class="devs-ft">
                     <a class="btn ghost" href="/devices">管理设备 →</a>
+                    @* 告诉操作员这一页的配置落在哪个文件：排障、备份、手改都要先找到它。
+                       完整路径给 title——开发机上那种一百多字符的绝对路径塞不进侧栏。 *@
+                    <span class="cfg-path mono" title="@WebPaths.VariablesFile">@WebPaths.Short(WebPaths.VariablesFile)</span>
                 </div>
             </aside>
 

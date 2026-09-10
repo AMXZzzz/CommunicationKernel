@@ -1956,7 +1956,23 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     margin-top: auto;
     padding: 10px 12px;
     border-top: 1px solid var(--border);
+    display: grid;
+    gap: 8px;
 }
+
+/* 「这一页的配置落在哪个文件」。排障、备份、手改都要先找到它，
+   而在界面上找不到就只能翻文档或问人。
+   刻意做得很轻——它是需要时才去看的信息，不该跟数据抢注意力。
+   完整路径在 title 上，这里只显示「上级目录/文件名」。 */
+.cfg-path {
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* 设备管理没有侧栏，这一行落在卡片网格下方，与网格拉开一点距离 */
+.page-dev .cfg-path { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border-soft); }
 .devs-ft .btn {
     display: block;
     width: 100%;
@@ -2809,11 +2825,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     margin-top: auto;
     padding: 10px 12px;
     border-top: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 /* 编辑器头：产线名 + 概要 + 复制/删除 */

@@ -64,7 +64,7 @@
                         </button>
                     }
                     <div class="lines-ft">
-                        <span class="mono" title="@WebLineStore.FilePath">@ShortPath(WebLineStore.FilePath)</span>
+                        <span class="cfg-path mono" title="@WebLineStore.FilePath">@WebPaths.Short(WebLineStore.FilePath)</span>
                     </div>
                 </aside>
 
@@ -688,18 +688,6 @@
         return Devices.GetAll().Where(d => !used.Contains(d.RouteId)).ToList();
     }
 
-    /// <summary>把配置文件的绝对路径缩成「上级目录/文件名」。</summary>
-    private static string ShortPath(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return string.Empty;
-
-        string file = Path.GetFileName(path);
-        string? dir = Path.GetDirectoryName(path);
-        string parent = string.IsNullOrEmpty(dir) ? string.Empty : Path.GetFileName(dir);
-
-        return parent.Length == 0 ? file : parent + "/" + file;
-    }
-
     // ========================================================================
     // 编辑动作
     // ========================================================================
@@ -900,7 +888,7 @@
     private void SaveAll()
     {
         Lines.Save();
-        _msg = "已保存到 " + ShortPath(WebLineStore.FilePath);
+        _msg = "已保存到 " + WebPaths.Short(WebLineStore.FilePath);
         _msgClass = "status-ok";
         Log.Info("Lines", "保存产线配置");
     }
