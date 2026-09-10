@@ -1,0 +1,27 @@
+/*
+ * 文件: wwwroot/css/tablet.css
+ * 作用: 中等宽度（≈1000–1200px）的覆盖：平板横屏、PC 上把窗口拉窄。
+ *
+ * 必须在 base.css 之后、mobile.css 之前加载，理由见 base.css 顶部。
+ */
+
+@media (max-width: 1200px) {
+    .page-mes .mes-sum { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 1100px) {
+    .page-lines .lines-layout { grid-template-columns: 1fr; }
+    .page-lines .lines-panel { flex-direction: row; overflow-x: auto; }
+    .page-lines .ln { border-bottom: 0; border-left: 0; border-top: 3px solid transparent; min-width: 190px; }
+    .page-lines .ln.active { border-top-color: var(--accent); }
+    /* 横排时这两个都藏掉：「产线 N」那个标题在 flex 行里会被压成一条竖着的字，
+       而配置文件路径在手机上也没人去核 */
+    .page-lines .lines-panel .panel-hd { display: none; }
+    .page-lines .lines-ft { display: none; }
+    .page-lines .frow { grid-template-columns: 1fr; gap: 6px; }
+    /* 绑定表与报警表在窄屏改为纵向堆叠：这两张表列多且都不能压，
+       硬塞进手机宽度会把每个下拉压成一条缝。 */
+    .page-lines .bind, .page-lines .alm { grid-template-columns: 1fr; }
+    .page-lines .bind .h, .page-lines .alm .h { display: none; }
+    .page-lines .toolbar .hint { display: none; }
+}

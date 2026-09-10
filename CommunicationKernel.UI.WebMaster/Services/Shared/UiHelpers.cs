@@ -19,7 +19,7 @@ namespace CommunicationKernel.UI.WebMaster.Services;
 internal static class UiHelpers
 {
     /// <summary>
-    /// 调色板槽位数量，必须与 theme.css 中 .proto-bar.p0 … 的定义条数一致。
+    /// 调色板槽位数量，必须与 base.css 中 .proto-bar.p0 … 的定义条数一致。
     /// </summary>
     private const int PaletteSlots = 6;
 
@@ -33,7 +33,7 @@ internal static class UiHelpers
     /// 按协议 ID 取一个稳定的色条 CSS 类名（p0 … p5）。
     /// </summary>
     /// <param name="protocolId">协议 ID；为空时返回首个槽位。</param>
-    /// <returns>形如 "p3" 的类名，与 theme.css 中的定义对应。</returns>
+    /// <returns>形如 "p3" 的类名，与 base.css 中的定义对应。</returns>
     public static string ProtocolBarClass(string? protocolId)
     {
         string p = protocolId ?? string.Empty;

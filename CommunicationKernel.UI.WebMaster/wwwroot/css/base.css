@@ -1,4 +1,14 @@
 /*
+ * 文件: wwwroot/css/base.css
+ * 作用: 令牌 + 全部默认样式。宽屏是基准，PC 端不需要任何覆盖，因此没有独立的
+ *       desktop.css——真出现只属于 PC 的规则时再拆一份出来。
+ *
+ * 加载顺序（见 Components/App.razor）：base → tablet → mobile。
+ * 媒体查询<b>不</b>增加优先级，同名选择器谁写在后面谁生效，顺序颠倒会让
+ * 窄屏覆盖被静默盖掉——表现为「规则明明写了却不起作用」，很难查。
+ */
+
+/*
  * 文件: wwwroot/css/theme.css
  * 作用: Web 上位机深色工业主题。令牌集中在 :root，页面禁止再写散装色值。
  */
@@ -1067,11 +1077,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .export-box { width: 100%; min-height: 240px; font-family: var(--font-mono); font-size: 12px; }
 
-@media (max-width: 860px) {
-    .var-layout { flex-direction: column; }
-    .device-panel { width: 100%; max-height: 160px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--border); }
-}
-
 .add-form-overlay.center {
     justify-content: center;
     align-items: center;
@@ -1159,307 +1164,6 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 .tab-item:link, .tab-item:visited { color: #888; text-decoration: none; }
 .tab-item.active, .tab-item.active:link, .tab-item.active:visited { color: var(--accent); }
 .tab-ico { font-size: 18px; line-height: 1; }
-
-/* ============================================================================
-   ≤900px 手机 / 小平板：底栏五键。再窄靠 auto-fit / clamp 自己收。
-   html.is-phone 再覆盖一遍，给忽略 viewport、按 980px 排的华为浏览器。
-   ============================================================================ */
-
-@media (max-width: 900px) {
-    html { --toolbar-h: 48px; }
-    body { -webkit-tap-highlight-color: transparent; overflow: hidden; }
-
-    .app-shell {
-        height: 100dvh;
-        padding-left: env(safe-area-inset-left);
-        padding-right: env(safe-area-inset-right);
-    }
-    .titlebar {
-        height: calc(48px + env(safe-area-inset-top));
-        padding: env(safe-area-inset-top) 12px 0;
-        gap: 8px;
-    }
-    .title-status {
-        display: inline;
-        font-size: 15px;
-        font-weight: 650;
-        color: var(--text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    .nav-toggle, .app-mark, .app-name, .status-dot, .status-text, .status-addr,
-    .sidebar, .nav-backdrop, .statusbar, .page-title {
-        display: none !important;
-    }
-    .host-live {
-        display: inline-flex !important;
-        align-items: center;
-        gap: 4px;
-        background: #2a2a2a;
-        color: var(--text-muted);
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 10px;
-    }
-    .host-live.on {
-        background: var(--success-bg);
-        color: var(--success-ink);
-    }
-    .host-live.on::before {
-        content: "";
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--success-ink);
-    }
-    .tabbar {
-        display: flex !important;
-        min-height: 56px;
-        padding-bottom: env(safe-area-inset-bottom);
-    }
-
-    .toolbar { overflow-x: auto; scrollbar-width: none; padding: 0 12px; gap: 6px; }
-    .toolbar::-webkit-scrollbar { display: none; }
-    /* 工具栏在窄屏横向滚动，里面的按钮一律不许被压缩：
-       被压之后中文会一个字一行竖着排，宽度还不够点。 */
-    .toolbar .btn, .toolbar .btn-sm, .toolbar .file-btn { min-height: 36px; flex-shrink: 0; }
-    .page-body { padding: var(--space); }
-    .device-grid { --card-min: 100%; gap: var(--space); }
-    .title-status { font-size: var(--title-fs); }
-
-    input, select, textarea { font-size: 16px; padding: 10px 12px; }
-    .btn { min-height: 40px; padding: 8px 14px; }
-    .btn-sm { min-height: 36px; padding: 6px 12px; }
-    .card-ft { gap: 8px; }
-    .card-ft > .btn, .card-ft > .btn-sm { height: 40px; flex: 1; }
-    .form-actions { flex-wrap: wrap; }
-    .form-actions .btn { flex: 1; min-width: 120px; }
-    /* 窄屏：设置页改成上下两段，导航横着滚；表单行的三列折成一列。
-       150px 的标签列在手机上会把控件挤成一条缝。 */
-    .set-layout { grid-template-columns: 1fr; }
-    .set-nav { display: flex; overflow-x: auto; }
-    .set-nav-hd { display: none; }
-    .set-nav button { border-bottom: 0; border-left: 0; border-top: 3px solid transparent; min-width: 150px; }
-    .set-nav button.active { border-top-color: var(--accent); }
-    .set-nav .pill { display: none; }
-    .row { grid-template-columns: 1fr; gap: 6px; }
-    .row.top > label { padding-top: 0; }
-    .toolbar .hint { display: none; }
-
-    .add-form-overlay { align-items: flex-end; justify-content: center; padding: 0; background: rgba(0,0,0,.55); }
-    .add-form, .add-form.wide {
-        width: 100%;
-        max-height: 88dvh;
-        border-radius: 16px 16px 0 0;
-        padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
-    }
-    .add-form::before {
-        content: "";
-        display: block;
-        width: 36px;
-        height: 4px;
-        background: #444;
-        border-radius: 2px;
-        margin: 8px auto 12px;
-    }
-    .add-form-overlay.center { align-items: flex-end; padding: 0; }
-
-    /* 窄屏：正文换到第二行独占整宽。手机上 1fr 只剩几十像素，
-       一条日志会被切成十几行竖着的碎字。 */
-    .log-row {
-        grid-template-columns: 72px 40px 1fr;
-        grid-template-areas: "t l c" "m m m";
-        gap: 2px 8px;
-    }
-    .log-time { grid-area: t; }
-    .log-level { grid-area: l; }
-    .log-cat { grid-area: c; }
-    .log-msg { grid-area: m; }
-    .log-time .ms { display: none; }
-    .log-search { width: 100%; }
-    .seg.tools { margin-left: 0; }
-
-    .data-table thead { display: none; }
-    .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
-    .data-table tbody tr {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        margin-bottom: 10px;
-        padding: 12px;
-    }
-    .data-table tbody td {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        padding: 6px 0;
-        border-bottom: 1px solid #2a2a2a;
-    }
-    .data-table tbody td:last-child { border-bottom: 0; }
-    .data-table tbody td[data-label]::before {
-        content: attr(data-label);
-        color: var(--text-dim);
-        font-size: 11px;
-        flex-shrink: 0;
-    }
-    .data-table tbody td[data-label=""] { justify-content: flex-end; }
-
-    /* 批量改地址的预览表<b>不</b>拆成卡片，保持真表格并允许横向滚动。
-       它是「原地址 → 新地址」的逐行对照：拆成卡片后表头被隐藏、
-       三格又没有 data-label，屏幕上就是三行光秃秃的文字，
-       根本分不清哪个是改后的值。而这是个不可撤销的批量操作，
-       预览的全部意义就在于确认这个映射，宁可让它横向滚。 */
-    .preview-box { overflow: auto; }
-    .preview-box .data-table { display: table; width: 100%; }
-    .preview-box .data-table thead { display: table-header-group; }
-    .preview-box .data-table tbody { display: table-row-group; }
-    .preview-box .data-table tr { display: table-row; }
-    .preview-box .data-table th,
-    .preview-box .data-table td {
-        display: table-cell;
-        width: auto;
-        border-bottom: 1px solid var(--border);
-        padding: 8px 10px;
-        white-space: nowrap;
-    }
-    .preview-box .data-table tbody tr { border: 0; margin: 0; background: none; }
-    .preview-box .data-table tbody td::before { content: none; }
-
-    /* 导入范围的单选项：桌面上 12.5px 一行够用，手指点不准。
-       整行做成可点区域并留出 44px 高度（触控目标的通行下限）。 */
-    .add-form label.radio-line {
-        font-size: 14px;
-        min-height: 44px;
-        align-items: center;
-        padding: 6px 8px;
-        margin: 6px 0 0;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-    }
-    .add-form label.radio-line input { width: 18px; height: 18px; margin: 0; }
-    .add-form label.inline-check { min-height: 44px; font-size: 14px; }
-    .add-form label.inline-check input { width: 18px; height: 18px; }
-
-    /* 行内小按钮的触控尺寸。
-       桌面上 .btn-sm 是 24px 高、29px 宽，鼠标够用；手指点不中。
-       @media 里原本只放大了 .btn，把 .btn-sm 漏了，
-       而变量表每一行的「写 / 读 / 编辑 / 删」全是 .btn-sm。
-       44px 是触控目标的通行下限（误触率在此以下明显上升）。 */
-    .btn-sm {
-        min-height: 40px;
-        min-width: 44px;
-        padding: 8px 12px;
-        font-size: 13px;
-        border-radius: 6px;
-    }
-    .row-btns { gap: 8px; }
-    .row-btns .btn-sm { flex: 1; }
-
-    /* 轮询开关。原生 checkbox 在手机上渲染成 13×13，几乎点不到，
-       而它控制的是「这条变量要不要一直读」——误触和点不中都有实际后果。
-       放大到 22px 并把整个 label 撑成 44px 的可点区域。 */
-    .poll-toggle {
-        min-height: 44px;
-        min-width: 44px;
-        align-items: center;
-        justify-content: flex-end;
-        cursor: pointer;
-    }
-    .poll-toggle input[type="checkbox"] {
-        width: 22px;
-        height: 22px;
-        margin: 0;
-    }
-
-    /* 全站复选框统一放大。原生 checkbox 在手机上默认渲染成 13×13，
-       无论它出现在哪个页面都点不中——日志页的「自动滚动」就是一例。
-       包着它的 <label> 一并撑到 44px，让点文字也能切换。 */
-    input[type="checkbox"] {
-        width: 22px;
-        height: 22px;
-        flex-shrink: 0;
-    }
-    label:has(> input[type="checkbox"]) {
-        min-height: 44px;
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-    }
-
-    /* 写入格：输入框独占一行，两个按钮并排铺满，避免挤成三个小方块 */
-    .write-cell { width: auto; flex-wrap: wrap; gap: 8px; }
-    .write-input { width: 100%; flex: 1 0 100%; min-width: 0; min-height: 40px; }
-    .write-cell .btn-sm { flex: 1; }
-
-    .var-layout { flex-direction: column; }
-    .device-panel {
-        width: 100%;
-        max-height: none;
-        overflow-x: auto;
-        overflow-y: hidden;
-        border-right: 0;
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        flex-direction: row;
-        gap: 8px;
-        padding: 10px 12px;
-    }
-    .dev-item { flex-shrink: 0; min-width: 108px; border-radius: 8px; border: 1px solid #333; }
-}
-
-html.is-phone .tabbar { display: flex !important; min-height: 56px; padding-bottom: env(safe-area-inset-bottom); }
-html.is-phone .nav-toggle,
-html.is-phone .app-mark,
-html.is-phone .app-name,
-html.is-phone .status-dot,
-html.is-phone .status-text,
-html.is-phone .status-addr,
-html.is-phone .sidebar,
-html.is-phone .nav-backdrop,
-html.is-phone .statusbar,
-html.is-phone .page-title { display: none !important; }
-html.is-phone .host-live {
-    display: inline-flex !important;
-    align-items: center;
-    gap: 4px;
-    background: #2a2a2a;
-    color: var(--text-muted);
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 10px;
-}
-html.is-phone .host-live.on { background: var(--success-bg); color: var(--success-ink); }
-html.is-phone .titlebar {
-    height: calc(48px + env(safe-area-inset-top));
-    padding: env(safe-area-inset-top) 12px 0;
-}
-html.is-phone .title-status { font-size: 15px; font-weight: 650; color: var(--text); }
-html.is-phone .device-grid { grid-template-columns: 1fr; }
-html.is-phone .page-body { padding: 12px; }
-html.is-phone input, html.is-phone select, html.is-phone textarea { font-size: 16px; }
-html.is-phone .btn { min-height: 40px; }
-html.is-phone .add-form-overlay { align-items: flex-end; padding: 0; }
-html.is-phone .add-form, html.is-phone .add-form.wide {
-    width: 100%;
-    max-height: 88dvh;
-    border-radius: 16px 16px 0 0;
-}
-
-@media (max-width: 420px) {
-    .tab-item { font-size: 9px; }
-}
-
-/* 横屏矮窗口：收顶栏底栏，把高度留给内容 */
-@media (max-width: 900px) and (max-height: 480px) {
-    .titlebar { height: calc(36px + env(safe-area-inset-top)); }
-    .tab-item { min-height: 44px; gap: 0; }
-    .tabbar { min-height: 44px; }
-    .toolbar { height: 40px; }
-    .page-title { font-size: 13px; }
-}
 
 
 /* ===========================================================================
@@ -1815,13 +1519,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     color: var(--warning-ink);
     font-size: 12px;
 }
-
-@media (max-width: 900px) {
-    /* 五格挤在一行会把数字压成两行，窄屏折成两行 */
-    .kv-strip { grid-template-columns: repeat(3, 1fr); }
-    .kv-strip > div:nth-child(3) { border-right: 0; }
-    .kv-strip > div:nth-child(-n+3) { border-bottom: 1px solid var(--border); }
-}
 /* 浮层底部操作条。按钮靠右、说明靠左，与浮层其它内边距对齐。
    不给样式的话按钮会紧贴文本框挤成一团，看不出是一组操作。 */
 .form-ft {
@@ -2143,11 +1840,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 
 /* 按钮不跟随图例的 11.5px：那是说明文字的字号，落到操作按钮上会显得点不动 */
 .vars-ft .btn { font-size: 13px; }
-
-@media (max-width: 900px) {
-    /* 窄屏：搜索占满一行，分段筛选跟在下面 */
-    .vars-search { margin-left: 0; width: 100%; }
-}
 
 /* 模板表的「读写」列。宽度由 colgroup 定，这里只管排版。
    继承行显示文字而不是禁用的下拉——禁用控件看起来像"可以点但坏了"。 */
@@ -2747,26 +2439,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 
 .page-mes .dt-ft { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--border); flex: none; }
 
-@media (max-width: 1200px) {
-    .page-mes .mes-sum { grid-template-columns: repeat(3, 1fr); }
-}
-@media (max-width: 900px) {
-    .page-mes .mes-sum { grid-template-columns: repeat(2, 1fr); }
-    .page-mes .alarm-chip { margin-left: 0; width: 100%; }
-    /* 工艺流在窄屏改竖排：横向滚动看工艺顺序，滚一下丢一半，
-       还得来回推。竖排时连接线也跟着转 90°。 */
-    .page-mes .flow { flex-direction: column; }
-    .page-mes .st { max-width: none; }
-    .page-mes .st + .st { margin-left: 0; margin-top: 22px; }
-    .page-mes .st + .st::before {
-        left: 50%;
-        top: -23px;
-        width: 2px;
-        height: 22px;
-    }
-    .page-mes .facts { grid-template-columns: 1fr; }
-}
-
 /* ============================================================================
    产线配置页
    ----------------------------------------------------------------------------
@@ -3208,23 +2880,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .page-lines .ed-ft .msg.status-muted { background: none; border: 0; padding: 0; color: var(--text-dim); }
 .page-lines .ed-ft .right { margin-left: auto; display: flex; gap: 8px; }
 
-@media (max-width: 1100px) {
-    .page-lines .lines-layout { grid-template-columns: 1fr; }
-    .page-lines .lines-panel { flex-direction: row; overflow-x: auto; }
-    .page-lines .ln { border-bottom: 0; border-left: 0; border-top: 3px solid transparent; min-width: 190px; }
-    .page-lines .ln.active { border-top-color: var(--accent); }
-    /* 横排时这两个都藏掉：「产线 N」那个标题在 flex 行里会被压成一条竖着的字，
-       而配置文件路径在手机上也没人去核 */
-    .page-lines .lines-panel .panel-hd { display: none; }
-    .page-lines .lines-ft { display: none; }
-    .page-lines .frow { grid-template-columns: 1fr; gap: 6px; }
-    /* 绑定表与报警表在窄屏改为纵向堆叠：这两张表列多且都不能压，
-       硬塞进手机宽度会把每个下拉压成一条缝。 */
-    .page-lines .bind, .page-lines .alm { grid-template-columns: 1fr; }
-    .page-lines .bind .h, .page-lines .alm .h { display: none; }
-    .page-lines .toolbar .hint { display: none; }
-}
-
 /* 变量表里紧跟类型徽标的小数位标记，例如 Int16 .1
    配了换算的点位必须在表上看得出来：值显示成 50.4 时，
    看不出设备里存的是 50.4 还是 504——排查时这两个数差十倍。 */
@@ -3243,110 +2898,3 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 
 /* 模板表「小数」列里的占位横杠与不可选提示 */
 .tpl-table .dim { color: var(--text-dim); }
-
-/* ============================================================================
-   手机端覆盖 —— 必须放在文件<b>最末尾</b>
-   ----------------------------------------------------------------------------
-   媒体查询不增加优先级：同样是 .var-detail .var-table，谁写在后面谁生效。
-   本块要覆盖的那几条（min-width、table-layout）都定义在后半个文件里，
-   写在前面的话会被静默盖掉——页面上表现为「规则明明写了却不起作用」。
-   ============================================================================ */
-@media (max-width: 900px) {
-
-    /* ------------------------------------------------------------------
-       手机上把两张宽表拆成卡片。
-       变量表 min-width 900、模板表 880，在 390px 的屏上等于横滚两屏半——
-       而这两张表恰恰是现场最常看的。规则与上面 .data-table 那套一致，
-       只是这两张表是 table-layout:fixed + colgroup，还要把 colgroup 一并关掉。
-       ------------------------------------------------------------------ */
-    .var-detail .var-table,
-    .tpl-table {
-        display: block;
-        width: 100%;
-        min-width: 0;
-        table-layout: auto;
-    }
-    .var-detail .var-table colgroup, .var-detail .var-table thead,
-    .tpl-table colgroup, .tpl-table thead { display: none; }
-    .var-detail .var-table tbody, .var-detail .var-table tr, .var-detail .var-table td,
-    .tpl-table tbody, .tpl-table tr, .tpl-table td { display: block; width: 100%; }
-
-    .var-detail .var-table tbody tr,
-    .tpl-table tbody tr {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        margin-bottom: 10px;
-        padding: 10px 12px;
-    }
-    .var-detail .var-table tbody td,
-    .tpl-table tbody td {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        padding: 6px 0;
-        border-bottom: 1px solid var(--border-soft);
-        white-space: normal;
-        overflow: visible;
-        text-align: left;
-    }
-    .var-detail .var-table tbody td:last-child,
-    .tpl-table tbody td:last-child { border-bottom: 0; }
-    .var-detail .var-table tbody td[data-label]::before,
-    .tpl-table tbody td[data-label]::before {
-        content: attr(data-label);
-        flex-shrink: 0;
-        color: var(--text-dim);
-        font-size: 11px;
-    }
-    /* 名称当卡片标题：它已经是最显眼的那一行，再挂个「名称」标签是废话。
-       选择器必须带上 tbody——上面那条 td[data-label]::before 里有 tbody，
-       少一层元素选择器就压不过它，标签会照旧显示出来。 */
-    .var-detail .var-table tbody td.name,
-    .tpl-table tbody td.name { font-size: 14px; font-weight: 600; }
-    .var-detail .var-table tbody td.name::before,
-    .tpl-table tbody td.name::before { content: none; }
-    /* 操作按钮铺满整行，别挤在右边 */
-    .var-detail .var-table tbody td.ops,
-    .tpl-table tbody td.ops { gap: 8px; }
-    .var-detail .var-table tbody td.ops::before,
-    .tpl-table tbody td.ops::before { content: none; }
-    .var-detail .var-table td.ops .btn-sm,
-    .tpl-table td.ops .btn-sm { flex: 1; margin-left: 0; }
-
-    /* 当前值在卡片上是主角，给它比别的行更大的字号 */
-    .var-detail .var-table td.val { font-size: 16px; }
-    .var-detail .var-table td.val.err { font-size: 12.5px; }
-    /* 写入框在卡片里换行铺开，不再挤成一条缝 */
-    .var-detail .w { flex: 1; flex-wrap: wrap; justify-content: flex-end; }
-    .var-detail .w input { flex: 1 0 60%; min-height: 40px; }
-    /* 模板行的来源标记：序号列在手机上没有意义，藏掉 */
-    .tpl-table td.idx { display: none; }
-    .tpl-table tbody tr { border-left: 3px solid var(--accent); }
-    .tpl-table tbody tr.inherited { border-left-color: var(--text-dim); }
-
-    /* ------------------------------------------------------------------
-       变量页左栏的设备项。.device-panel 在窄屏已经改成横滚条，
-       但里面的 .dev 仍是 width:100% 的三列网格——横滚容器里每一项
-       都会被拉到整屏宽，一次只看得见一台设备。
-       模板页的 .dev-item 早就补过同样的规则，这里一直漏着。
-       ------------------------------------------------------------------ */
-    .dev {
-        flex: none;
-        width: auto;
-        min-width: 132px;
-        max-width: 190px;
-        border-bottom: 0;
-        border-left: 0;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-    }
-    .dev.active { border-color: var(--accent); }
-    .dev .s { font-size: 10.5px; }
-
-    /* 横滚条里这两个都藏掉：「设备 N」那个标题会被压成一条竖着的字，
-       而「管理设备 →」在底部标签栏里已经有一个「设备」入口了 */
-    .device-panel .panel-hd,
-    .device-panel .devs-ft { display: none; }
-}

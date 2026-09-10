@@ -44,9 +44,15 @@
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="app.css?v=4" />
     <link rel="stylesheet" href="CommunicationKernel.UI.WebMaster.styles.css" />
-    @* 改动 theme.css 必须同时 +1 这个版本号，否则老浏览器会拿缓存里的旧样式：
+    @* 三份样式按平台拆开，<b>加载顺序不能变</b>：base → tablet → mobile。
+       媒体查询不增加优先级，同名选择器谁写在后面谁生效——顺序颠倒会让窄屏
+       覆盖被静默盖掉，表现为「规则明明写了却不起作用」，很难查。
+
+       改动其中任何一份都必须同时 +1 版本号，否则老浏览器会拿缓存里的旧样式：
        新加的类不生效，表现是"某个元素颜色不对"，而查代码看不出任何问题。 *@
-    <link rel="stylesheet" href="css/theme.css?v=44" />
+    <link rel="stylesheet" href="css/base.css?v=45" />
+    <link rel="stylesheet" href="css/tablet.css?v=45" />
+    <link rel="stylesheet" href="css/mobile.css?v=45" />
     <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
 </head>
 

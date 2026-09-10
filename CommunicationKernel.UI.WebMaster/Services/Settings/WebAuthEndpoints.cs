@@ -114,7 +114,7 @@ public static class WebAuthEndpoints
     /// <remarks>
     /// 手写 HTML 而不是复用 Blazor 布局：登录页要在线路建立之前就能显示，
     /// 而且它是未认证用户唯一能看到的页面，越少依赖越不容易出问题。
-    /// 样式复用 theme.css，观感与主界面一致。
+    /// 样式复用 base/tablet/mobile 三份，观感与主界面一致。
     /// </remarks>
     private static string BuildLoginHtml(string pathBase, string? returnUrl, bool failed)
     {
@@ -144,7 +144,11 @@ public static class WebAuthEndpoints
         sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\" />");
         sb.Append("<title>").Append(title).Append("</title>");
         sb.Append($"<link rel=\"icon\" type=\"image/svg+xml\" href=\"{pathBase}/favicon.svg\" />");
-        sb.Append($"<link rel=\"stylesheet\" href=\"{pathBase}/css/theme.css\" />");
+        // 三份按平台拆开的样式，顺序与 App.razor 一致且不能变——
+        // 媒体查询不增加优先级，颠倒后窄屏覆盖会被静默盖掉
+        sb.Append($"<link rel=\"stylesheet\" href=\"{pathBase}/css/base.css\" />");
+        sb.Append($"<link rel=\"stylesheet\" href=\"{pathBase}/css/tablet.css\" />");
+        sb.Append($"<link rel=\"stylesheet\" href=\"{pathBase}/css/mobile.css\" />");
 
         // 与 App.razor 里那段同源：部分浏览器（华为/鸿蒙等）忽略 viewport，
         // 按 ~980px 桌面宽排版，整页缩到手机屏上，字全都小得看不清——

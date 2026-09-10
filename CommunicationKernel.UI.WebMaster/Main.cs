@@ -336,7 +336,7 @@ try {
     // 只在设了口令时才装。没设口令＝本机/局域网直接用，不该平白多两层中间件，
     // 也不该让人在内网被一个自己没设过的登录页拦住。
     //
-    // 必须排在 UseStaticFiles 之后：登录页要用 theme.css，
+    // 必须排在 UseStaticFiles 之后：登录页要用 css/*.css，
     // 排在前面会让样式表也需要登录才能取，登录页于是变成一片白。
     if (authEnabled) {
         app.UseAuthentication();

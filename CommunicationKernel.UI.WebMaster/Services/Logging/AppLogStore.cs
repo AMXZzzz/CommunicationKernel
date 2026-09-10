@@ -42,7 +42,7 @@ public sealed class AppLogEntry
         _ => "INF",
     };
 
-    /// <summary>该级别对应的 CSS 类名，与 theme.css 中的 .log-line 修饰类对应。</summary>
+    /// <summary>该级别对应的 CSS 类名，与 base.css 中的 .log-line 修饰类对应。</summary>
     public string LevelClass => Level switch
     {
         LogLevel.Warning => "warn",

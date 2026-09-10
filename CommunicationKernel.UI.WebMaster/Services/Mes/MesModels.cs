@@ -69,7 +69,7 @@ public static class MesDisplay
         _ => "OFFLINE",
     };
 
-    /// <summary>状态对应的 CSS 修饰类，与 theme.css 中 .st / .state 下的类名一致。</summary>
+    /// <summary>状态对应的 CSS 修饰类，与 base.css 中 .st / .state 下的类名一致。</summary>
     public static string Css(MesState s) => s switch
     {
         MesState.Run => "run",
