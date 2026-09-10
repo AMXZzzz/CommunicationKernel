@@ -3012,20 +3012,52 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .page-lines .det-hd .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
 .page-lines .solo-hd-bar { border-top: 1px solid var(--border); }
 
-.page-lines .det-bd { padding: 14px 16px; display: grid; gap: 16px; }
-.page-lines .blk { display: grid; gap: 8px; }
+.page-lines .det-bd { padding: 14px 16px; display: grid; gap: 14px; }
+
+/* 每一块自成一张卡。原先各块只靠标题下的一条虚线分隔，标题本身又是
+   11px 的灰字——一屏里「点位绑定」「报警规则」「显示设置」三类完全不同
+   的配置糊成一片，第一眼分不出哪块管什么。
+   加边框与标题条之后，块的边界和职能一眼可见。 */
+.page-lines .blk {
+    display: grid;
+    gap: 10px;
+    padding: 0 14px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+/* 标题条用负边距做成通栏：父级的 overflow:hidden 会把它裁进圆角里，
+   不必再给它单独写一遍圆角 */
 .page-lines .blk-t {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding-bottom: 6px;
-    border-bottom: 1px dashed var(--border);
-    font-size: 12px;
-    color: var(--text-dim);
-    letter-spacing: .04em;
+    margin: 0 -14px 2px;
+    padding: 9px 14px;
+    background: var(--surface3);
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: .02em;
 }
-.page-lines .blk-t .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-.page-lines .blk-t .r.small { font-size: 11px; }
+/* 标题左侧的色条按职能分色：蓝＝会写 PLC 的点位绑定，红＝报警判断，
+   紫＝纯显示设置。颜色不承担唯一信息（标题文字已经说清了），
+   它的作用是让人在滚动时不用逐块读标题就能定位。 */
+.page-lines .blk-t::before {
+    content: "";
+    flex: none;
+    width: 3px;
+    height: 13px;
+    border-radius: 2px;
+    background: var(--text-dim);
+}
+.page-lines .blk.ctl .blk-t::before { background: var(--accent); }
+.page-lines .blk.alarm .blk-t::before { background: var(--danger); }
+.page-lines .blk.view .blk-t::before { background: var(--violet-ink); }
+.page-lines .blk-t .r { margin-left: auto; display: flex; gap: 6px; align-items: center; font-weight: 400; }
+.page-lines .blk-t .r.small { font-size: 11px; color: var(--text-dim); }
 
 /* 表单行：标签 | 控件 | 说明。与设置页同一套版式。 */
 .page-lines .frow {
@@ -3238,6 +3270,9 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     .page-lines .lines-panel { flex-direction: row; overflow-x: auto; }
     .page-lines .ln { border-bottom: 0; border-left: 0; border-top: 3px solid transparent; min-width: 190px; }
     .page-lines .ln.active { border-top-color: var(--accent); }
+    /* 横排时这两个都藏掉：「产线 N」那个标题在 flex 行里会被压成一条竖着的字，
+       而配置文件路径在手机上也没人去核 */
+    .page-lines .lines-panel .panel-hd { display: none; }
     .page-lines .lines-ft { display: none; }
     .page-lines .frow { grid-template-columns: 1fr; gap: 6px; }
     /* 绑定表与报警表在窄屏改为纵向堆叠：这两张表列多且都不能压，
