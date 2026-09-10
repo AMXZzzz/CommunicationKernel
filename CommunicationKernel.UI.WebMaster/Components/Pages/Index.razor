@@ -151,10 +151,13 @@
                         <span class="cnt">@line.Solo.Count</span>
                         <span class="d">归属本线但不在工艺流中的伺服 / 变频器 / 传感器 · 仅监视，值随变量轮询更新</span>
                         <div class="r" @onclick:stopPropagation>
-                            @* 离散设备的增删在「产线配置」里做——那边才有真实的设备与变量清单。
-                               本页当前是演示数据，就地编辑改不到任何真配置。 *@
-                            <a class="btn-sm" href="/lines">＋ 添加设备</a>
-                            <a class="btn-sm" href="/lines">编辑</a>
+                            @* 离散设备就在这里加——它们只在本页显示读数，配在别处反而要来回跳。
+                               但本页当前是演示数据，弹窗写进去的是真配置、显示的却是样例，
+                               两边对不上，所以先禁用。等本页接上真实产线配置一并启用。 *@
+                            <button class="btn-sm" type="button" disabled
+                                    title="等本页接上真实产线配置后启用">＋ 添加设备</button>
+                            <button class="btn-sm" type="button" disabled
+                                    title="等本页接上真实产线配置后启用">编辑</button>
                         </div>
                     </div>
 
@@ -182,9 +185,10 @@
                                 </div>
                             </div>
                         }
-                        <a class="dc add" href="/lines">
+                        <button class="dc add" type="button" disabled
+                                title="等本页接上真实产线配置后启用">
                             <span class="plus">＋</span>添加离散设备
-                        </a>
+                        </button>
                     </div>
                 </div>
             </section>

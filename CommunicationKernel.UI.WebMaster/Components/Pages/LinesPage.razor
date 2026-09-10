@@ -79,7 +79,7 @@
                             <span class="st">
                                 @line.Stations.Count 工站 ·
                                 @(line.UnboundCount > 0 ? line.UnboundCount + " 处未选择" : "点位已选全") ·
-                                @line.AlarmCount 条报警 · @line.Solo.Count 台离散设备
+                                @line.AlarmCount 条报警
                             </span>
                             <div class="ops">
                                 <button class="btn ghost" type="button" @onclick="() => Duplicate(line)">复制产线</button>
@@ -338,32 +338,6 @@
                             </div>
                         }
 
-                        @* ================= 线内离散设备 ================= *@
-                        <div class="det-hd solo-hd-bar">
-                            <span class="crumb">@line.Name › <b>线内离散设备</b></span>
-                            <span class="devline">归属本线但不在工艺流中的伺服 / 变频器 / 传感器 · 仅监视，无报警、无控制</span>
-                            <div class="r">
-                                <button class="btn-sm" type="button" @onclick="OpenSolo">＋ 添加离散设备</button>
-                            </div>
-                        </div>
-                        <div class="det-bd">
-                            @if (line.Solo.Count == 0) {
-                                <div class="notice">还没有离散设备。它们只在 MES 页显示读数，不参与节拍与报警。</div>
-                            } else {
-                                <div class="solo-list">
-                                    @foreach (WebSoloDevice d in line.Solo.ToList()) {
-                                        <div class="solo-item" @key="d.RouteId">
-                                            <span class="nm">@DeviceName(d.RouteId)</span>
-                                            <span class="sub">@DeviceSub(d.RouteId)</span>
-                                            <span class="fields">@string.Join(" · ", d.FieldVariableIds.Select(VarName))</span>
-                                            <button class="btn-sm" type="button" @onclick="() => EditSolo(d)">编辑</button>
-                                            <button class="btn-sm danger" type="button" @onclick="() => Set(() => line.Solo.Remove(d))">移除</button>
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-
                         <div class="ed-ft">
                             <span class="msg @_msgClass">@_msg</span>
                             <div class="right">
@@ -376,87 +350,6 @@
             </div>
         }
     </div>
-
-    @* ================= 添加 / 编辑离散设备 ================= *@
-    @if (_soloOpen && line is not null) {
-        <div class="add-form-overlay center" @onclick="CloseSolo">
-            <div class="add-form solo-dlg" @onclick:stopPropagation>
-                <div class="form-hd">
-                    <h3>@(_soloEditing is null ? "添加离散设备" : "编辑离散设备")</h3>
-                    <span class="d">@line.Name</span>
-                    <button class="close-btn" type="button" @onclick="CloseSolo">×</button>
-                </div>
-
-                <div class="solo-bd">
-                    <div class="f">
-                        <span class="lb"><b>设备</b><span class="req">*</span><span class="opt">名称 / 协议 / 连接继承设备管理</span></span>
-                        <select class="mono" value="@_soloRouteId" disabled="@(_soloEditing is not null)"
-                                @onchange="e => SoloDeviceChanged(e.Value?.ToString())">
-                            <option value="">— 选择设备 —</option>
-                            @foreach (WebDeviceRecord d in SoloCandidates(line)) {
-                                <option value="@d.RouteId">@DeviceLabel(d)</option>
-                            }
-                        </select>
-                        @if (_soloEditing is null && SoloCandidates(line).Count == 0) {
-                            <span class="lb dim">没有可选设备：本线的设备都已在工艺流或离散列表里了。</span>
-                        }
-                    </div>
-
-                    <div class="sep"></div>
-                    <div class="grp">显示字段 · 4 格 · 来自该设备已配置的变量</div>
-                    <div class="slots">
-                        @for (int i = 0; i < 4; i++) {
-                            int slot = i;
-                            <div class="f">
-                                <span class="lb"><b>字段 @(slot + 1)</b></span>
-                                <select class="mono" value="@_soloFields[slot]"
-                                        @onchange="e => _soloFields[slot] = e.Value?.ToString() ?? string.Empty">
-                                    <option value="">— 不显示 —</option>
-                                    @foreach (WebVariable v in VarsOf(_soloRouteId)) {
-                                        <option value="@v.Id">@VarLabel(v)</option>
-                                    }
-                                </select>
-                            </div>
-                        }
-                    </div>
-
-                    <div class="sep"></div>
-                    <div class="grp">预览 · 值随「变量配置」的轮询周期更新 · 仅监视、无报警、无控制</div>
-                    @* 预览用真实的变量名与单位，但数值是占位符——本页不发 I/O，
-                       画一个假数字在这里只会让人以为已经读到了 *@
-                    <div class="pv">
-                        <div class="top">
-                            <span class="led"></span>
-                            <span class="nm">@(_soloRouteId.Length > 0 ? DeviceName(_soloRouteId) : "（未选择设备）")</span>
-                            <span class="poll">@SoloPollText()</span>
-                        </div>
-                        <div class="md">@(_soloRouteId.Length > 0 ? DeviceSub(_soloRouteId) : "—")</div>
-                        <div class="vals">
-                            @foreach (string vid in _soloFields.Where(x => x.Length > 0)) {
-                                WebVariable? v = VarById(vid);
-                                <div class="kv">
-                                    <span class="k">@(v?.Name ?? vid)</span>
-                                    <span class="v">
-                                        --@if (v is not null && v.Unit.Length > 0) { <span class="u">@v.Unit</span> }
-                                    </span>
-                                </div>
-                            }
-                        </div>
-                        @if (_soloFields.All(x => x.Length == 0)) {
-                            <div class="md">还没有选字段，卡片上只会显示名称与连接。</div>
-                        }
-                    </div>
-                </div>
-
-                <div class="form-actions solo-ft">
-                    <span class="hint">变量不够？去「变量配置」为该设备补充</span>
-                    <button class="btn ghost" type="button" @onclick="CloseSolo">取消</button>
-                    <button class="btn primary" type="button" disabled="@(_soloRouteId.Length == 0)"
-                            @onclick="() => SaveSolo(line)">@(_soloEditing is null ? "添加" : "保存")</button>
-                </div>
-            </div>
-        </div>
-    }
 
     @* ================= 删除产线确认 ================= *@
     @if (_pendingDeleteLine.Length > 0) {
@@ -517,28 +410,6 @@
 
     /// <summary>底部状态行的样式类。</summary>
     private string _msgClass = "status-muted";
-
-    // ========================================================================
-    // 离散设备弹窗
-    // ========================================================================
-
-    /// <summary>弹窗是否打开。</summary>
-    private bool _soloOpen;
-
-    /// <summary>正在编辑的离散设备；null 表示新增。</summary>
-    private WebSoloDevice? _soloEditing;
-
-    /// <summary>弹窗里选中的设备路由。</summary>
-    private string _soloRouteId = string.Empty;
-
-    /// <summary>
-    /// 弹窗里四个显示字段的变量 Id。
-    /// </summary>
-    /// <remarks>
-    /// 定长四格而不是可变列表：卡片版式就是两行两列，
-    /// 用列表的话「删掉第二个」之后剩下的会往前挤，与卡片上的格位对不上。
-    /// </remarks>
-    private readonly string[] _soloFields = new string[4];
 
     // ========================================================================
     // 片段：点位行 / 报警块 / KPI 行
@@ -817,40 +688,6 @@
         return Devices.GetAll().Where(d => !used.Contains(d.RouteId)).ToList();
     }
 
-    /// <summary>离散设备弹窗里可选的设备。编辑时把自己也算进去，否则下拉是空的。</summary>
-    private List<WebDeviceRecord> SoloCandidates(WebLine line)
-    {
-        List<WebDeviceRecord> list = Available(line);
-
-        if (_soloEditing is not null)
-        {
-            WebDeviceRecord? self = Devices.Get(_soloEditing.RouteId);
-            if (self is not null) list.Insert(0, self);
-        }
-
-        return list;
-    }
-
-    /// <summary>离散设备预览里的轮询周期：取所选字段中最快的那个。</summary>
-    /// <remarks>
-    /// 卡片整体的刷新快慢由最快的那条决定——四个格子各有各的周期，
-    /// 但人看到的是「这张卡多久动一次」。
-    /// </remarks>
-    private string SoloPollText()
-    {
-        List<WebVariable> picked = _soloFields
-            .Where(x => x.Length > 0)
-            .Select(VarById)
-            .Where(v => v is not null)
-            .Select(v => v!)
-            .ToList();
-
-        if (picked.Count == 0) return "—";
-
-        int ms = picked.Min(v => v.ScanRateMs);
-        return ms >= 1000 ? (ms / 1000.0).ToString("0.#") + " s" : ms + " ms";
-    }
-
     /// <summary>把配置文件的绝对路径缩成「上级目录/文件名」。</summary>
     private static string ShortPath(string path)
     {
@@ -1092,74 +929,6 @@
         _stationIndex = -1;
         _msg = "已删除产线";
         _msgClass = "status-ok";
-    }
-
-    // ========================================================================
-    // 离散设备弹窗
-    // ========================================================================
-
-    /// <summary>打开「添加离散设备」。</summary>
-    private void OpenSolo()
-    {
-        _soloEditing = null;
-        _soloRouteId = string.Empty;
-        Array.Fill(_soloFields, string.Empty);
-        _soloOpen = true;
-    }
-
-    /// <summary>打开「编辑离散设备」，回填已选字段。</summary>
-    private void EditSolo(WebSoloDevice d)
-    {
-        _soloEditing = d;
-        _soloRouteId = d.RouteId;
-
-        Array.Fill(_soloFields, string.Empty);
-        for (int i = 0; i < Math.Min(4, d.FieldVariableIds.Count); i++)
-            _soloFields[i] = d.FieldVariableIds[i];
-
-        _soloOpen = true;
-    }
-
-    /// <summary>关闭弹窗。</summary>
-    private void CloseSolo()
-    {
-        _soloOpen = false;
-        _soloEditing = null;
-    }
-
-    /// <summary>
-    /// 弹窗里换了设备。
-    /// </summary>
-    /// <remarks>
-    /// 必须清空四个字段：它们是<b>上一台设备</b>的变量 Id，
-    /// 留着的话下拉里选不中（不在新设备的变量里），预览却还画着旧名字。
-    /// </remarks>
-    private void SoloDeviceChanged(string? routeId)
-    {
-        _soloRouteId = routeId ?? string.Empty;
-        Array.Fill(_soloFields, string.Empty);
-    }
-
-    /// <summary>保存离散设备。</summary>
-    private void SaveSolo(WebLine line)
-    {
-        if (_soloRouteId.Length == 0) return;
-
-        List<string> fields = _soloFields.Where(x => x.Length > 0).ToList();
-
-        Set(() =>
-        {
-            if (_soloEditing is not null)
-            {
-                _soloEditing.FieldVariableIds = fields;
-            }
-            else
-            {
-                line.Solo.Add(new WebSoloDevice { RouteId = _soloRouteId, FieldVariableIds = fields });
-            }
-        });
-
-        CloseSolo();
     }
 
     // ========================================================================

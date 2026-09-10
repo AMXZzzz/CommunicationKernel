@@ -3010,7 +3010,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     white-space: nowrap;
 }
 .page-lines .det-hd .r { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-.page-lines .solo-hd-bar { border-top: 1px solid var(--border); }
 
 .page-lines .det-bd { padding: 14px 16px; display: grid; gap: 14px; }
 
@@ -3180,30 +3179,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .page-lines .tag.warn { color: var(--warning-ink); border-color: rgba(245, 158, 11, .4); }
 .page-lines .tag.sev-c { color: var(--danger-ink); border-color: rgba(239, 68, 68, .5); }
 
-/* 线内离散设备清单 */
-.page-lines .solo-list { display: grid; gap: 8px; }
-.page-lines .solo-item {
-    display: grid;
-    grid-template-columns: minmax(120px, 200px) minmax(160px, 1fr) minmax(160px, 1.4fr) auto auto;
-    gap: 10px;
-    align-items: center;
-    padding: 8px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 13px;
-}
-.page-lines .solo-item .nm { font-weight: 600; }
-.page-lines .solo-item .sub,
-.page-lines .solo-item .fields {
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 /* 底部保存条 */
 .page-lines .ed-ft {
     display: flex;
@@ -3222,49 +3197,6 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .page-lines .ed-ft .msg.status-muted { background: none; border: 0; padding: 0; color: var(--text-dim); }
 .page-lines .ed-ft .right { margin-left: auto; display: flex; gap: 8px; }
 
-/* -------------------------------------------------- 添加离散设备弹窗 */
-.add-form.solo-dlg { width: 460px; max-width: 100%; }
-.solo-dlg .form-hd .d { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
-.solo-dlg .solo-bd { display: grid; gap: 14px; }
-.solo-dlg .f { display: grid; gap: 5px; font-size: 12px; color: var(--text-dim); }
-.solo-dlg .f .lb { display: flex; align-items: center; gap: 6px; }
-.solo-dlg .f .lb b { color: var(--text-muted); font-weight: 500; }
-.solo-dlg .f .lb .req { color: var(--danger-ink); }
-.solo-dlg .f .lb .opt { color: var(--text-dim); margin-left: auto; }
-.solo-dlg .f .lb.dim { color: var(--text-dim); }
-.solo-dlg .sep { border-top: 1px dashed var(--border); margin: 2px 0; }
-.solo-dlg .grp { font-size: 11px; color: var(--text-dim); letter-spacing: .04em; }
-.solo-dlg .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-/* 预览卡：结构与 MES 页那张离散设备卡一致，改一处这里也要跟着改。
-   数值是占位符 --：本页不发 I/O，画个假数字会让人以为已经读到了。 */
-.solo-dlg .pv {
-    display: grid;
-    gap: 6px;
-    padding: 10px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-}
-.solo-dlg .pv .top { display: flex; align-items: center; gap: 8px; }
-.solo-dlg .pv .top .led { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
-.solo-dlg .pv .top .nm { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.solo-dlg .pv .top .poll { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-.solo-dlg .pv .md { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
-.solo-dlg .pv .vals { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-.solo-dlg .pv .kv {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    gap: 0;
-    padding: 0;
-    border-bottom: 0;
-}
-.solo-dlg .pv .kv .k { font-size: 10.5px; color: var(--text-dim); }
-.solo-dlg .pv .kv .v { font-family: var(--font-mono); font-size: 14px; font-weight: 600; text-align: left; }
-.solo-dlg .pv .kv .v .u { margin-left: 2px; font-size: 10px; font-weight: 400; color: var(--text-dim); }
-.solo-dlg .solo-ft { align-items: center; }
-.solo-dlg .solo-ft .hint { margin-right: auto; font-size: 12px; color: var(--text-dim); }
-
 @media (max-width: 1100px) {
     .page-lines .lines-layout { grid-template-columns: 1fr; }
     .page-lines .lines-panel { flex-direction: row; overflow-x: auto; }
@@ -3279,9 +3211,7 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
        硬塞进手机宽度会把每个下拉压成一条缝。 */
     .page-lines .bind, .page-lines .alm { grid-template-columns: 1fr; }
     .page-lines .bind .h, .page-lines .alm .h { display: none; }
-    .page-lines .solo-item { grid-template-columns: 1fr; }
     .page-lines .toolbar .hint { display: none; }
-    .solo-dlg .slots { grid-template-columns: 1fr; }
 }
 
 /* 变量表里紧跟类型徽标的小数位标记，例如 Int16 .1
