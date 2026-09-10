@@ -3101,6 +3101,8 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 .page-lines .cond { display: flex; gap: 6px; min-width: 0; }
 .page-lines .cond select { flex: 1 1 auto; min-width: 0; }
 .page-lines .cond input { flex: 0 0 62px; }
+/* 线圈没有操作数，下拉独占整格——留一段空白会让人以为那个框没渲染出来 */
+.page-lines .cond select:only-child { flex: 1 1 100%; }
 
 .page-lines .alm .code { display: flex; gap: 6px; }
 .page-lines .alm .code input:first-child { flex: 1; min-width: 0; }

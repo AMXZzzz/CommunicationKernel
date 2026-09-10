@@ -79,9 +79,14 @@ public sealed class WebStateMap
 
 /// <summary>报警条件的比较方式。</summary>
 /// <remarks>
-/// 分成「位」与「值」两族：位比较看的是状态字里某一位有没有置起来，
-/// 值比较看的是整个寄存器的读数。现场这两类混不到一起——
-/// 报警字用位，气压、温度用值。
+/// 分三族，对应三类点位：
+/// <list type="bullet">
+///   <item><b>通断</b>——线圈 / Bool。它本身就是一个位，没有「第几位」可言。</item>
+///   <item><b>位</b>——报警字、状态字这类把多个标志打包进一个寄存器的整数。</item>
+///   <item><b>值</b>——气压、温度、计数这类整个读数有意义的量。</item>
+/// </list>
+/// 三族不通用：给线圈选「第 N 位 = 1」没有意义，给浮点选位比较更是错的。
+/// 因此下拉里能选什么，由所选变量的数据类型决定（见 <see cref="WebAlarmOpInfo.For"/>）。
 /// </remarks>
 public enum WebAlarmOp
 {
@@ -102,14 +107,29 @@ public enum WebAlarmOp
 
     /// <summary>整个值大于。</summary>
     Greater,
+
+    /// <summary>线圈接通（ON）。</summary>
+    /// <remarks>
+    /// 只用于 Bool。它不带操作数——线圈就是一位，没有「和谁比」。
+    /// </remarks>
+    IsOn,
+
+    /// <summary>线圈断开（OFF）。</summary>
+    IsOff,
 }
 
 /// <summary>报警条件的显示辅助。</summary>
 public static class WebAlarmOpInfo
 {
-    /// <summary>下拉框里的全部取值，顺序即常用程度。</summary>
+    /// <summary>全部取值，仅供遍历与迁移使用。</summary>
+    /// <remarks>
+    /// 界面上<b>不要</b>直接用这个：能选什么取决于变量类型，
+    /// 全列出来会让人给线圈选「值 &lt;」这种永远不成立的条件。用 <see cref="For"/>。
+    /// </remarks>
     public static readonly WebAlarmOp[] All =
     {
+        WebAlarmOp.IsOn,
+        WebAlarmOp.IsOff,
         WebAlarmOp.BitSet,
         WebAlarmOp.BitClear,
         WebAlarmOp.Equal,
@@ -118,13 +138,62 @@ public static class WebAlarmOpInfo
         WebAlarmOp.Greater,
     };
 
+    /// <summary>线圈可用的比较方式。</summary>
+    private static readonly WebAlarmOp[] BoolOps = { WebAlarmOp.IsOn, WebAlarmOp.IsOff };
+
+    /// <summary>整数可用的比较方式：位与值都行。</summary>
+    private static readonly WebAlarmOp[] IntegerOps =
+    {
+        WebAlarmOp.BitSet, WebAlarmOp.BitClear,
+        WebAlarmOp.Equal, WebAlarmOp.NotEqual, WebAlarmOp.Less, WebAlarmOp.Greater,
+    };
+
+    /// <summary>浮点可用的比较方式：只有值。</summary>
+    /// <remarks>
+    /// 浮点没有「第几位」——它的二进制里那些位是尾数和指数，
+    /// 按位取出来是一串与工程量毫无关系的数。
+    /// </remarks>
+    private static readonly WebAlarmOp[] FloatOps =
+    {
+        WebAlarmOp.Equal, WebAlarmOp.NotEqual, WebAlarmOp.Less, WebAlarmOp.Greater,
+    };
+
+    /// <summary>文本 / 原始字节可用的比较方式：只有相等与否。</summary>
+    /// <remarks>
+    /// 大小比较对字符串没有现场意义，留着只会让人误以为能按字典序报警。
+    /// </remarks>
+    private static readonly WebAlarmOp[] TextOps = { WebAlarmOp.Equal, WebAlarmOp.NotEqual };
+
+    /// <summary>
+    /// 某个数据类型能用哪些比较方式。
+    /// </summary>
+    /// <param name="dataType">变量的数据类型名；空串表示还没选变量。</param>
+    /// <returns>可选的比较方式，顺序即常用程度。</returns>
+    /// <remarks>
+    /// 还没选变量时给整数那一套——它是最常见的，而且一旦选了变量，
+    /// 页面会把不适用的方式纠正过来（见 LinesPage.FixOp）。
+    /// </remarks>
+    public static WebAlarmOp[] For(string dataType) => dataType switch
+    {
+        "Bool" => BoolOps,
+        "Float" or "Double" => FloatOps,
+        "String" or "Hex" => TextOps,
+        _ => IntegerOps,
+    };
+
+    /// <summary>该比较方式对这个数据类型是否适用。</summary>
+    public static bool Applies(WebAlarmOp op, string dataType) =>
+        Array.IndexOf(For(dataType), op) >= 0;
+
     /// <summary>下拉框里的中文名。</summary>
     /// <remarks>
-    /// 位比较写「第 N 位」，值比较写符号：前者的操作数是位号，后者是数值，
-    /// 名字里带上这个差别，右边那个输入框该填什么就不用再猜。
+    /// 位比较写「第 N 位」，值比较写符号，线圈写通断：三者的操作数分别是
+    /// 位号、数值、没有。名字里带上这个差别，右边那个框该填什么就不用再猜。
     /// </remarks>
     public static string Label(WebAlarmOp op) => op switch
     {
+        WebAlarmOp.IsOn => "接通 ON",
+        WebAlarmOp.IsOff => "断开 OFF",
         WebAlarmOp.BitSet => "第 N 位 = 1",
         WebAlarmOp.BitClear => "第 N 位 = 0",
         WebAlarmOp.Equal => "值 ==",
@@ -140,6 +209,15 @@ public static class WebAlarmOpInfo
     /// <summary>是不是位比较。位比较的操作数是位号，不是数值。</summary>
     public static bool IsBit(WebAlarmOp op) => op is WebAlarmOp.BitSet or WebAlarmOp.BitClear;
 
+    /// <summary>
+    /// 这个比较方式要不要操作数。
+    /// </summary>
+    /// <remarks>
+    /// 线圈的通断不需要：条件已经由方式本身表达完了。
+    /// 还留一个输入框在那儿，会让人以为漏填了什么。
+    /// </remarks>
+    public static bool NeedsOperand(WebAlarmOp op) => op is not (WebAlarmOp.IsOn or WebAlarmOp.IsOff);
+
     /// <summary>拼成一句可读的条件，用于日志与只读展示。</summary>
     public static string Text(WebAlarmOp op, string operand)
     {
@@ -147,6 +225,8 @@ public static class WebAlarmOpInfo
 
         return op switch
         {
+            WebAlarmOp.IsOn => "= ON",
+            WebAlarmOp.IsOff => "= OFF",
             WebAlarmOp.BitSet => "bit " + v + " = 1",
             WebAlarmOp.BitClear => "bit " + v + " = 0",
             WebAlarmOp.Equal => "== " + v,

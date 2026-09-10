@@ -641,9 +641,15 @@
 
                     @foreach (WebAlarmRule r in rules.ToList())
                     {
+                        @* 能选哪些比较方式，取决于这条变量是什么类型：线圈只有通断，
+                           整数才有「第 N 位」，浮点只能比大小。全都列出来的话，
+                           很容易给一个线圈选上「值 <」——那是个永远不成立的条件，
+                           而且不会有任何报错。 *@
+                        string vtype = VarById(r.VariableId)?.DataType ?? string.Empty;
+
                         <select class="mono @(r.VariableId.Length > 0 ? null : "unbound")" value="@r.VariableId" @key="r.Id"
                                 aria-label="判断变量"
-                                @onchange="e => Set(() => r.VariableId = e.Value?.ToString() ?? string.Empty)">
+                                @onchange="e => Set(() => SetRuleVariable(r, e.Value?.ToString()))">
                             <option value="">— 未选择 —</option>
                             @foreach (WebVariable v in VarsOf(routeId))
                             {
@@ -656,15 +662,20 @@
                         <span class="cond">
                             <select class="mono" value="@r.Op" aria-label="比较方式"
                                     @onchange="e => Set(() => r.Op = ParseOp(e.Value))">
-                                @foreach (WebAlarmOp op in WebAlarmOpInfo.All)
+                                @foreach (WebAlarmOp op in WebAlarmOpInfo.For(vtype))
                                 {
                                     <option value="@op">@WebAlarmOpInfo.Label(op)</option>
                                 }
                             </select>
-                            <input class="mono" value="@r.Operand" aria-label="对比值"
-                                   placeholder="@WebAlarmOpInfo.Placeholder(r.Op)"
-                                   title="@WebAlarmOpInfo.Placeholder(r.Op)"
-                                   @onchange="e => Set(() => r.Operand = e.Value?.ToString() ?? string.Empty)" />
+                            @* 线圈的通断不需要操作数：条件已经由方式本身说完了。
+                               留一个空框在那儿，会让人以为漏填了什么。 *@
+                            @if (WebAlarmOpInfo.NeedsOperand(r.Op))
+                            {
+                                <input class="mono" value="@r.Operand" aria-label="对比值"
+                                       placeholder="@WebAlarmOpInfo.Placeholder(r.Op)"
+                                       title="@WebAlarmOpInfo.Placeholder(r.Op)"
+                                       @onchange="e => Set(() => r.Operand = e.Value?.ToString() ?? string.Empty)" />
+                            }
                         </span>
                         <span class="code">
                             <input value="@r.Title" placeholder="报警名称" aria-label="报警名称"
@@ -687,8 +698,8 @@
                 <div class="alm-add">
                     <button class="btn-sm dashed" type="button"
                             @onclick="() => Set(() => rules.Add(new WebAlarmRule()))">＋ 添加@(title)</button>
-                    位比较看状态字里的某一位，值比较看整个寄存器的读数——
-                    报警字用前者，气压、温度用后者
+                    可选的比较方式随变量类型变：线圈只有通断，整数才有「第 N 位」，
+                    浮点只能比大小
                 </div>
             }
         </div>;
@@ -882,6 +893,29 @@
 
     /// <summary>报警级别下拉的取值：1 为严重，其余为预警。</summary>
     private static bool IsCritical(object? value) => value?.ToString() == "1";
+
+    /// <summary>
+    /// 换一条报警规则判断的变量。
+    /// </summary>
+    /// <param name="r">被改的规则。</param>
+    /// <param name="variableId">新选中的变量 Id。</param>
+    /// <remarks>
+    /// 换完要检查比较方式还适不适用：原来判的是一个报警字（「第 3 位 = 1」），
+    /// 改成一个线圈之后那个条件就无从谈起了。不纠正的话，下拉里会显示一个
+    /// 不在选项中的值——浏览器会把它显示成第一项，而存下去的仍是旧值，
+    /// 界面和配置从此对不上。
+    /// </remarks>
+    private void SetRuleVariable(WebAlarmRule r, string? variableId)
+    {
+        r.VariableId = variableId ?? string.Empty;
+
+        string type = VarById(r.VariableId)?.DataType ?? string.Empty;
+        if (WebAlarmOpInfo.Applies(r.Op, type)) return;
+
+        // 落到该类型的第一个可用方式：线圈是「接通 ON」，整数是「第 N 位 = 1」，
+        // 都是各自最常用的那一个
+        r.Op = WebAlarmOpInfo.For(type)[0];
+    }
 
     /// <summary>比较方式下拉的取值。</summary>
     /// <remarks>
