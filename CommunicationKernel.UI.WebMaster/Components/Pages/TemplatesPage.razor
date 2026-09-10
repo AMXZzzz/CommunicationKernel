@@ -210,17 +210,19 @@
                                         }
                                         else
                                         {
-                                            <td>@r.Slot.Name</td>
-                                            <td><span class="type @TypeClass(r.Slot.DataType)">@r.Slot.DataType</span></td>
-                                            <td class="num mono">@SlotLength(r.Slot)</td>
+                                            @* data-label 供手机上卡片化时当行首标签用：表头在窄屏是隐藏的，
+                                               没有它每张卡就是一列光秃秃的值，看不出哪个是类型哪个是字节 *@
+                                            <td class="name" data-label="名称">@r.Slot.Name</td>
+                                            <td data-label="类型"><span class="type @TypeClass(r.Slot.DataType)">@r.Slot.DataType</span></td>
+                                            <td class="num mono" data-label="字节">@SlotLength(r.Slot)</td>
                                             @* 小数位为 0 时显示「—」而不是 0：一列 0 会被当成有效数据来读，
                                                而「没有配」和「配成 0 位」在这里是同一件事 *@
-                                            <td class="num mono">@(VariableScale.IsActive(r.Slot.DataType, r.Slot.Decimals) ? r.Slot.Decimals.ToString() : "—")</td>
+                                            <td class="num mono" data-label="小数">@(VariableScale.IsActive(r.Slot.DataType, r.Slot.Decimals) ? r.Slot.Decimals.ToString() : "—")</td>
                                             @* 读写方向是设备的固有属性，标在模板上随同步下发，
                                                操作员不必逐台逐条重标一遍 *@
-                                            <td class="ro">@VariableAccessInfo.Label(r.Slot.Access)</td>
-                                            <td class="note">@r.Slot.Note</td>
-                                            <td class="src">@(r.IsOwn ? "自有" : "↳ " + r.SourceTemplateName)</td>
+                                            <td class="ro" data-label="读写">@VariableAccessInfo.Label(r.Slot.Access)</td>
+                                            <td class="note" data-label="备注">@r.Slot.Note</td>
+                                            <td class="src" data-label="来源">@(r.IsOwn ? "自有" : "↳ " + r.SourceTemplateName)</td>
                                             <td class="ops">
                                                 @* 继承项这里刻意留空：它在本模板改不了，
                                                    摆一个点了没反应的按钮比没有按钮更糟 *@
