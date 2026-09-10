@@ -374,6 +374,12 @@
                         </p>
                     }
                 }
+                @* 单位只用于显示，不参与任何换算——换算是上面那个「小数位」的事。
+                   分开的理由：同一个 mm 可能来自已换算的整数，也可能来自浮点，
+                   把两者绑在一起会让人以为填了单位就会自动缩放。 *@
+                <label>单位<span class="label-note">（选填，只影响显示）</span></label>
+                <input @bind="_unit" placeholder="例如 mm / MPa / rpm / ℃" maxlength="8" />
+
                 <label>扫描周期 (ms)</label>
                 <input type="number" @bind="_scan" min="200" />
 
@@ -737,6 +743,9 @@
 
     /// <summary>表单：备注。模板行只读，见 <see cref="_editingFromTemplate"/>。</summary>
     private string _note = string.Empty;
+
+    /// <summary>表单：单位。纯显示用，不参与换算。</summary>
+    private string _unit = string.Empty;
 
     /// <summary>
     /// 当前编辑的是否为模板行。
@@ -1260,6 +1269,7 @@
         _scan = row.ScanRateMs;
         _access = row.Access;
         _note = row.Note;
+        _unit = row.Unit;
 
         // 记下来源：模板行的备注只读，见表单里的说明
         _editingFromTemplate = row.FromTemplate;
@@ -1282,6 +1292,7 @@
         _scan = 1000;
         _access = VariableAccess.ReadWrite;
         _note = string.Empty;
+        _unit = string.Empty;
 
         // 新增态一律不是模板行；漏了这句会把上一次编辑模板行时的只读状态带过来
         _editingFromTemplate = false;
@@ -1365,6 +1376,9 @@
             existing.Decimals = VariableScale.Supports(existing.DataType) ? _decimals : 0;
             existing.ScanRateMs = Math.Max(200, _scan);
 
+            // 单位不归模板管——模板里根本没有这一项，模板行也照样能改
+            existing.Unit = _unit.Trim();
+
             // 模板行的备注与只读标记都归模板所有，本页不写回——
             // 写了也会被下次「重新同步模板」覆盖，白改一次还找不到原因
             if (!_editingFromTemplate) {
@@ -1391,6 +1405,7 @@
                 ScanRateMs = Math.Max(200, _scan),
                 Access = _access,
                 Note = _note.Trim(),
+                Unit = _unit.Trim(),
             });
             _banner = "已添加 " + _name.Trim();
             _bannerClass = "status-ok";

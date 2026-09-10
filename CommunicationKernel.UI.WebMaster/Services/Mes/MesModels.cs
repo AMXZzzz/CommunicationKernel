@@ -10,8 +10,8 @@
 //   哪个点位代表运行状态」。
 //
 //   所以先把页面要的形状定下来，由 IMesDataSource 提供数据。
-//   当前实现是 DemoMesDataSource（演示数据），等产线配置和点位绑定做完，
-//   换一个读真实设备与变量的实现即可，页面一行都不用改。
+//   实现是 MesDataSource：它读 web-lines.json 的编排、变量表的实时值，
+//   算出这里的形状。页面不认识那两份数据，只认这些类型。
 //
 // 这些类型<b>只是形状</b>，不含任何业务规则，也不碰通讯层。
 // -----------------------------------------------------------------------------
@@ -84,19 +84,23 @@ public static class MesDisplay
 }
 
 /// <summary>一条产线的班次指标。</summary>
-/// <param name="Output">班次产量。</param>
-/// <param name="Target">班次目标。</param>
+/// <param name="OutputText">班次产量，已格式化。</param>
+/// <param name="TargetText">班次目标，已格式化。</param>
 /// <param name="YieldText">良率，已带百分号。</param>
 /// <param name="CycleText">节拍，已带单位。</param>
 /// <param name="DowntimeText">累计停机，形如 <c>00:08:25</c>。</param>
 /// <remarks>
-/// 良率与节拍存成<b>已格式化的字符串</b>而不是 double：这些量的小数位数、
+/// 五项全部存成<b>已格式化的字符串</b>而不是数值：这些量的小数位数、
 /// 单位、千分位由现场习惯决定（有的线报秒、有的报 UPH），
 /// 让数据源自己定好格式，页面不再二次加工，省得两边各改一次。
+/// <para>
+/// 产量与目标也是字符串，是为了能表达「没绑点位」——那种情况给一条短横，
+/// 而不是一个看起来煞有介事的 0。0 会被当成「这条线今天一件没做」。
+/// </para>
 /// </remarks>
 public sealed record MesKpi(
-    int Output,
-    int Target,
+    string OutputText,
+    string TargetText,
     string YieldText,
     string CycleText,
     string DowntimeText);
@@ -230,16 +234,11 @@ public sealed record MesLine(
 /// <param name="Alarms">全部活动报警，跨产线。</param>
 /// <param name="PollText">采集周期文案。</param>
 /// <param name="LastUpdate">上次更新时刻，形如 <c>08:30:59</c>。</param>
-/// <param name="IsDemo">
-/// 这份数据是不是演示数据。为真时页面必须显著提示，
-/// 绝不能让一屏编出来的数字被当成现场读数。
-/// </param>
 public sealed record MesSnapshot(
     IReadOnlyList<MesLine> Lines,
     IReadOnlyList<MesAlarm> Alarms,
     string PollText,
-    string LastUpdate,
-    bool IsDemo)
+    string LastUpdate)
 {
     /// <summary>产线条数。</summary>
     public int LineCount => Lines.Count;

@@ -5,6 +5,7 @@
 // -----------------------------------------------------------------------------
 
 
+using System.Text.Json.Serialization;
 using CommunicationKernel.Hosting.Sdk;
 
 namespace CommunicationKernel.UI.WebMaster.Services;
@@ -70,6 +71,23 @@ public sealed class WebDeviceRecord
     /// 默认 ABCD（大端）——三个协议插件出来的字节都已经是大端。
     /// </remarks>
     public string ByteOrder { get; set; } = "ABCD";
+
+    /// <summary>
+    /// 端点描述：TCP 是「地址:端口」，串口是设备名。
+    /// </summary>
+    /// <remarks>
+    /// 放在记录上而不是各页各写一遍：这段分支只有<b>两个</b>字段的差别，
+    /// 但抄到第三处之后，改端口显示格式就得同时找齐三处，漏一处不会报错，
+    /// 只会让某一页的某台设备写着另一种样子。
+    /// <para>
+    /// 不参与序列化——它是从别的字段算出来的，写进 json 只会多一份会过期的副本。
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public string Endpoint =>
+        string.Equals(TransportKind, "Serial", StringComparison.OrdinalIgnoreCase)
+            ? SerialPort
+            : Address + ":" + Port;
 }
 
 /// <summary>设备配置磁盘镜像。线程安全。</summary>

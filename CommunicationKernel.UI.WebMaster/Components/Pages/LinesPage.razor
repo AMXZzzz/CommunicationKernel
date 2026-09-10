@@ -41,7 +41,7 @@
                 <div class="empty-title">还没有产线</div>
                 <div class="empty-hint">
                     产线把「设备管理」里的设备编成一条工艺流，并指定哪个点位代表运行、启动、停止。<br />
-                    配好之后 MES 监控页才能显示真实的工站状态，而不是现在那份演示数据。
+                    配好之后 MES 监控页才能显示工站状态——没有产线，那一页只有一排零。
                 </div>
                 <button class="btn primary" type="button" @onclick="AddLine">新建产线</button>
             </div>
@@ -533,18 +533,18 @@
                         <span class="cond">
                             <select class="mono" value="@r.Op" aria-label="比较方式"
                                     @onchange="e => Set(() => r.Op = ParseOp(e.Value))">
-                                @foreach (WebAlarmOp op in WebAlarmOpInfo.For(vtype))
+                                @foreach (AlarmOp op in AlarmOpInfo.For(vtype))
                                 {
-                                    <option value="@op">@WebAlarmOpInfo.Label(op)</option>
+                                    <option value="@op">@AlarmOpInfo.Label(op)</option>
                                 }
                             </select>
                             @* 线圈的通断不需要操作数：条件已经由方式本身说完了。
                                留一个空框在那儿，会让人以为漏填了什么。 *@
-                            @if (WebAlarmOpInfo.NeedsOperand(r.Op))
+                            @if (AlarmOpInfo.NeedsOperand(r.Op))
                             {
                                 <input class="mono" value="@r.Operand" aria-label="对比值"
-                                       placeholder="@WebAlarmOpInfo.Placeholder(r.Op)"
-                                       title="@WebAlarmOpInfo.Placeholder(r.Op)"
+                                       placeholder="@AlarmOpInfo.Placeholder(r.Op)"
+                                       title="@AlarmOpInfo.Placeholder(r.Op)"
                                        @onchange="e => Set(() => r.Operand = e.Value?.ToString() ?? string.Empty)" />
                             }
                         </span>
@@ -625,11 +625,7 @@
         WebDeviceRecord? d = Devices.Get(routeId);
         if (d is null) return "路由 " + routeId + " 已不存在";
 
-        string ep = string.Equals(d.TransportKind, "Serial", StringComparison.OrdinalIgnoreCase)
-            ? d.SerialPort
-            : d.Address + ":" + d.Port;
-
-        return d.ProtocolId + " · " + ep;
+        return d.ProtocolId + " · " + d.Endpoint;
     }
 
     /// <summary>设备在下拉里的完整文本。</summary>
@@ -735,11 +731,11 @@
         r.VariableId = variableId ?? string.Empty;
 
         string type = VarById(r.VariableId)?.DataType ?? string.Empty;
-        if (WebAlarmOpInfo.Applies(r.Op, type)) return;
+        if (AlarmOpInfo.Applies(r.Op, type)) return;
 
         // 落到该类型的第一个可用方式：线圈是「接通 ON」，整数是「第 N 位 = 1」，
         // 都是各自最常用的那一个
-        r.Op = WebAlarmOpInfo.For(type)[0];
+        r.Op = AlarmOpInfo.For(type)[0];
     }
 
     /// <summary>比较方式下拉的取值。</summary>
@@ -748,8 +744,8 @@
     /// 我们自己渲染的那几个选项，走到这里说明是异常输入，
     /// 给个最常用的默认值比让整页崩掉合适。
     /// </remarks>
-    private static WebAlarmOp ParseOp(object? value) =>
-        Enum.TryParse(value?.ToString(), out WebAlarmOp op) ? op : WebAlarmOp.BitSet;
+    private static AlarmOp ParseOp(object? value) =>
+        Enum.TryParse(value?.ToString(), out AlarmOp op) ? op : AlarmOp.BitSet;
 
     /// <summary>切换当前产线。</summary>
     /// <remarks>

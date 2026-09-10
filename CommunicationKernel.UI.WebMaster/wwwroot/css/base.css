@@ -1866,36 +1866,6 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
    而串起来的表现是「某一页的某个角落忽然错位」，最难查。
    ============================================================================ */
 
-/* 演示数据横幅。常驻、不可关闭。
-   可关闭的提示等于没有提示：关掉之后这一屏和真实数据长得一模一样，
-   而这一屏上全是看起来很可信的产量、良率、温度。 */
-.page-mes .demo-banner {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    padding: 10px 14px;
-    border: 1px solid rgba(245, 158, 11, .45);
-    border-left-width: 3px;
-    border-radius: var(--radius);
-    background: rgba(245, 158, 11, .1);
-    color: var(--warning-ink);
-    font-size: 12.5px;
-    line-height: 1.6;
-}
-.page-mes .demo-banner .tagword {
-    flex: none;
-    padding: 2px 9px;
-    border-radius: 3px;
-    background: var(--warning);
-    color: #1a1400;
-    font-weight: 700;
-    font-size: 11.5px;
-    letter-spacing: .04em;
-}
-.page-mes .demo-banner b { color: var(--text); }
-
 /* 工具栏右侧的周期 / 上次更新 */
 .page-mes .meta { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
 .page-mes .meta b { font-family: var(--font-mono); color: var(--text-muted); font-weight: 500; }
@@ -2438,6 +2408,74 @@ input[readonly] { background: #171717; color: var(--text-muted); cursor: not-all
 .page-mes .tl li.first .m { color: var(--text); }
 
 .page-mes .dt-ft { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--border); flex: none; }
+
+/* -------------------------------------------------- 卡上的编辑角标 */
+/* 常态很淡，悬停整张卡才显出来：四张卡各挂一个亮按钮的话，
+   这一区会比它上面的工艺流还抢眼，而它只是监视用的。 */
+.page-mes .dc .top .ed {
+    flex: none;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s;
+}
+.page-mes .dc:hover .top .ed,
+.page-mes .dc .top .ed:focus-visible { opacity: 1; }
+.page-mes .dc .top .ed:hover { color: var(--accent); }
+
+/* ============================================================================
+   添加 / 编辑离散设备弹窗
+   ----------------------------------------------------------------------------
+   入口在 MES 页那张卡上，但类名不带 .page-mes——弹窗挂在 .add-form 那一套
+   通用外壳里，与设备、变量的弹窗共用头部与底部。
+   ============================================================================ */
+.add-form.solo-dlg { width: 460px; max-width: 100%; }
+.solo-dlg .form-hd .d { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+.solo-dlg .solo-bd { display: grid; gap: 14px; }
+.solo-dlg .f { display: grid; gap: 5px; font-size: 12px; color: var(--text-dim); }
+.solo-dlg .f .lb { display: flex; align-items: center; gap: 6px; }
+.solo-dlg .f .lb b { color: var(--text-muted); font-weight: 500; }
+.solo-dlg .f .lb .req { color: var(--danger-ink); }
+.solo-dlg .f .lb .opt { color: var(--text-dim); margin-left: auto; }
+.solo-dlg .f .lb.dim { color: var(--text-dim); }
+.solo-dlg .sep { border-top: 1px dashed var(--border); margin: 2px 0; }
+.solo-dlg .grp { font-size: 11px; color: var(--text-dim); letter-spacing: .04em; }
+.solo-dlg .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* 预览卡：结构与上面那张 .dc 一致，改一处这里也要跟着改。
+   数值是真读值——本页本来就在显示它们，摆个假数字反而让人以为还没接上。 */
+.solo-dlg .pv {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.solo-dlg .pv .top { display: flex; align-items: center; gap: 8px; }
+.solo-dlg .pv .top .led { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
+.solo-dlg .pv .top .nm { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.solo-dlg .pv .top .poll { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.solo-dlg .pv .md { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+.solo-dlg .pv .vals { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.solo-dlg .pv .kv {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 0;
+    border-bottom: 0;
+}
+.solo-dlg .pv .kv .k { font-size: 10.5px; color: var(--text-dim); }
+.solo-dlg .pv .kv .v { font-family: var(--font-mono); font-size: 14px; font-weight: 600; text-align: left; }
+.solo-dlg .pv .kv .v .u { margin-left: 2px; font-size: 10px; font-weight: 400; color: var(--text-dim); }
+.solo-dlg .solo-ft { align-items: center; }
+.solo-dlg .solo-ft .hint { margin-right: auto; font-size: 12px; color: var(--text-dim); }
 
 /* ============================================================================
    产线配置页

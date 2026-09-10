@@ -118,6 +118,15 @@
     }
     .add-form-overlay.center { align-items: flex-end; padding: 0; }
 
+    /* 离散设备弹窗：字段与预览都从两列改一列。
+       手机上两列各只剩一百来像素，变量名会被压成竖着的碎字。 */
+    .add-form.solo-dlg { width: 100%; }
+    .solo-dlg .slots,
+    .solo-dlg .pv .vals { grid-template-columns: 1fr; }
+
+    /* 触屏没有悬停，卡上的 ✎ 永远显不出来 */
+    .page-mes .dc .top .ed { opacity: 1; padding: 0 8px; }
+
     /* 窄屏：正文换到第二行独占整宽。手机上 1fr 只剩几十像素，
        一条日志会被切成十几行竖着的碎字。 */
     .log-row {

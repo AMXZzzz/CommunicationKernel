@@ -3,17 +3,22 @@
    层级: UI 层 — MES 监控
    作用: 按产线展示工艺流、线内离散设备与活动报警。
 
-   数据来自 IMesDataSource，当前实现是 DemoMesDataSource（演示数据）。
-   页面不认识设备表也不认识变量表——产线、工站顺序、点位绑定这些概念
-   现在还没有落地，接进来之后换一个数据源实现即可，本文件不用改。
+   数据来自 IMesDataSource，实现是 MesDataSource——它把「产线配置」这份编排
+   对着变量表里的实时读值算成快照。页面不认识设备表也不认识变量表，
+   只认 MesSnapshot 这个形状。
 
-   演示期间页面顶部有一条醒目横幅。它不可省：一屏看起来很真的产量、
-   良率、温度，被当成现场读数拿去做判断，后果比界面难看严重得多。
+   本页<b>只读</b>：状态、产量、报警都是算出来的，不发任何 I/O。
+   启停复位那几个按钮要往 PLC 写，另作一处处理，不在本文件的职责里。
    ----------------------------------------------------------------------------- *@
 
 @page "/"
 @inject EngineSession Session
 @inject IMesDataSource Mes
+@* 下面三个只给「离散设备」弹窗用——那一处要改产线编排，得直接写 web-lines.json。
+   页面本身的显示一律走 Mes，不从这三个里取数。 *@
+@inject WebLineStore Lines
+@inject WebDeviceStore Devices
+@inject WebVariableStore Vars
 @implements IDisposable
 
 <PageTitle>MES 监控 — CommunicationKernel</PageTitle>
@@ -58,17 +63,19 @@
 
     <div class="page-body">
 
-        @if (snap.IsDemo) {
-            @* 整条横幅通栏、常驻、不可关闭。可关闭的提示等于没有提示：
-               关掉之后这一屏就和真实数据长得一模一样了。 *@
-            <div class="demo-banner">
-                <span class="tagword">演示数据</span>
-                <span>
-                    本页的产线、工站状态、产量良率与报警<b>全部是写死的样例</b>，不是现场读数。
-                    产线划分与点位绑定做完之后，这条横幅会自动消失。
-                </span>
+        @* 一条产线都没配时，整页只剩一排 0 和一段与你无关的说明——
+           那看起来像系统坏了，而实际是还没开始配。直接给下一步该做什么。 *@
+        @if (snap.LineCount == 0) {
+            <div class="empty-state">
+                <div class="empty-title">还没有产线</div>
+                <div class="empty-hint">
+                    本页按「产线配置」里的编排显示：哪些设备组成一条线、排第几站、
+                    哪个点位代表运行状态。<br />
+                    配好之后这里才会出现工艺流、实时读数与报警。
+                </div>
+                <a class="btn primary" href="/lines">去配置产线</a>
             </div>
-        }
+        } else {
 
         <div class="mes-sum">
             <div><div class="k">产线</div><div class="v">@snap.LineCount</div></div>
@@ -112,8 +119,8 @@
                 </div>
 
                 <div class="line-kpi">
-                    <span>班次产量<b>@line.Kpi.Output.ToString("N0")</b></span>
-                    <span>目标<b>@line.Kpi.Target.ToString("N0")</b></span>
+                    <span>班次产量<b>@line.Kpi.OutputText</b></span>
+                    <span>目标<b>@line.Kpi.TargetText</b></span>
                     <span>良率<b>@line.Kpi.YieldText</b></span>
                     <span>节拍<b>@line.Kpi.CycleText</b></span>
                     <span>停机<b>@line.Kpi.DowntimeText</b></span>
@@ -152,12 +159,9 @@
                         <span class="d">归属本线但不在工艺流中的伺服 / 变频器 / 传感器 · 仅监视，值随变量轮询更新</span>
                         <div class="r" @onclick:stopPropagation>
                             @* 离散设备就在这里加——它们只在本页显示读数，配在别处反而要来回跳。
-                               但本页当前是演示数据，弹窗写进去的是真配置、显示的却是样例，
-                               两边对不上，所以先禁用。等本页接上真实产线配置一并启用。 *@
-                            <button class="btn-sm" type="button" disabled
-                                    title="等本页接上真实产线配置后启用">＋ 添加设备</button>
-                            <button class="btn-sm" type="button" disabled
-                                    title="等本页接上真实产线配置后启用">编辑</button>
+                               改哪一台走那张卡上的 ✎，头部再放一个「编辑」就得先问改的是谁。 *@
+                            <button class="btn-sm" type="button"
+                                    @onclick="() => OpenSolo(line.Id, null)">＋ 添加设备</button>
                         </div>
                     </div>
 
@@ -168,6 +172,8 @@
                                     <span class="led" title="@(d.Stale ? "读取失败或超时未更新" : "在线")"></span>
                                     <span class="nm" title="@d.Name">@d.Name</span>
                                     <span class="poll">@d.PollText</span>
+                                    <button class="ed" type="button" title="编辑显示字段"
+                                            @onclick="() => OpenSolo(line.Id, d.Id)">✎</button>
                                 </div>
                                 <div class="md">@d.Meta</div>
                                 <div class="vals">
@@ -185,8 +191,8 @@
                                 </div>
                             </div>
                         }
-                        <button class="dc add" type="button" disabled
-                                title="等本页接上真实产线配置后启用">
+                        <button class="dc add" type="button"
+                                @onclick="() => OpenSolo(line.Id, null)">
                             <span class="plus">＋</span>添加离散设备
                         </button>
                     </div>
@@ -195,9 +201,13 @@
         }
 
         <div class="mes-hint">
-            产线工站与离散设备均来自「设备管理」。离散设备只显示变量值，不参与报警与整线控制；
-            绿灯为连接在线，读取失败时灯变灰、数值变灰并标「陈旧」。
+            工站状态取自「产线配置」里绑定的状态点位，读值由变量页的轮询刷新——
+            <b>点位没开轮询就读不到值</b>，该站会显示成离线。
+            离散设备只显示变量值，不参与报警与整线控制；读取失败，或连着几个扫描周期都没读上来时，
+            灯变灰、数值变灰并标「陈旧」。
         </div>
+
+        }
     </div>
 
     @* ================= 报警抽屉 ================= *@
@@ -344,6 +354,93 @@
             </div>
         </div>
     }
+
+    @* ================= 添加 / 编辑离散设备 ================= *@
+    @if (_soloOpen) {
+        <div class="add-form-overlay center" @onclick="CloseSolo">
+            <div class="add-form solo-dlg" @onclick:stopPropagation>
+                <div class="form-hd">
+                    <h3>@(_soloEditing.Length > 0 ? "编辑离散设备" : "添加离散设备")</h3>
+                    <span class="d">@SoloLineName()</span>
+                    <button class="close-btn" type="button" @onclick="CloseSolo">×</button>
+                </div>
+
+                <div class="solo-bd">
+                    <div class="f">
+                        <span class="lb"><b>设备</b><span class="req">*</span><span class="opt">名称 / 协议 / 连接继承设备管理</span></span>
+                        <select class="mono" value="@_soloRouteId" disabled="@(_soloEditing.Length > 0)"
+                                @onchange="e => SoloDeviceChanged(e.Value?.ToString())">
+                            <option value="">— 选择设备 —</option>
+                            @foreach (WebDeviceRecord d in SoloCandidates()) {
+                                <option value="@d.RouteId">@SoloDeviceLabel(d)</option>
+                            }
+                        </select>
+                        @if (_soloEditing.Length == 0 && SoloCandidates().Count == 0) {
+                            <span class="lb dim">没有可选设备：本线的设备都已在工艺流或离散列表里了。</span>
+                        }
+                    </div>
+
+                    <div class="sep"></div>
+                    <div class="grp">显示字段 · 4 格 · 来自该设备已配置的变量</div>
+                    <div class="slots">
+                        @for (int i = 0; i < 4; i++) {
+                            int slot = i;
+                            <div class="f">
+                                <span class="lb"><b>字段 @(slot + 1)</b></span>
+                                <select class="mono" value="@_soloFields[slot]"
+                                        @onchange="e => _soloFields[slot] = e.Value?.ToString() ?? string.Empty">
+                                    <option value="">— 不显示 —</option>
+                                    @foreach (WebVariable v in SoloVars()) {
+                                        <option value="@v.Id">@SoloVarLabel(v)</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="sep"></div>
+                    <div class="grp">预览 · 值随「变量配置」的轮询周期更新 · 仅监视、无报警、无控制</div>
+                    @* 预览里的数值是真读值——本页本来就在显示它们，写死一个占位符
+                       反而让人以为这台还没接上。没读到的自然还是 "--"。 *@
+                    <div class="pv">
+                        <div class="top">
+                            <span class="led"></span>
+                            <span class="nm">@(_soloRouteId.Length > 0 ? SoloDeviceName(_soloRouteId) : "（未选择设备）")</span>
+                            <span class="poll">@SoloPollText()</span>
+                        </div>
+                        <div class="md">@(_soloRouteId.Length > 0 ? SoloDeviceSub(_soloRouteId) : "—")</div>
+                        <div class="vals">
+                            @foreach (string vid in _soloFields.Where(x => x.Length > 0)) {
+                                WebVariable? v = SoloVarById(vid);
+                                <div class="kv">
+                                    <span class="k">@(v?.Name ?? vid)</span>
+                                    <span class="v">
+                                        @(v?.DisplayValue ?? "--")
+                                        @if (v is not null && v.Unit.Length > 0) {
+                                            <span class="u">@v.Unit</span>
+                                        }
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                        @if (_soloFields.All(x => x.Length == 0)) {
+                            <div class="md">还没有选字段，卡片上只会显示名称与连接。</div>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-actions solo-ft">
+                    <span class="hint">变量不够？去「变量配置」为该设备补充</span>
+                    @if (_soloEditing.Length > 0) {
+                        <button class="btn danger" type="button" @onclick="RemoveSolo">移除</button>
+                    }
+                    <button class="btn ghost" type="button" @onclick="CloseSolo">取消</button>
+                    <button class="btn primary" type="button" disabled="@(_soloRouteId.Length == 0)"
+                            @onclick="SaveSolo">@(_soloEditing.Length > 0 ? "保存" : "添加")</button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
@@ -407,4 +504,208 @@
 
     /// <summary>退订会话事件；Session 是单例，漏退会泄漏本组件。</summary>
     public void Dispose() => Session.Changed -= OnChanged;
+
+    // ========================================================================
+    // 离散设备
+    // ========================================================================
+    //
+    // 入口放在本页而不是「产线配置」：这类设备只在本页显示读数，卡片就在
+    // 眼前，改哪一台点哪一张。放到产线配置里要先跳页、再找到那条线，
+    // 而那一页讲的是工艺流编排，离散设备本来就不在工艺流上。
+    //
+    // 这里<b>直接写 web-lines.json</b>——它是产线编排的唯一出处，
+    // 本页另存一份的话，两处会各自漂移，而漂移之后没人说得清哪份是准的。
+
+    /// <summary>弹窗是否打开。</summary>
+    private bool _soloOpen;
+
+    /// <summary>弹窗所属产线 Id。</summary>
+    private string _soloLineId = string.Empty;
+
+    /// <summary>正在编辑的设备路由 Id；空串表示新增。</summary>
+    private string _soloEditing = string.Empty;
+
+    /// <summary>弹窗里选中的设备路由。</summary>
+    private string _soloRouteId = string.Empty;
+
+    /// <summary>
+    /// 弹窗里四个显示字段的变量 Id。
+    /// </summary>
+    /// <remarks>
+    /// 定长四格而不是可变列表：卡片版式就是两行两列，
+    /// 用列表的话「删掉第二个」之后剩下的会往前挤，与卡片上的格位对不上。
+    /// </remarks>
+    private readonly string[] _soloFields = new string[4];
+
+    /// <summary>打开弹窗。<paramref name="routeId"/> 为空表示新增。</summary>
+    private void OpenSolo(string lineId, string? routeId)
+    {
+        _soloLineId = lineId;
+        _soloEditing = routeId ?? string.Empty;
+        _soloRouteId = _soloEditing;
+        Array.Fill(_soloFields, string.Empty);
+
+        // 编辑时回填已选字段；超出四个的忽略——卡片本来也只画四格
+        WebSoloDevice? d = SoloOf(_soloEditing);
+        if (d is not null)
+        {
+            for (int i = 0; i < Math.Min(4, d.FieldVariableIds.Count); i++)
+                _soloFields[i] = d.FieldVariableIds[i];
+        }
+
+        _soloOpen = true;
+    }
+
+    /// <summary>关闭弹窗。</summary>
+    private void CloseSolo()
+    {
+        _soloOpen = false;
+        _soloEditing = string.Empty;
+        _soloRouteId = string.Empty;
+    }
+
+    /// <summary>
+    /// 弹窗里换了设备。
+    /// </summary>
+    /// <remarks>
+    /// 必须清空四个字段：它们是<b>上一台设备</b>的变量 Id，
+    /// 留着的话下拉里选不中（不在新设备的变量里），预览却还画着旧名字。
+    /// </remarks>
+    private void SoloDeviceChanged(string? routeId)
+    {
+        _soloRouteId = routeId ?? string.Empty;
+        Array.Fill(_soloFields, string.Empty);
+    }
+
+    /// <summary>保存并落盘。</summary>
+    private void SaveSolo()
+    {
+        WebLine? line = Lines.Get(_soloLineId);
+        if (line is null || _soloRouteId.Length == 0) return;
+
+        List<string> fields = _soloFields.Where(x => x.Length > 0).ToList();
+        WebSoloDevice? existing = SoloOf(_soloEditing);
+
+        if (existing is not null)
+            existing.FieldVariableIds = fields;
+        else
+            line.Solo.Add(new WebSoloDevice { RouteId = _soloRouteId, FieldVariableIds = fields });
+
+        Lines.Save();
+        CloseSolo();
+    }
+
+    /// <summary>把这台设备移出本线。</summary>
+    /// <remarks>
+    /// 只解除「归属这条线」，不动设备本身——设备管理里那条记录、
+    /// 它的变量与轮询都照旧。删设备是另一页的事。
+    /// </remarks>
+    private void RemoveSolo()
+    {
+        WebLine? line = Lines.Get(_soloLineId);
+        WebSoloDevice? d = SoloOf(_soloEditing);
+        if (line is null || d is null) return;
+
+        line.Solo.Remove(d);
+        Lines.Save();
+        CloseSolo();
+    }
+
+    /// <summary>按路由 Id 在当前线里找那台离散设备。</summary>
+    private WebSoloDevice? SoloOf(string routeId)
+    {
+        if (routeId.Length == 0) return null;
+
+        return Lines.Get(_soloLineId)?.Solo
+            .FirstOrDefault(x => string.Equals(x.RouteId, routeId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>弹窗标题下那行产线名。</summary>
+    private string SoloLineName()
+    {
+        WebLine? line = Lines.Get(_soloLineId);
+        if (line is null) return string.Empty;
+
+        return line.Name.Length > 0 ? line.Name : line.Id;
+    }
+
+    /// <summary>
+    /// 可选设备：本线还没用到的那些。
+    /// </summary>
+    /// <remarks>
+    /// 已在工艺流上的排除掉——同一台设备既是工站又是离散设备的话，
+    /// 一屏上会出现两张卡画着同一个值，而其中一张不参与报警与控制。
+    /// 编辑时把自己加回来，否则下拉是空的。
+    /// </remarks>
+    private List<WebDeviceRecord> SoloCandidates()
+    {
+        WebLine? line = Lines.Get(_soloLineId);
+        if (line is null) return new List<WebDeviceRecord>();
+
+        HashSet<string> used = new(
+            line.Stations.Select(s => s.RouteId).Concat(line.Solo.Select(s => s.RouteId)),
+            StringComparer.OrdinalIgnoreCase);
+
+        List<WebDeviceRecord> list = Devices.GetAll()
+            .Where(d => !used.Contains(d.RouteId))
+            .ToList();
+
+        if (_soloEditing.Length > 0)
+        {
+            WebDeviceRecord? self = Devices.Get(_soloEditing);
+            if (self is not null) list.Insert(0, self);
+        }
+
+        return list;
+    }
+
+    /// <summary>设备下拉里的一行。</summary>
+    private static string SoloDeviceLabel(WebDeviceRecord d) =>
+        d.Name + " · " + d.ProtocolId + " · " + d.Endpoint;
+
+    /// <summary>设备显示名；设备已删除时退回路由 Id。</summary>
+    private string SoloDeviceName(string routeId) => Devices.Get(routeId)?.Name ?? routeId;
+
+    /// <summary>设备副标题：协议与连接。</summary>
+    private string SoloDeviceSub(string routeId)
+    {
+        WebDeviceRecord? d = Devices.Get(routeId);
+        return d is null ? "设备已删除" : d.ProtocolId + " · " + d.Endpoint;
+    }
+
+    /// <summary>所选设备的变量。</summary>
+    private List<WebVariable> SoloVars() =>
+        _soloRouteId.Length == 0
+            ? new List<WebVariable>()
+            : Vars.GetAll()
+                .Where(v => string.Equals(v.RouteId, _soloRouteId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+    /// <summary>按 Id 取变量。</summary>
+    private WebVariable? SoloVarById(string id) =>
+        Vars.GetAll().FirstOrDefault(v => string.Equals(v.Id, id, StringComparison.Ordinal));
+
+    /// <summary>变量下拉里的一行。</summary>
+    private static string SoloVarLabel(WebVariable v) =>
+        v.Unit.Length > 0 ? v.Name + " · " + v.Address + " · " + v.Unit : v.Name + " · " + v.Address;
+
+    /// <summary>预览里的轮询周期：取所选字段中最快的那个。</summary>
+    /// <remarks>
+    /// 卡片整体的刷新快慢由最快的那条决定——四个格子各有各的周期，
+    /// 但人看到的是「这张卡多久动一次」。
+    /// </remarks>
+    private string SoloPollText()
+    {
+        List<WebVariable> picked = _soloFields
+            .Where(x => x.Length > 0)
+            .Select(SoloVarById)
+            .Where(v => v is not null)
+            .Select(v => v!)
+            .ToList();
+
+        if (picked.Count == 0) return "—";
+
+        int ms = picked.Min(v => v.ScanRateMs);
+        return ms >= 1000 ? (ms / 1000.0).ToString("0.#") + " s" : ms + " ms";
+    }
 }
