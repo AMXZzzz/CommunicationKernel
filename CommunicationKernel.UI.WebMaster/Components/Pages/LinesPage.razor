@@ -635,7 +635,7 @@
             else
             {
                 <div class="alm">
-                    <span class="h">该设备变量</span><span class="h">位 / 条件</span>
+                    <span class="h">该设备变量</span><span class="h">触发条件</span>
                     <span class="h">报警名称 · 代码</span><span class="h">级别</span>
                     <span class="h">处理建议</span><span class="h"></span>
 
@@ -650,8 +650,22 @@
                                 <option value="@v.Id">@VarLabel(v)</option>
                             }
                         </select>
-                        <input class="mono" value="@r.Condition" aria-label="条件"
-                               @onchange="e => Set(() => r.Condition = e.Value?.ToString() ?? string.Empty)" />
+                        @* 比较方式下拉 + 操作数输入框。早先这里是一个自由输入框，
+                           要求操作员照 bit N / == v 的语法手写；少个空格、少个等号
+                           都不会有任何提示，要到设备真报警时才发现规则从没生效过。 *@
+                        <span class="cond">
+                            <select class="mono" value="@r.Op" aria-label="比较方式"
+                                    @onchange="e => Set(() => r.Op = ParseOp(e.Value))">
+                                @foreach (WebAlarmOp op in WebAlarmOpInfo.All)
+                                {
+                                    <option value="@op">@WebAlarmOpInfo.Label(op)</option>
+                                }
+                            </select>
+                            <input class="mono" value="@r.Operand" aria-label="对比值"
+                                   placeholder="@WebAlarmOpInfo.Placeholder(r.Op)"
+                                   title="@WebAlarmOpInfo.Placeholder(r.Op)"
+                                   @onchange="e => Set(() => r.Operand = e.Value?.ToString() ?? string.Empty)" />
+                        </span>
                         <span class="code">
                             <input value="@r.Title" placeholder="报警名称" aria-label="报警名称"
                                    @onchange="e => Set(() => r.Title = e.Value?.ToString() ?? string.Empty)" />
@@ -673,8 +687,8 @@
                 <div class="alm-add">
                     <button class="btn-sm dashed" type="button"
                             @onclick="() => Set(() => rules.Add(new WebAlarmRule()))">＋ 添加@(title)</button>
-                    条件支持 <code class="mono">bit N</code> · <code class="mono">== v</code> ·
-                    <code class="mono">!= v</code> · <code class="mono">&lt; v</code> · <code class="mono">&gt; v</code>
+                    位比较看状态字里的某一位，值比较看整个寄存器的读数——
+                    报警字用前者，气压、温度用后者
                 </div>
             }
         </div>;
@@ -868,6 +882,15 @@
 
     /// <summary>报警级别下拉的取值：1 为严重，其余为预警。</summary>
     private static bool IsCritical(object? value) => value?.ToString() == "1";
+
+    /// <summary>比较方式下拉的取值。</summary>
+    /// <remarks>
+    /// 解析不出来时回落到「第 N 位 = 1」而不是抛异常：下拉的取值只可能来自
+    /// 我们自己渲染的那几个选项，走到这里说明是异常输入，
+    /// 给个最常用的默认值比让整页崩掉合适。
+    /// </remarks>
+    private static WebAlarmOp ParseOp(object? value) =>
+        Enum.TryParse(value?.ToString(), out WebAlarmOp op) ? op : WebAlarmOp.BitSet;
 
     /// <summary>切换当前产线。</summary>
     /// <remarks>

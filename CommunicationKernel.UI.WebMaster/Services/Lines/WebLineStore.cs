@@ -77,6 +77,87 @@ public sealed class WebStateMap
     public WebStateMap Clone() => new() { Run = Run, Stop = Stop, Alarm = Alarm };
 }
 
+/// <summary>报警条件的比较方式。</summary>
+/// <remarks>
+/// 分成「位」与「值」两族：位比较看的是状态字里某一位有没有置起来，
+/// 值比较看的是整个寄存器的读数。现场这两类混不到一起——
+/// 报警字用位，气压、温度用值。
+/// </remarks>
+public enum WebAlarmOp
+{
+    /// <summary>该位为 1。报警字的常规用法。</summary>
+    BitSet = 0,
+
+    /// <summary>该位为 0。用于「就绪信号消失」这类反逻辑。</summary>
+    BitClear,
+
+    /// <summary>整个值等于。</summary>
+    Equal,
+
+    /// <summary>整个值不等于。</summary>
+    NotEqual,
+
+    /// <summary>整个值小于。</summary>
+    Less,
+
+    /// <summary>整个值大于。</summary>
+    Greater,
+}
+
+/// <summary>报警条件的显示辅助。</summary>
+public static class WebAlarmOpInfo
+{
+    /// <summary>下拉框里的全部取值，顺序即常用程度。</summary>
+    public static readonly WebAlarmOp[] All =
+    {
+        WebAlarmOp.BitSet,
+        WebAlarmOp.BitClear,
+        WebAlarmOp.Equal,
+        WebAlarmOp.NotEqual,
+        WebAlarmOp.Less,
+        WebAlarmOp.Greater,
+    };
+
+    /// <summary>下拉框里的中文名。</summary>
+    /// <remarks>
+    /// 位比较写「第 N 位」，值比较写符号：前者的操作数是位号，后者是数值，
+    /// 名字里带上这个差别，右边那个输入框该填什么就不用再猜。
+    /// </remarks>
+    public static string Label(WebAlarmOp op) => op switch
+    {
+        WebAlarmOp.BitSet => "第 N 位 = 1",
+        WebAlarmOp.BitClear => "第 N 位 = 0",
+        WebAlarmOp.Equal => "值 ==",
+        WebAlarmOp.NotEqual => "值 !=",
+        WebAlarmOp.Less => "值 <",
+        WebAlarmOp.Greater => "值 >",
+        _ => "第 N 位 = 1",
+    };
+
+    /// <summary>右侧输入框的占位提示。</summary>
+    public static string Placeholder(WebAlarmOp op) => IsBit(op) ? "位号 0-15" : "对比值";
+
+    /// <summary>是不是位比较。位比较的操作数是位号，不是数值。</summary>
+    public static bool IsBit(WebAlarmOp op) => op is WebAlarmOp.BitSet or WebAlarmOp.BitClear;
+
+    /// <summary>拼成一句可读的条件，用于日志与只读展示。</summary>
+    public static string Text(WebAlarmOp op, string operand)
+    {
+        string v = string.IsNullOrWhiteSpace(operand) ? "?" : operand.Trim();
+
+        return op switch
+        {
+            WebAlarmOp.BitSet => "bit " + v + " = 1",
+            WebAlarmOp.BitClear => "bit " + v + " = 0",
+            WebAlarmOp.Equal => "== " + v,
+            WebAlarmOp.NotEqual => "!= " + v,
+            WebAlarmOp.Less => "< " + v,
+            WebAlarmOp.Greater => "> " + v,
+            _ => v,
+        };
+    }
+}
+
 /// <summary>一条报警规则：某个变量满足条件时触发。</summary>
 public sealed class WebAlarmRule
 {
@@ -87,14 +168,75 @@ public sealed class WebAlarmRule
     public string VariableId { get; set; } = string.Empty;
 
     /// <summary>
-    /// 触发条件。
+    /// 比较方式。
     /// </summary>
     /// <remarks>
-    /// 支持 <c>bit N</c> / <c>== v</c> / <c>!= v</c> / <c>&lt; v</c> / <c>&gt; v</c>。
-    /// 存原始文本而不是解析后的结构：现场要能一眼看懂自己填了什么，
-    /// 而解析放在求值那一侧，改语法时只改一处。
+    /// 与 <see cref="Operand"/> 拆成两个字段，而不是存一句 <c>bit 0</c> 这样的文本。
+    /// 早先存的是文本，理由是「现场要能一眼看懂自己填了什么」——
+    /// 但那意味着操作员得记住这套语法，写错 <c>bit0</c>（少个空格）或
+    /// <c>=1</c>（少个等号）不会有任何提示，要到设备真报警时才发现规则从没生效过。
+    /// 改成下拉 + 输入框之后，语法由界面保证，只剩一个操作数要填。
     /// </remarks>
-    public string Condition { get; set; } = "bit 0";
+    public WebAlarmOp Op { get; set; } = WebAlarmOp.BitSet;
+
+    /// <summary>操作数：位比较时是位号，值比较时是对比值。</summary>
+    public string Operand { get; set; } = "0";
+
+    /// <summary>
+    /// 兼容上一版的整句条件文本，只用于读入旧配置。
+    /// </summary>
+    /// <remarks>
+    /// 只有 setter：System.Text.Json 反序列化时会用它，序列化时因无 getter 而跳过，
+    /// 于是旧文件读得进来、新文件不再写出这个字段，一次读写即完成迁移。
+    /// 解析不出来时保持默认值——总比静默变成一条永远不触发的规则强。
+    /// </remarks>
+    public string Condition
+    {
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+
+            string s = value.Trim();
+
+            if (s.StartsWith("bit", StringComparison.OrdinalIgnoreCase))
+            {
+                // 形如 "bit 0"、"bit 3 = 0"。必须按等号切开再看右边，
+                // 不能只判「整串里有没有 0」——"bit 10" 的那个 0 来自位号，
+                // 会被误读成「该位为 0」
+                string rest = s[3..].Trim();
+                int eq = rest.IndexOf('=');
+
+                string bits = eq >= 0 ? rest[..eq] : rest;
+                string wanted = eq >= 0 ? rest[(eq + 1)..].Trim() : "1";
+
+                Op = wanted == "0" ? WebAlarmOp.BitClear : WebAlarmOp.BitSet;
+                Operand = new string(bits.Where(char.IsDigit).ToArray());
+                if (Operand.Length == 0) Operand = "0";
+                return;
+            }
+
+            (string prefix, WebAlarmOp op)[] map =
+            {
+                ("==", WebAlarmOp.Equal),
+                ("!=", WebAlarmOp.NotEqual),
+                ("<", WebAlarmOp.Less),
+                (">", WebAlarmOp.Greater),
+            };
+
+            foreach ((string prefix, WebAlarmOp op) in map)
+            {
+                if (!s.StartsWith(prefix, StringComparison.Ordinal)) continue;
+
+                Op = op;
+                Operand = s[prefix.Length..].Trim();
+                return;
+            }
+        }
+    }
+
+    /// <summary>拼好的条件文本，供只读展示与日志。</summary>
+    [JsonIgnore]
+    public string ConditionText => WebAlarmOpInfo.Text(Op, Operand);
 
     /// <summary>报警名称，操作员一眼要看懂的那句话。</summary>
     public string Title { get; set; } = string.Empty;

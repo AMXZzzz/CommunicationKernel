@@ -31,18 +31,38 @@ public class VariableScaleTests
             Assert.IsTrue(VariableScale.Supports(t), t + " 应当支持小数位换算");
     }
 
+    /// <summary>浮点也能配小数位——对它们那是显示位数，不是换算。</summary>
+    [TestMethod]
+    public void Supports_Float_True()
+    {
+        Assert.IsTrue(VariableScale.Supports("Float"));
+        Assert.IsTrue(VariableScale.Supports("Double"));
+    }
+
+    /// <summary>非数值类型没有小数可言，不提供这一项。</summary>
+    [TestMethod]
+    public void Supports_NonNumeric_False()
+    {
+        foreach (string t in new[] { "Bool", "String", "Hex" })
+            Assert.IsFalse(VariableScale.Supports(t), t + " 不应提供小数位");
+    }
+
     /// <summary>
-    /// 浮点与非数值类型不支持。
+    /// 只有整数类型需要 ×10^n 的换算。
     /// </summary>
     /// <remarks>
-    /// Float 自带小数，再乘 10^n 得到的是另一个数。允许它配小数位，
-    /// 只会让人以为那是「保留几位显示」——那是格式化，与换算是两回事。
+    /// 浮点值本身就带小数，再乘 10^n 得到的是另一个数——对它们，
+    /// 小数位只影响显示，读写的数值必须原样透传。这一条错了，
+    /// 一个 34.97 的温度写下去会变成 349.7。
     /// </remarks>
     [TestMethod]
-    public void Supports_FloatAndNonNumeric_False()
+    public void Scales_OnlyIntegers()
     {
-        foreach (string t in new[] { "Float", "Double", "Bool", "String", "Hex" })
-            Assert.IsFalse(VariableScale.Supports(t), t + " 不应支持小数位换算");
+        Assert.IsTrue(VariableScale.Scales("Int16"));
+        Assert.IsTrue(VariableScale.Scales("UInt32"));
+        Assert.IsFalse(VariableScale.Scales("Float"));
+        Assert.IsFalse(VariableScale.Scales("Double"));
+        Assert.IsFalse(VariableScale.Scales("Bool"));
     }
 
     /// <summary>小数位为 0 时不换算，哪怕类型支持。</summary>
@@ -87,12 +107,28 @@ public class VariableScaleTests
         Assert.AreEqual("-50.4", VariableScale.Display("-504", "Int16", 1));
     }
 
-    /// <summary>不换算时原样返回。</summary>
+    /// <summary>小数位为 0、或类型没有小数概念时原样返回。</summary>
     [TestMethod]
     public void Display_Inactive_ReturnsRaw()
     {
         Assert.AreEqual("504", VariableScale.Display("504", "Int16", 0));
-        Assert.AreEqual("504", VariableScale.Display("504", "Float", 1));
+        Assert.AreEqual("ON", VariableScale.Display("ON", "Bool", 2));
+    }
+
+    /// <summary>
+    /// 浮点只按位数格式化，不做任何换算。
+    /// </summary>
+    /// <remarks>
+    /// 这是与整数最容易混淆的一条：同样填 1 位小数，Int16 的 504 变 50.4，
+    /// Float 的 34.97 只是变成 35.0。算错方向就会差一百倍。
+    /// </remarks>
+    [TestMethod]
+    public void Display_Float_FormatsOnly()
+    {
+        Assert.AreEqual("35.0", VariableScale.Display("34.97", "Float", 1));
+        Assert.AreEqual("34.97", VariableScale.Display("34.97", "Float", 2));
+        Assert.AreEqual("34.9700", VariableScale.Display("34.97", "Double", 4));
+        Assert.AreEqual("-1.5", VariableScale.Display("-1.46", "Float", 1));
     }
 
     /// <summary>
@@ -241,12 +277,19 @@ public class VariableScaleTests
         Assert.AreEqual(1m, VariableScale.Factor(-3));
     }
 
-    /// <summary>说明文本只在真的换算时才有内容。</summary>
+    /// <summary>
+    /// 说明文本要分清换算与格式化。
+    /// </summary>
+    /// <remarks>
+    /// 两种情形用同一句话，会让人以为浮点点位也被乘过 10。
+    /// </remarks>
     [TestMethod]
-    public void Hint_OnlyWhenActive()
+    public void Hint_DistinguishesScaleFromFormat()
     {
         Assert.AreEqual(string.Empty, VariableScale.Hint("Int16", 0));
-        Assert.AreEqual(string.Empty, VariableScale.Hint("Float", 2));
+        Assert.AreEqual(string.Empty, VariableScale.Hint("Bool", 2));
+
         StringAssert.Contains(VariableScale.Hint("Int16", 1), "10");
+        StringAssert.Contains(VariableScale.Hint("Float", 2), "不换算");
     }
 }

@@ -338,7 +338,7 @@
                         @if (_editingFromTemplate) {
                             <span class="label-note">（由模板维护）</span>
                         } else {
-                            <span class="label-note">（0 = 不换算）</span>
+                            <span class="label-note">（@(VariableScale.Scales(_dataType) ? "0 = 不换算" : "0 = 不限位数")）</span>
                         }
                     </label>
                     <select @bind="_decimals" disabled="@_editingFromTemplate">
@@ -347,14 +347,27 @@
                         }
                     </select>
                     @if (_decimals > 0) {
-                        @* 举个具体的数比讲规则有用：现场看一眼就知道自己填对没有 *@
+                        @* 举个具体的数比讲规则有用：现场看一眼就知道自己填对没有。
+                           整数与浮点的说法必须分开——前者是「设备里存的数不是你看到的数」，
+                           后者只是保留几位。用同一句话会让人以为浮点点位也被乘过。 *@
                         <p class="hint-line">
-                            设备里存整数，界面按工程量显示与输入。
-                            读回 <span class="mono">@ScaleExampleRaw()</span> 显示为
-                            <span class="mono">@ScaleExampleDisplay()</span>；
-                            输入 <span class="mono">@ScaleExampleDisplay()</span> 写下去的是
-                            <span class="mono">@ScaleExampleRaw()</span>。
-                            多填的位数按四舍五入处理。
+                            @if (VariableScale.Scales(_dataType)) {
+                                <text>
+                                    设备里存整数，界面按工程量显示与输入。
+                                    读回 <span class="mono">@ScaleExampleRaw()</span> 显示为
+                                    <span class="mono">@ScaleExampleDisplay()</span>；
+                                    输入 <span class="mono">@ScaleExampleDisplay()</span> 写下去的是
+                                    <span class="mono">@ScaleExampleRaw()</span>。
+                                    多填的位数按四舍五入处理。
+                                </text>
+                            } else {
+                                <text>
+                                    <b>只影响显示位数，不做换算。</b>@_dataType 本身就带小数，
+                                    读回 <span class="mono">@ScaleExampleRaw()</span> 显示为
+                                    <span class="mono">@ScaleExampleDisplay()</span>；
+                                    写入时原样下发，<b>不会</b>被截到这个位数。
+                                </text>
+                            }
                         </p>
                     }
                 }
@@ -750,8 +763,19 @@
     private int _decimals;
 
     /// <summary>小数位下拉的文案。</summary>
-    private static string DecimalsLabel(int d) =>
-        d == 0 ? "0 — 不换算，按整数显示" : d + " 位 — 设备里存 ×" + VariableScale.Factor(d).ToString("0");
+    /// <remarks>
+    /// 整数与浮点的说法必须分开：整数是「设备里存的数被放大过」，
+    /// 浮点只是「保留几位」。给浮点也写「设备里存 ×10」，
+    /// 会让人以为选了之后写下去的数会变成十倍。
+    /// </remarks>
+    private string DecimalsLabel(int d)
+    {
+        if (d == 0) return VariableScale.Scales(_dataType) ? "0 — 不换算，按整数显示" : "0 — 不限位数";
+
+        return VariableScale.Scales(_dataType)
+            ? d + " 位 — 设备里存 ×" + VariableScale.Factor(d).ToString("0")
+            : d + " 位 — 只定显示位数";
+    }
 
     /// <summary>换算说明里那个「原始整数」示例。</summary>
     /// <remarks>
@@ -759,7 +783,11 @@
     /// 现场看一眼就能对照自己手里的图纸，规则讲得再准也要在脑子里换算一遍。
     /// </remarks>
     private string ScaleExampleRaw() =>
-        (504 * (int)(VariableScale.Factor(_decimals) / 10)).ToString();
+        VariableScale.Scales(_dataType)
+            ? (504 * (int)(VariableScale.Factor(_decimals) / 10)).ToString()
+            // 浮点举一个需要舍位的例子：拿 50.4 举例的话，一位和两位小数
+            // 显示出来都是 50.4，看不出这个设置到底做了什么
+            : "34.97";
 
     /// <summary>换算说明里那个「显示值」示例，与 <see cref="ScaleExampleRaw"/> 配对。</summary>
     private string ScaleExampleDisplay() =>

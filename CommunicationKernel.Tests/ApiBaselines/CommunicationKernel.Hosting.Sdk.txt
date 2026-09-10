@@ -176,6 +176,7 @@
     CommunicationKernel.Hosting.Sdk.VariableScale.Hint(System.String dataType, System.Int32 decimals) -> System.String
     CommunicationKernel.Hosting.Sdk.VariableScale.IsActive(System.String dataType, System.Int32 decimals) -> System.Boolean
     CommunicationKernel.Hosting.Sdk.VariableScale.MaxDecimals : System.Int32
+    CommunicationKernel.Hosting.Sdk.VariableScale.Scales(System.String dataType) -> System.Boolean
     CommunicationKernel.Hosting.Sdk.VariableScale.Supports(System.String dataType) -> System.Boolean
     CommunicationKernel.Hosting.Sdk.VariableScale.TryToRaw(System.String text, System.String dataType, System.Int32 decimals, System.String& raw, System.String& error) -> System.Boolean
     CommunicationKernel.Hosting.Sdk.WriteResultDto..ctor(System.Boolean Success, System.String ErrorCode, System.String ErrorMessage)

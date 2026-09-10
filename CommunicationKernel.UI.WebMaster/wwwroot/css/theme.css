@@ -3083,7 +3083,7 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
 /* 报警规则表 */
 .page-lines .alm {
     display: grid;
-    grid-template-columns: minmax(140px, 180px) 84px minmax(220px, 1fr) 84px minmax(180px, 1fr) 32px;
+    grid-template-columns: minmax(140px, 180px) minmax(150px, 190px) minmax(210px, 1fr) 84px minmax(170px, 1fr) 32px;
     gap: 6px 10px;
     align-items: center;
     font-size: 13px;
@@ -3096,6 +3096,12 @@ html.is-phone .add-form, html.is-phone .add-form.wide {
     letter-spacing: .04em;
 }
 .page-lines .alm input, .page-lines .alm select { min-height: 28px; font-size: 12.5px; }
+/* 条件那一格里塞两个控件：左边比较方式、右边操作数。
+   下拉要占大头——「第 N 位 = 1」比一个位号长得多，压窄了会截字。 */
+.page-lines .cond { display: flex; gap: 6px; min-width: 0; }
+.page-lines .cond select { flex: 1 1 auto; min-width: 0; }
+.page-lines .cond input { flex: 0 0 62px; }
+
 .page-lines .alm .code { display: flex; gap: 6px; }
 .page-lines .alm .code input:first-child { flex: 1; min-width: 0; }
 .page-lines .alm .code input:last-child { width: 110px; flex: none; }
