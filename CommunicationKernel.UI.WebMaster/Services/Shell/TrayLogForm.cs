@@ -115,6 +115,22 @@ internal sealed class TrayLogForm : Form
     /// <summary>整体重画时保留的条数。</summary>
     private const int KeepLines = 500;
 
+    /// <summary>时间戳列宽（<c>HH:mm:ss.fff</c> 加一个空格）。</summary>
+    private const int TimeCols = 13;
+
+    /// <summary>级别列宽（三字母加一个空格）。</summary>
+    private const int LevelCols = 4;
+
+    /// <summary>分类列宽。超出的截断加省略号，保证正文列不会被某个长名字顶歪。</summary>
+    private const int CategoryCols = 19;
+
+    /// <summary>正文列距左边的像素数，折行时续行缩进到这里。</summary>
+    /// <remarks>
+    /// 按字体实测而不是写死像素：等宽字在不同 DPI 与字号下宽度不同，
+    /// 写死的话续行会和正文列错开一截，比不缩进更难看。
+    /// </remarks>
+    private readonly int _msgIndent;
+
     // =========================================================================
     // 构造
     // =========================================================================
@@ -153,6 +169,14 @@ internal sealed class TrayLogForm : Form
             WordWrap = true,
             ScrollBars = RichTextBoxScrollBars.Both,
         };
+
+        // 正文列的起点：前三列都是定宽，等宽字下直接按字符数量出来。
+        // 用 NoPadding，否则 MeasureText 会替你多加一圈边距，缩进就偏了
+        _msgIndent = TextRenderer.MeasureText(
+            new string('0', TimeCols + LevelCols + CategoryCols),
+            _box.Font,
+            new Size(int.MaxValue, int.MaxValue),
+            TextFormatFlags.NoPadding).Width;
 
         _wrapBtn = MakeButton("自动换行 ✓", (_, _) => ToggleWrap());
 
@@ -325,11 +349,17 @@ internal sealed class TrayLogForm : Form
     {
         Color lvl = LevelColor(e.Level);
 
+        // 折行后的续行缩进到正文列。不缩的话续行顶到最左边，
+        // 和一条新记录的开头长得一模一样——而日志里满是长到必然折行的路径，
+        // 一屏下来根本数不清到底有几条。
+        _box.SelectionHangingIndent = _msgIndent;
+
         Append(e.Timestamp.ToString("HH:mm:ss.fff") + " ", Dim);
         Append(e.LevelText.PadRight(4), lvl);
 
-        if (e.Category.Length > 0)
-            Append(Clip(e.Category, 18).PadRight(19), Muted);
+        // 分类为空时也把这一列的位置占住：不占的话正文会前移 19 格，
+        // 而悬挂缩进是固定的，续行反倒比首行还靠右
+        Append(Clip(e.Category, CategoryCols - 1).PadRight(CategoryCols), Muted);
 
         Color body = e.LevelText switch
         {
